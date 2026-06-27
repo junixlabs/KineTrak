@@ -15,14 +15,10 @@ import ZoomControl from '@/components/shell/ZoomControl'
 import ViewHint from '@/components/views/ViewHint'
 import { useWorkspace } from '@/store/useWorkspace'
 import { moduleProgress, moduleMatchesRole } from '@/store/selectors'
+import { computeMindmapLayout } from '@/lib/layout'
 import type { Selection } from '@/store/types'
 
 const nodeTypes = { mindRoot: MindRootNode, mindModule: MindModuleNode, mindFeature: MindFeatureNode }
-
-// Layout geometry (ported from the prototype).
-const fc = (j: number) => 56 + j * 52
-const mc = (i: number) => fc(3 * i + 1)
-const ROOT_Y = (mc(0) + mc(1) + mc(2) + mc(3)) / 4 - 34
 
 /** Below this zoom, collapse to modules-only (semantic zoom). */
 const FEATURE_ZOOM = 0.55
@@ -56,48 +52,51 @@ function MindmapInner() {
     return set
   }, [focus, data])
 
+  const layout = useMemo(() => computeMindmapLayout(data.modules, data.features), [data])
+
   const nodes: Node[] = useMemo(() => {
     const list: Node[] = [
       {
         id: 'root',
         type: 'mindRoot',
-        position: { x: 40, y: ROOT_Y },
+        position: layout.root,
         data: { moduleCount: data.modules.length, featureCount: data.features.length },
         draggable: false,
         selectable: false,
       },
     ]
 
-    data.modules.forEach((m, i) => {
+    data.modules.forEach((m) => {
       const prog = moduleProgress(m.id, data.features)
       const roleDim = !moduleMatchesRole(m, roleFilter)
       const focusDim = !!focus && !focusSet.has(m.id)
       list.push({
         id: m.id,
         type: 'mindModule',
-        position: { x: 292, y: mc(i) - 28 },
+        position: layout.modules[m.id],
         data: { name: m.name, color: m.color, ...prog, dim: roleDim || focusDim, highlight: focusSet.has(m.id) },
         draggable: false,
       })
     })
 
     if (showFeatures) {
-      data.features.forEach((f, j) => {
-        const m = data.modules.find((x) => x.id === f.moduleId)!
+      data.features.forEach((f) => {
+        const m = data.modules.find((x) => x.id === f.moduleId)
+        if (!m) return // orphan feature (module missing) — skip rather than crash
         const roleDim = !moduleMatchesRole(m, roleFilter)
         const focusDim = !!focus && !focusSet.has(f.id)
         const isSelected = !!selected && selected.view === 'mindmap' && selected.id === f.id
         list.push({
           id: f.id,
           type: 'mindFeature',
-          position: { x: 596, y: fc(j) - 22 },
+          position: layout.features[f.id],
           data: { name: f.name, status: f.status, dim: roleDim || focusDim, selected: isSelected },
           draggable: false,
         })
       })
     }
     return list
-  }, [data, roleFilter, focus, focusSet, showFeatures, selected])
+  }, [data, layout, roleFilter, focus, focusSet, showFeatures, selected])
 
   const edges: Edge[] = useMemo(() => {
     const list: Edge[] = []
@@ -106,7 +105,9 @@ function MindmapInner() {
       list.push({ id: `root-${m.id}`, source: 'root', target: m.id, style: { stroke: on ? '#2f6fed' : '#c7cdd6', strokeWidth: on ? 2.4 : 1.6 } })
     })
     if (showFeatures) {
+      const moduleIds = new Set(data.modules.map((m) => m.id))
       data.features.forEach((f) => {
+        if (!moduleIds.has(f.moduleId)) return // orphan feature — no edge to a missing module
         const on = focusSet.has(f.id)
         list.push({ id: `${f.moduleId}-${f.id}`, source: f.moduleId, target: f.id, style: { stroke: on ? '#2f6fed' : '#d6dbe2', strokeWidth: on ? 2.2 : 1.4 } })
       })

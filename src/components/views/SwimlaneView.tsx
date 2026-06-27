@@ -19,12 +19,6 @@ import { laneMatchesRole } from '@/store/selectors'
 
 const nodeTypes = { swimStep: SwimStepNode, lane: LaneBackground }
 
-const LANE_GEO: Record<number, { y: number; h: number }> = {
-  0: { y: 40, h: 104 },
-  1: { y: 144, h: 150 },
-  2: { y: 294, h: 176 },
-  3: { y: 470, h: 104 },
-}
 const LANE_WIDTH = 1860
 const COMPACT_ZOOM = 0.5
 
@@ -34,6 +28,7 @@ const NODE_SIZE: Record<string, { w: number; h: number }> = {
   decision: { w: 182, h: 66 },
   process: { w: 170, h: 58 },
 }
+const DEFAULT_NODE_SIZE = { w: 170, h: 58 }
 
 function SwimlaneInner() {
   const data = useWorkspace((s) => s.currentData())
@@ -61,14 +56,13 @@ function SwimlaneInner() {
     const list: Node[] = []
 
     data.lanes.forEach((lane) => {
-      const geo = LANE_GEO[lane.id]
       const roleDim = !laneMatchesRole(lane, roleFilter)
       const focusDim = !!focus && !laneHit[lane.id]
       list.push({
         id: `lane-${lane.id}`,
         type: 'lane',
-        position: { x: 0, y: geo.y },
-        data: { name: lane.name, sub: lane.sub, color: lane.color, width: LANE_WIDTH, height: geo.h, dim: roleDim || focusDim },
+        position: { x: 0, y: lane.y },
+        data: { name: lane.name, sub: lane.sub, color: lane.color, width: LANE_WIDTH, height: lane.h, dim: roleDim || focusDim },
         draggable: false,
         selectable: false,
         zIndex: 0,
@@ -76,8 +70,9 @@ function SwimlaneInner() {
     })
 
     data.swimNodes.forEach((n) => {
-      const size = NODE_SIZE[n.kind]
-      const lane = data.lanes.find((l) => l.id === n.lane)!
+      const lane = data.lanes.find((l) => l.id === n.lane)
+      if (!lane) return // node references a missing lane — skip rather than crash
+      const size = NODE_SIZE[n.kind] ?? DEFAULT_NODE_SIZE
       const roleDim = !laneMatchesRole(lane, roleFilter)
       const focusDim = !!focus && !reach.has(n.id)
       const isSelected = !!selected && selected.view === 'swimlane' && selected.id === n.id
@@ -102,9 +97,12 @@ function SwimlaneInner() {
     return list
   }, [data, roleFilter, focus, reach, laneHit, selected, compact])
 
-  const edges: Edge[] = useMemo(
-    () =>
-      data.swimEdges.map((e) => {
+  const edges: Edge[] = useMemo(() => {
+    const laneIds = new Set(data.lanes.map((l) => l.id))
+    const present = new Set(data.swimNodes.filter((n) => laneIds.has(n.lane)).map((n) => n.id))
+    return data.swimEdges
+      .filter((e) => present.has(e.from) && present.has(e.to))
+      .map((e) => {
         const on = !!focus && reach.has(e.from) && reach.has(e.to)
         const dim = !!focus && !on
         const stroke = on ? '#2f6fed' : dim ? '#e3e6ea' : '#b6bdc8'
@@ -122,9 +120,8 @@ function SwimlaneInner() {
           markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 16, height: 16 },
           zIndex: 1,
         }
-      }),
-    [data.swimEdges, focus, reach],
-  )
+      })
+  }, [data.swimNodes, data.lanes, data.swimEdges, focus, reach])
 
   const onEnter: NodeMouseHandler = (_, node) => { if (node.type === 'swimStep') setHovered(node.id) }
   const onLeave: NodeMouseHandler = () => setHovered(null)

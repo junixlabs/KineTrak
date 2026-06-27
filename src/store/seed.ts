@@ -1,4 +1,4 @@
-import type { WorkspaceData } from './types'
+import type { Overrides, WorkspaceData } from './types'
 
 /**
  * Initial workspace data, ported from the KineTrak Workspace design prototype.
@@ -47,10 +47,10 @@ export const seedData: WorkspaceData = {
   ],
 
   lanes: [
-    { id: 0, name: 'User / PM / PO', sub: 'Người dùng cuối', color: '#6e8bff', owners: ['PM', 'PO'] },
-    { id: 1, name: 'Frontend Interface', sub: 'Giao diện', color: '#2f6fed', owners: ['Dev', 'Tester'] },
-    { id: 2, name: 'Backend & Database', sub: 'Xử lý · lưu trữ', color: '#0d9488', owners: ['Dev', 'BA', 'Tester'] },
-    { id: 3, name: 'Notification Engine', sub: 'Cảnh báo', color: '#f59e0b', owners: ['Dev'] },
+    { id: 0, name: 'User / PM / PO', sub: 'Người dùng cuối', color: '#6e8bff', owners: ['PM', 'PO'], y: 40, h: 104 },
+    { id: 1, name: 'Frontend Interface', sub: 'Giao diện', color: '#2f6fed', owners: ['Dev', 'Tester'], y: 144, h: 150 },
+    { id: 2, name: 'Backend & Database', sub: 'Xử lý · lưu trữ', color: '#0d9488', owners: ['Dev', 'BA', 'Tester'], y: 294, h: 176 },
+    { id: 3, name: 'Notification Engine', sub: 'Cảnh báo', color: '#f59e0b', owners: ['Dev'], y: 470, h: 104 },
   ],
 
   swimNodes: [
@@ -105,6 +105,32 @@ export const seedData: WorkspaceData = {
     { id: 'al2', kind: 'outdated', title: 'Sơ đồ có thể đã lỗi thời', detail: 'Swimlane "Cập nhật UI → Done & lưu" chưa cập nhật 32 ngày sau khi PR #142 được merge vào Production.', tags: ['@PO'], time: '2 giờ trước', actionLabel: 'Mở bước liên quan', action: { view: 'swimlane', selection: { type: 'swimnode', id: 'J', view: 'swimlane' } } },
     { id: 'al3', kind: 'dod', title: 'Điều kiện nghiệm thu (DoD)', detail: '"Automatic impact calculation" cần BA xác nhận sơ đồ Swimlane khớp 100% Production trước khi được đánh dấu Released.', tags: ['@BA'], time: 'Hôm nay', actionLabel: 'Mở tính năng', action: { view: 'mindmap', selection: { type: 'feature', id: 'f6', view: 'mindmap' } } },
   ],
+}
+
+/**
+ * Build the live workspace by applying id-keyed user deltas onto the canonical seed.
+ * Unknown ids in `ov` are ignored, so a seed-shape change can never be shadowed by
+ * stale persisted state. Memoized by the `ov` object reference (the store replaces it
+ * on every edit) so this stays cheap to call from selectors on each render.
+ */
+let liveMemo: { ov: Overrides; out: WorkspaceData } | null = null
+export function applyOverrides(ov: Overrides): WorkspaceData {
+  if (liveMemo && liveMemo.ov === ov) return liveMemo.out
+  const out: WorkspaceData = {
+    ...seedData,
+    features: seedData.features.map((f) => {
+      const status = ov.featureStatus[f.id]
+      const releaseId = ov.featureRelease[f.id]
+      if (!status && !releaseId) return f
+      return { ...f, ...(status ? { status } : {}), ...(releaseId ? { releaseId } : {}) }
+    }),
+    swimNodes: seedData.swimNodes.map((n) => {
+      const status = ov.swimStatus[n.id]
+      return status ? { ...n, status } : n
+    }),
+  }
+  liveMemo = { ov, out }
+  return out
 }
 
 /**

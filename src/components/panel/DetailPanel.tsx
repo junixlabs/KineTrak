@@ -1,7 +1,7 @@
 import { X, Check, Link2, ChevronRight } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor, hexA } from '@/theme/tokens'
-import type { CrossLink, FeatureStatus, NodeStatus, Selection } from '@/store/types'
+import type { CrossLink, FeatureStatus, Module, NodeStatus, Selection } from '@/store/types'
 
 const NODE_STATUS: { key: NodeStatus; label: string }[] = [
   { key: 'todo', label: 'Chưa làm' },
@@ -209,18 +209,17 @@ interface PanelContent {
   }
 }
 
-const MODULE_OWNERS: Record<string, { owner: string; init: string; color: string }> = {
-  m1: { owner: 'BA · PO', init: 'BA', color: '#6e8bff' },
-  m2: { owner: 'BA · Dev', init: 'BE', color: '#0d9488' },
-  m3: { owner: 'PM · PO', init: 'PM', color: '#2f6fed' },
-  m4: { owner: 'PM · Team', init: 'PT', color: '#f59e0b' },
+/** Owner display is derived from the data model's module.owners — no side table to drift. */
+function moduleOwner(m: Module): { owner: string; init: string; color: string } {
+  return { owner: m.owners.join(' · '), init: m.owners[0] ?? '?', color: m.color }
 }
 
 function featurePanel(sel: Selection & { type: 'feature' }, data: ReturnType<typeof storeData>): PanelContent | null {
   const f = data.features.find((x) => x.id === sel.id)
   if (!f) return null
-  const m = data.modules.find((x) => x.id === f.moduleId)!
-  const owners = MODULE_OWNERS[f.moduleId]
+  const m = data.modules.find((x) => x.id === f.moduleId)
+  if (!m) return null // orphan feature — degrade gracefully instead of crashing
+  const owners = moduleOwner(m)
   return {
     crumb: `${sel.view === 'story' ? 'Story Map' : 'Mindmap'} · ${m.name}`,
     idChip: f.id.replace('f', 'F'),
@@ -249,7 +248,7 @@ function featurePanel(sel: Selection & { type: 'feature' }, data: ReturnType<typ
 function modulePanel(sel: Selection & { type: 'module' }, data: ReturnType<typeof storeData>): PanelContent | null {
   const m = data.modules.find((x) => x.id === sel.id)
   if (!m) return null
-  const owners = MODULE_OWNERS[m.id]
+  const owners = moduleOwner(m)
   const fs = data.features.filter((f) => f.moduleId === m.id)
   return {
     crumb: 'Mindmap · Module',
@@ -271,7 +270,7 @@ function modulePanel(sel: Selection & { type: 'module' }, data: ReturnType<typeo
 function swimPanel(sel: Selection & { type: 'swimnode' }, data: ReturnType<typeof storeData>): PanelContent | null {
   const n = data.swimNodes.find((x) => x.id === sel.id)
   if (!n) return null
-  const lane = data.lanes.find((l) => l.id === n.lane)!
+  const lane = data.lanes.find((l) => l.id === n.lane)
   return {
     crumb: 'Swimlane Workflow',
     idChip: n.id,
@@ -283,7 +282,7 @@ function swimPanel(sel: Selection & { type: 'swimnode' }, data: ReturnType<typeo
     ownerInit: n.ownerInit || '?',
     ownerColor: n.ownerColor || '#9aa2ad',
     contextLabel: 'PHÂN LÀN',
-    context: lane.name,
+    context: lane?.name ?? '—',
     desc: n.desc,
     constraints: n.constraints,
     validations: n.validations,

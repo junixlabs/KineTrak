@@ -53,6 +53,9 @@ export interface SwimLane {
   sub: string
   color: string
   owners: Role[]
+  /** Band geometry on the swimlane canvas — lives on the data model, not a side table. */
+  y: number
+  h: number
 }
 
 export interface SwimNode {
@@ -119,3 +122,17 @@ export interface WorkspaceData {
   snapshots: Snapshot[]
   alerts: Alert[]
 }
+
+/**
+ * User edits persisted as id-keyed deltas on top of the canonical seed.
+ * Keeping only deltas (never the whole graph) means a seed-shape change can never
+ * be shadowed by stale storage: unknown ids are simply ignored, new seed content
+ * always appears. This is the persistence boundary for the SSOT.
+ */
+export interface Overrides {
+  featureStatus: Record<string, FeatureStatus>
+  featureRelease: Record<string, string>
+  swimStatus: Record<string, NodeStatus>
+}
+
+export const emptyOverrides = (): Overrides => ({ featureStatus: {}, featureRelease: {}, swimStatus: {} })

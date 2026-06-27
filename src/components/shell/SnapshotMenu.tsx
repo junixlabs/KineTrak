@@ -2,7 +2,7 @@ import { Clock, ChevronDown } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 
 export default function SnapshotMenu() {
-  const data = useWorkspace((s) => s.data)
+  const data = useWorkspace((s) => s.currentData())
   const activeSnapshot = useWorkspace((s) => s.activeSnapshot)
   const snapMenuOpen = useWorkspace((s) => s.snapMenuOpen)
   const toggleSnapMenu = useWorkspace((s) => s.toggleSnapMenu)

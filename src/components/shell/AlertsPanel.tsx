@@ -9,7 +9,7 @@ const KIND_META: Record<AlertKind, { c: string; bg: string; label: string }> = {
 }
 
 export default function AlertsPanel() {
-  const data = useWorkspace((s) => s.data)
+  const data = useWorkspace((s) => s.currentData())
   const alertsOpen = useWorkspace((s) => s.alertsOpen)
   const toggleAlerts = useWorkspace((s) => s.toggleAlerts)
   const setView = useWorkspace((s) => s.setView)

@@ -2,7 +2,7 @@ import { Clock } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 
 export default function SnapshotBanner() {
-  const data = useWorkspace((s) => s.data)
+  const data = useWorkspace((s) => s.currentData())
   const activeSnapshot = useWorkspace((s) => s.activeSnapshot)
   const setSnapshot = useWorkspace((s) => s.setSnapshot)
   if (activeSnapshot === 'current') return null
