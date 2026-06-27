@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KineTrak: Chiến lược & Định hướng UI/UX</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fafafa;
+        }
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #ff5630;
+            padding-bottom: 10px;
+            margin-top: 20px;
+        }
+        h1 {
+            color: #111;
+            margin: 0;
+        }
+        h2 {
+            color: #ff5630;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            margin-top: 35px;
+        }
+        h3 {
+            color: #444;
+            margin-top: 20px;
+        }
+        .btn-nav {
+            background-color: #0052cc;
+            color: white;
+            padding: 10px 15px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .btn-nav:hover {
+            background-color: #0065ff;
+        }
+        .section-card {
+            background: white;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .tag-container {
+            margin-top: 15px;
+        }
+        .tag {
+            display: inline-block;
+            background-color: #f4f5f7;
+            color: #42526e;
+            padding: 4px 10px;
+            border-radius: 3px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            border: 1px solid #dfe1e6;
+        }
+        .tag-highlight {
+            background-color: #ffebe6;
+            color: #bf2600;
+            border-color: #ffbdad;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        hr {
+            border: 0;
+            border-top: 1px solid #ddd;
+            margin: 40px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-container">
+        <h1>KINETRAK: STRATEGY & UI/UX SPECS</h1>
+        <!-- Nút liên kết động sang file Kiến trúc sơ đồ -->
+        <a href="KineTrak_Blueprint.html" class="btn-nav">➔ Xem Kiến Trúc Sơ Đồ</a>
+    </div>
+
+    <div class="section-card" style="background-color: #fff9e6; border-left: 4px solid #ffab00;">
+        <strong>Triết lý sản phẩm (Lean Strategy):</strong> KineTrak không chạy đua về số lượng tính năng rác (Feature Creep). Sản phẩm tập trung giải quyết xuất sắc một bài toán duy nhất: <strong>Dẹp bỏ tài liệu chữ để toàn đội nhìn một cái là hiểu ngay dự án.</strong>
+    </div>
+
+    <h2>🎯 1. ĐỐI TƯỢNG KHÁCH HÀNG MỤC TIÊU (TARGET AUDIENCE)</h2>
+    
+    <div class="section-card">
+        <h3>Nhóm Người Dùng Cốt Lõi (Tech SaaS Teams)</h3>
+        <ul>
+            <li><strong>Product Owner (PO) & Business Analyst (BA):</strong> Những người mệt mỏi vì phải viết và cập nhật các file PRD/SRS dài hàng chục trang bằng chữ mà không ai đọc.</li>
+            <li><strong>Project Manager (PM) & Scrum Master:</strong> Cần một màn hình tổng quan để theo dõi tiến độ thô, roadmap và kế hoạch phát hành (Releases) trực quan mà không bị ngập trong hàng trăm task nhỏ của Jira.</li>
+            <li><strong>Developers & Testers:</strong> Cần hiểu nhanh cấu trúc hệ thống, luồng nghiệp vụ rẽ nhánh và đặc biệt là biết rõ code của mình tác động đến những đâu.</li>
+        </ul>
+
+        <h3>Nhóm Mở Rộng (B2B Market)</h3>
+        <ul>
+            <li><strong>Software Agencies:</strong> Dùng làm công cụ bàn giao kiến trúc trực quan cho khách hàng, giúp khách hàng nghiệm thu nhanh thay vì bắt họ đọc tài liệu kỹ thuật.</li>
+            <li><strong>Tech Startups:</strong> Cần tinh gọn tối đa quy trình làm tài liệu để tăng tốc độ ra mắt sản phẩm (Time-to-market).</li>
+        </ul>
+
+        <div class="tag-container">
+            <span class="tag">Agile Product Teams</span>
+            <span class="tag">Visual-first PMs</span>
+            <span class="tag">Tech Startups</span>
+            <span class="tag">Software Agencies</span>
+            <span class="tag">Cross-functional Teams</span>
+        </div>
+    </div>
+
+    <h2>🎨 2. TRỌNG TÂM TRẢI NGHIỆM ĐỘT PHÁ (UI/UX FOCUS)</h2>
+    <p>Giao diện của KineTrak được thiết kế theo nguyên lý: <strong>Nhìn nhanh, hiểu sâu, thao tác ít.</strong></p>
+
+    <div class="section-card">
+        <h3>Các Trải Nghiệm Khách Hàng Sẽ Yêu Thích</h3>
+        <ul>
+            <li><strong>Multi-View Synchronization (Đồng bộ đa góc nhìn):</strong> Giao diện canvas không chỉ để vẽ tự do. Bản chất nó là dữ liệu. Người dùng chỉ cần cập nhật trạng thái ở một view (ví dụ: Kéo thẻ Task sang Done) $\rightarrow$ Hình ảnh ở sơ đồ Mindmap và Swimlane tự động đổi màu sắc hoặc nhảy luồng tương ứng.</li>
+            <li><strong>Semantic Zooming (Phóng to/Thu nhỏ theo ngữ cảnh):</strong> 
+                <ul>
+                    <li>Khi <em>Zoom-out</em> (Nhìn từ xa): Chỉ thấy các khối module vĩ mô và tiến độ tổng quát để họp High-level.</li>
+                    <li>Khi <em>Zoom-in</em> (Nhìn cận cảnh): Hệ thống tự nở rộng hiển thị luồng kỹ thuật chi tiết (API, Backend) và hiển thị phần text ghi chú ẩn sâu bên trong phần tử.</li>
+                </ul>
+            </li>
+            <li><strong>Impact Highlighting (Làm nổi bật vùng tác động):</strong> Khi người dùng hover chuột hoặc click vào một Node tính năng $\rightarrow$ Hệ thống tự động làm sáng các mũi tên rẽ nhánh liên quan trực tiếp và làm mờ toàn bộ các phần còn lại của sơ đồ. Trực quan hóa rủi ro trong 1 giây.</li>
+        </ul>
+
+        <div class="tag-container">
+            <span class="tag tag-highlight">Single Source of Truth (SSOT)</span>
+            <span class="tag">Data-driven Diagrams</span>
+            <span class="tag">Context-in-Card</span>
+            <span class="tag">Dynamic Linking</span>
+            <span class="tag">Zoomable User Interface (ZUI)</span>
+            <span class="tag">Impact Warning AI</span>
+        </div>
+    </div>
+
+    <hr>
+
+    <p style="text-align: center; color: #888; font-size: 13px;">
+        KineTrak Documentations © 2026 • Visual Operating Interface
+    </p>
+
+</body>
+</html>

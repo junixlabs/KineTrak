@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Blueprint: KineTrak Platform</title>
+    <!-- Nhúng thư viện Mermaid để tự động vẽ sơ đồ từ mã text -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            color: #111;
+            border-bottom: 2px solid #0052cc;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        h2 {
+            color: #0052cc;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+        h3 {
+            color: #333;
+            margin-top: 20px;
+        }
+        .meta-info {
+            background-color: #e6f0ff;
+            padding: 10px 15px;
+            border-left: 4px solid #0052cc;
+            border-radius: 4px;
+            margin-bottom: 25px;
+        }
+        .mermaid {
+            background: white;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: center;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        hr {
+            border: 0;
+            border-top: 1px solid #ddd;
+            margin: 40px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>PRODUCT BLUEPRINT: KINETRAK PLATFORM</h1>
+    <div class="meta-info">
+        <strong>Mục tiêu cốt lõi:</strong> Triệt tiêu hoàn toàn tài liệu chữ dài dòng, biến sơ đồ trực quan thành "Giao diện điều hành dữ liệu sống" (Kinetic Tracking) xuyên suốt vòng đời dự án cho PM, PO, BA, Dev và Tester.
+    </div>
+
+    <hr>
+
+    <h2>PHẦN 1: KIẾN TRÚC 3 TẦNG SƠ ĐỒ CỐT LÕI (THE VISUAL BACKBONE)</h2>
+    <p>KineTrak quản lý dữ liệu tập trung và hiển thị qua 3 góc nhìn (Views) động, hỗ trợ cơ chế bấm để phóng to/thu nhỏ (Zoom-in / Zoom-out):</p>
+
+    <h3>1. Tầng Vĩ mô: Feature Mapping (Mindmap View)</h3>
+    <ul>
+        <li><strong>Đối tượng:</strong> PO & BA quản lý phạm vi (Scope).</li>
+        <li><strong>Chức năng:</strong> Phân rã ý tưởng ban đầu từ Module lớn sang các Tính năng nhỏ.</li>
+        <li><strong>Tính năng cốt lõi:</strong> Gắn nhãn trạng thái trực tiếp lên các Node (Must-have, Nice-to-have, Đang phát triển, Đã hoàn thành).</li>
+    </ul>
+
+    <!-- Sơ đồ 1: Mindmap -->
+    <div class="mermaid">
+    mindmap
+      root((KineTrak Platform))
+        Feature Mapping & Mindmap
+          Node customization
+          Drag-and-drop builder
+          Role-based filters
+        Workflow & Swimlane Diagram
+          BPMN notation
+          Multi-lane layout
+          Automatic impact calculation
+        Execution & Story Mapping
+          Dynamic release lanes
+          Real-time sync with workflow
+          Color-coded task cards
+        Collaboration & Access
+          Comment threads
+          Live presentation mode
+          Role-based view settings
+    </div>
+
+    <h3>2. Tầng Trải nghiệm & Kế hoạch: User Story Mapping View</h3>
+    <ul>
+        <li><strong>Đối tượng:</strong> PM & PO điều hành tiến độ tổng thể.</li>
+        <li><strong>Chức năng:</strong> Trực quan hóa lộ trình phát hành (Releases) và tiến độ thô theo luồng trải nghiệm.</li>
+        <li><strong>Trục ngang (X):</strong> Luồng trải nghiệm người dùng cốt lõi (Define Scope -> Design Workflows -> Release).</li>
+        <li><strong>Trục dọc (Y):</strong> Các phân đoạn phát hành (MVP, Release 1, Release 2). Các thẻ tính năng (Cards) tự động đồng bộ trạng thái màu sắc theo tiến độ thực tế từ code/task.</li>
+    </ul>
+
+    <h3>3. Tầng Logic Hệ thống: Luồng phân làn (Swimlane Workflow View)</h3>
+    <ul>
+        <li><strong>Đối tượng:</strong> BA, Dev & Tester mổ xẻ logic kỹ thuật.</li>
+        <li><strong>Chức năng:</strong> Thay thế mô tả chữ bằng luồng đi dữ liệu rẽ nhánh, phân định rõ trách nhiệm xử lý của từng thành phần hệ thống.</li>
+    </ul>
+
+    <!-- Sơ đồ 2: Swimlane Flowchart -->
+    <div class="mermaid">
+    graph TD
+        subgraph User_PM_PO [Làn 1: User / PM / PO]
+            A([Bắt đầu: Kéo thẻ từ In Progress sang Done])
+        end
+
+        subgraph Frontend_Interface [Làn 2: Frontend Interface]
+            B[Ghi nhận hành động kéo thả]
+            C[Gửi API cập nhật trạng thái]
+            I[Hiển thị thông báo Cảnh báo Tác động]
+            J[Cập nhật giao diện thành Done và Lưu trữ]
+        end
+
+        subgraph Backend_Server [Làn 3: Backend & Database]
+            D[Nhận yêu cầu cập nhật]
+            E{Thẻ này có liên kết với luồng Workflow nào không?}
+            F[Cập nhật các node liên quan trong Workflow]
+            G[Cập nhật trạng thái thẻ thành Done trong DB]
+        end
+
+        subgraph Notification_Engine [Làn 4: Notification Engine]
+            H[Tạo thông báo Impact Warning]
+        end
+
+        A --> B
+        B --> C
+        C --> D
+        D --> E
+        E -- Có --> F
+        F --> H
+        H --> I
+        I --> J
+        E -- Không --> G
+        G --> J
+        J --> K([Kết thúc])
+
+        style E fill:#f9f,stroke:#333,stroke-width:2px
+    </div>
+
+    <hr>
+
+    <h2>PHẦN 2: CÁC CƠ CHẾ ĐẢM BẢO SƠ ĐỒ LUÔN "SỐNG VÀ TIẾN HÓA"</h2>
+    <p>Để sơ đồ KineTrak luôn đồng bộ theo thời gian thực và sống lâu dài cùng project, hệ thống bắt buộc phải tích hợp 4 cơ chế vận hành sau:</p>
+    
+    <h3>1. Nguồn Sự Thật Duy Nhất (Single Source of Truth - SSOT)</h3>
+    <ul>
+        <li>Mỗi "Tính năng" hay "Task" là một bản ghi dữ liệu (Object) duy nhất trong Database. Sơ đồ chỉ là lớp áo hiển thị.</li>
+        <li>Khi trạng thái thay đổi ở một View (ví dụ: Dev chuyển Task thành <code>Done</code> trên Story Map), thì diện mạo của Tính năng đó trên Mindmap và Swimlane phải <strong>tự động đổi màu/cập nhật</strong> ngầm ngay lập tức mà không cần ai vẽ lại.</li>
+    </ul>
+
+    <h3>2. Quản lý Phiên bản Sơ đồ (Snapshot & Version Control)</h3>
+    <ul>
+        <li>Hệ thống tự động chụp và lưu lại trạng thái của toàn bộ sơ đồ theo từng cột mốc (Sprint 1, Sprint 2, Bản chốt với khách hàng ngày X...).</li>
+        <li>Giúp toàn đội lật lại lịch sử để đối chiếu "sự tiến hóa" của kiến trúc, tránh việc đè dữ liệu mới làm mất dấu vết logic cũ.</li>
+    </ul>
+
+    <h3>3. Hệ thống Cảnh báo Lỗi thời Tự động (Outdated Alerts)</h3>
+    <ul>
+        <li>Kết nối trực tiếp thông qua Webhook với môi trường chứa code (GitHub/GitLab).</li>
+        <li>Khi xuất hiện Pull Request (PR) mới được merge vào hệ thống nhưng sơ đồ thiết kế Swimlane liên quan đã quá 30 ngày chưa có lượt cập nhật -> Hệ thống tự động bắn cảnh báo gắn tag BA/PO vào để review và cập nhật lại sơ đồ.</li>
+    </ul>
+
+    <h3>4. Quy trình hóa việc Cập nhật (Definition of Done)</h3>
+    <ul>
+        <li>Quy định cứng trên hệ thống: Một tính năng chỉ được phép chuyển sang trạng thái nghiệm thu cuối cùng (Released) khi sơ đồ logic (Swimlane) của nó đã được BA xác nhận là khớp 100% với thực tế đang chạy trên môi trường Production.</li>
+    </ul>
+
+    <hr>
+
+    <h2>PHẦN 3: CÔNG THỨC DIỆT TRỪ TÀI LIỆU CHỮ (THE 80/20 RULE)</h2>
+    <ul>
+        <li><strong>80% thông tin nằm ở Sơ đồ:</strong> Nhìn vào hình vẽ để hiểu cấu trúc, luồng đi của dữ liệu, nhân sự chịu trách nhiệm và tiến độ trong vòng 3 giây.</li>
+        <li><strong>20% thông tin nằm trong Thẻ (Context-in-Card):</strong> Các chi tiết đặc thù (như điều kiện ràng buộc API, quy tắc validate dữ liệu, ghi chú text...) được giấu kín bên trong các Node/Card dưới dạng sidebar hoặc pop-up. Chỉ khi người dùng click vào phần tử trên sơ đồ thì thông tin này mới hiện ra, giữ cho không gian làm việc luôn gọn gàng.</li>
+    </ul>
+
+</body>
+</html>

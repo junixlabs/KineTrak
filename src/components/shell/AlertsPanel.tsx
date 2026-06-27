@@ -1,0 +1,95 @@
+import { Triangle, Sparkles, ChevronRight } from 'lucide-react'
+import { useWorkspace } from '@/store/useWorkspace'
+import type { AlertKind } from '@/store/types'
+
+const KIND_META: Record<AlertKind, { c: string; bg: string; label: string }> = {
+  impact: { c: '#e5484d', bg: '#fdecec', label: 'TÁC ĐỘNG' },
+  outdated: { c: '#f59e0b', bg: '#fef3e2', label: 'LỖI THỜI' },
+  dod: { c: '#2f6fed', bg: '#e9f1ff', label: 'DEF. OF DONE' },
+}
+
+export default function AlertsPanel() {
+  const data = useWorkspace((s) => s.data)
+  const alertsOpen = useWorkspace((s) => s.alertsOpen)
+  const toggleAlerts = useWorkspace((s) => s.toggleAlerts)
+  const setView = useWorkspace((s) => s.setView)
+  const select = useWorkspace((s) => s.select)
+
+  const alerts = data.alerts
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => toggleAlerts()}
+        className="relative flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-line bg-white hover:bg-[#f4f6f9]"
+      >
+        <Triangle size={17} strokeWidth={1.9} className="text-muted" />
+        <span className="absolute -right-[5px] -top-[5px] flex h-[17px] min-w-[17px] items-center justify-center rounded-full border-2 border-white bg-[#e5484d] px-1 text-[10px] font-bold text-white">
+          {alerts.length}
+        </span>
+      </button>
+
+      {alertsOpen && (
+        <>
+          <div className="fixed inset-0 z-[55]" onClick={() => toggleAlerts(false)} />
+          <div className="absolute right-0 top-11 z-[60] w-[392px] animate-pop overflow-hidden rounded-2xl border border-line bg-white shadow-pop">
+            <div className="flex items-center gap-[9px] border-b border-[#eef0f3] px-4 py-3.5">
+              <span className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-lg bg-gradient-to-br from-brand to-brand-light">
+                <Sparkles size={15} className="text-white" />
+              </span>
+              <div className="flex-1">
+                <div className="text-[13.5px] font-bold text-ink">Impact Warning AI</div>
+                <div className="text-[11px] text-faint">Cảnh báo lỗi thời · tác động · điều kiện nghiệm thu</div>
+              </div>
+            </div>
+            <div className="max-h-[440px] overflow-auto">
+              {alerts.map((a) => {
+                const m = KIND_META[a.kind]
+                return (
+                  <div key={a.id} className="flex border-b border-[#f3f5f7] last:border-0">
+                    <div className="w-[3px] flex-none" style={{ background: m.c }} />
+                    <div className="flex-1 px-3.5 py-3">
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span
+                          className="rounded-[5px] px-[7px] py-0.5 text-[9.5px] font-bold tracking-wide"
+                          style={{ color: m.c, background: m.bg }}
+                        >
+                          {m.label}
+                        </span>
+                        <span className="font-mono text-[10.5px] text-faint">{a.time}</span>
+                      </div>
+                      <div className="mb-[3px] text-[13px] font-bold text-ink">{a.title}</div>
+                      <div className="text-[12px] leading-[1.5] text-muted">{a.detail}</div>
+                      <div className="mt-[9px] flex items-center justify-between gap-2">
+                        <div className="flex gap-[5px]">
+                          {a.tags.map((t) => (
+                            <span
+                              key={t}
+                              className="rounded-full bg-[#eef1ff] px-[7px] py-0.5 text-[10.5px] font-bold text-[#2a4a8f]"
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => {
+                            setView(a.action.view)
+                            select(a.action.selection)
+                          }}
+                          className="flex h-[26px] items-center gap-[5px] rounded-[7px] border border-[#d3deff] bg-[#f1f5ff] px-2.5 text-[11.5px] font-bold text-brand hover:bg-[#e3ecff]"
+                        >
+                          {a.actionLabel}
+                          <ChevronRight size={12} strokeWidth={2} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

@@ -1,0 +1,57 @@
+@import '@fontsource/hanken-grotesk/400.css';
+@import '@fontsource/hanken-grotesk/500.css';
+@import '@fontsource/hanken-grotesk/600.css';
+@import '@fontsource/hanken-grotesk/700.css';
+@import '@fontsource/hanken-grotesk/800.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: 'Hanken Grotesk', system-ui, sans-serif;
+    background: #eef1f5;
+    color: #14181f;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cdd3da;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Dotted canvas backdrop reused by views */
+.kt-canvas {
+  background-color: #eef1f5;
+  background-image: radial-gradient(#d7dce3 1.1px, transparent 1.1px);
+  background-size: 22px 22px;
+}
+
+/* React Flow overrides to match the brand surface */
+.react-flow__attribution {
+  display: none;
+}
+.react-flow__node {
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+}
