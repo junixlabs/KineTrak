@@ -19,7 +19,6 @@ export default function StoryCard({ feature, selected, dim, disabled, onClick }:
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      data-pan-ignore
       onClick={onClick}
       className="flex cursor-pointer flex-col gap-2 rounded-[10px] border bg-white p-[10px_11px] transition-[box-shadow,border-color,transform] hover:-translate-y-px hover:shadow-[0_5px_16px_rgba(20,24,31,.13)]"
       style={{

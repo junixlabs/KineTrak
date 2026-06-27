@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { DndContext, PointerSensor, useSensor, useSensors, useDroppable, type DragEndEvent } from '@dnd-kit/core'
 import { ChevronRight } from 'lucide-react'
 import StoryCard from './StoryCard'
@@ -39,7 +39,6 @@ export default function StoryMapView() {
   const select = useWorkspace((s) => s.select)
   const moveFeatureToRelease = useWorkspace((s) => s.moveFeatureToRelease)
   const [scale, setScale] = useState(1)
-  const clampScale = (v: number) => Math.min(1.4, Math.max(0.6, +v.toFixed(2)))
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
 
@@ -49,65 +48,10 @@ export default function StoryMapView() {
     }
   }
 
-  // ── Grab-to-pan on empty canvas (skips cards / controls so it never fights DnD) ──
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
-  const [grabbing, setGrabbing] = useState(false)
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return
-    if ((e.target as HTMLElement).closest('[data-pan-ignore], button, a')) return
-    const el = scrollRef.current
-    if (!el) return
-    pan.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
-    setGrabbing(true)
-    try {
-      el.setPointerCapture(e.pointerId)
-    } catch {
-      /* pointer may already be released (e.g. synthetic events) — panning still works */
-    }
-  }
-  const onPointerMove = (e: React.PointerEvent) => {
-    const el = scrollRef.current
-    if (!pan.current || !el) return
-    el.scrollLeft = pan.current.left - (e.clientX - pan.current.x)
-    el.scrollTop = pan.current.top - (e.clientY - pan.current.y)
-  }
-  const endPan = (e: React.PointerEvent) => {
-    if (!pan.current) return
-    pan.current = null
-    setGrabbing(false)
-    try {
-      scrollRef.current?.releasePointerCapture(e.pointerId)
-    } catch {
-      /* no-op */
-    }
-  }
-
-  // Ctrl/⌘ + wheel = zoom (plain wheel still scrolls). Non-passive so preventDefault works.
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return
-      e.preventDefault()
-      setScale((s) => clampScale(s - Math.sign(e.deltaY) * 0.1))
-    }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [])
-
   return (
-    <div
-      ref={scrollRef}
-      className={`absolute inset-0 overflow-auto ${grabbing ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endPan}
-      onPointerCancel={endPan}
-    >
+    <div className="absolute inset-0 overflow-auto">
       <ViewHint>
-        Trục ngang = hành trình · trục dọc = release · kéo thẻ đổi release · kéo nền để di chuyển ·{' '}
+        Trục ngang = hành trình · trục dọc = release · kéo thẻ đổi release ·{' '}
         <b className="text-brand">đồng bộ realtime</b>
       </ViewHint>
 
@@ -200,8 +144,8 @@ export default function StoryMapView() {
 
       <ZoomControl
         zoomPercent={Math.round(scale * 100)}
-        onMinus={() => setScale((s) => clampScale(s - 0.1))}
-        onPlus={() => setScale((s) => clampScale(s + 0.1))}
+        onMinus={() => setScale((s) => Math.max(0.6, +(s - 0.1).toFixed(2)))}
+        onPlus={() => setScale((s) => Math.min(1.4, +(s + 0.1).toFixed(2)))}
         onFit={() => setScale(1)}
       />
     </div>
