@@ -4,51 +4,80 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Product Blueprint: KineTrak Platform</title>
+    <!-- Brand fonts (khớp sản phẩm: Hanken Grotesk + JetBrains Mono) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Nhúng thư viện Mermaid để tự động vẽ sơ đồ từ mã text -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <script>
-        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'base',
+            themeVariables: {
+                fontFamily: '"Hanken Grotesk", system-ui, sans-serif',
+                primaryColor: '#eef1ff',
+                primaryBorderColor: '#2f6fed',
+                primaryTextColor: '#14181f',
+                lineColor: '#b6bdc8',
+                secondaryColor: '#eaf6ef',
+                tertiaryColor: '#fef3e2',
+                /* Mindmap: root = cScale0, các nhánh = cScale1..4 → khớp màu module m1–m4 của app */
+                cScale0: '#2f6fed',
+                cScale1: '#2f6fed', cScale2: '#0d9488', cScale3: '#7c5cff', cScale4: '#f59e0b',
+                cScaleLabel0: '#ffffff', cScaleLabel1: '#ffffff', cScaleLabel2: '#ffffff', cScaleLabel3: '#ffffff', cScaleLabel4: '#ffffff'
+            }
+        });
     </script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             line-height: 1.6;
-            color: #333;
+            color: #14181f;
             max-width: 900px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f9f9f9;
+            background-color: #eef1f5;
         }
         h1 {
-            color: #111;
-            border-bottom: 2px solid #0052cc;
+            color: #14181f;
+            border-bottom: 2px solid #2f6fed;
             padding-bottom: 10px;
             margin-top: 30px;
+            letter-spacing: -.2px;
         }
         h2 {
-            color: #0052cc;
-            border-bottom: 1px solid #ddd;
+            color: #2f6fed;
+            border-bottom: 1px solid #e5e8ec;
             padding-bottom: 5px;
             margin-top: 30px;
         }
         h3 {
-            color: #333;
+            color: #14181f;
             margin-top: 20px;
         }
+        code {
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: .92em;
+            background: #eef1ff;
+            color: #2a4a8f;
+            padding: 1px 5px;
+            border-radius: 4px;
+        }
         .meta-info {
-            background-color: #e6f0ff;
+            background-color: #eef1ff;
             padding: 10px 15px;
-            border-left: 4px solid #0052cc;
+            border-left: 4px solid #2f6fed;
             border-radius: 4px;
             margin-bottom: 25px;
         }
         .mermaid {
             background: white;
             padding: 20px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            border: 1px solid #e5e8ec;
+            border-radius: 10px;
             margin: 20px 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 4px rgba(20,24,31,0.05);
             display: flex;
             justify-content: center;
         }
@@ -60,7 +89,7 @@
         }
         hr {
             border: 0;
-            border-top: 1px solid #ddd;
+            border-top: 1px solid #e5e8ec;
             margin: 40px 0;
         }
     </style>
@@ -157,7 +186,7 @@
         G --> J
         J --> K([Kết thúc])
 
-        style E fill:#f9f,stroke:#333,stroke-width:2px
+        style E fill:#efeaff,stroke:#7c5cff,stroke-width:2px
     </div>
 
     <hr>

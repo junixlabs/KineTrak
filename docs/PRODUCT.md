@@ -51,8 +51,11 @@ Backend + DB, đồng bộ realtime qua WebSocket, webhook GitHub/GitLab cho c�
 đa người dùng thật, comment threads, chế độ Present trực tiếp. Kiến trúc đã chừa khe cắm sạch
 cho các phần này (store tách bạch data/ui, action editing tập trung).
 
-## 7. Lưu ý đồng bộ với concept docs
-- **Màu brand**: sản phẩm chốt `#2f6fed` (theo prototype). Hai file concept đang dùng
-  `#0052cc` / `#ff5630` — nên cập nhật lại để khớp (chưa làm trong v1).
+## 7. Đồng bộ với concept docs
+- **Màu brand**: ✅ đã đồng bộ. Hai file concept (`Kinetrak_Blueprint.html`,
+  `KineTrak_Strategy.html`) đã chuyển về token brand của sản phẩm — primary `#2f6fed`
+  (hover `#2a63d6`), accent grape `#7c5cff` (node quyết định mermaid) & amber `#f59e0b`
+  (hộp triết lý), nền `#eef1f5`, viền `#e5e8ec`, chữ `#14181f`, tag brand-tint
+  (`#eef1ff`/`#2a4a8f`); font **Hanken Grotesk** + **JetBrains Mono** như app.
 - **Story backbone**: sản phẩm dùng 4 bước (Define Scope → Design Workflows → Build & Sync →
-  Collaborate & Release); blueprint gốc ghi 3 bước.
+  Collaborate & Release); blueprint gốc ghi 3 bước — *chưa chốt*, để bạn quyết.
