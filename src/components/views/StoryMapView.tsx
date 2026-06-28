@@ -38,10 +38,12 @@ export default function StoryMapView() {
   const selected = useWorkspace((s) => s.selected)
   const roleFilter = useWorkspace((s) => s.roleFilter)
   const readOnly = useWorkspace((s) => s.isReadOnly())
+  const present = useWorkspace((s) => s.present)
   const select = useWorkspace((s) => s.select)
   const moveFeatureToRelease = useWorkspace((s) => s.moveFeatureToRelease)
   const addFeature = useWorkspace((s) => s.addFeature)
   const addModule = useWorkspace((s) => s.addModule)
+  const editable = !readOnly && !present
   const [scale, setScale] = useState(1)
   const clampScale = (v: number) => Math.min(1.4, Math.max(0.6, +v.toFixed(2)))
 
@@ -56,10 +58,12 @@ export default function StoryMapView() {
 
   return (
     <div className="absolute inset-0 overflow-auto">
-      <ViewHint>
-        Columns = journey · rows = release · drag a card to change release ·{' '}
-        <b className="text-brand">realtime sync</b>
-      </ViewHint>
+      {!present && (
+        <ViewHint>
+          Columns = journey · rows = release · drag a card to change release ·{' '}
+          <b className="text-brand">realtime sync</b>
+        </ViewHint>
+      )}
 
       <div className="min-w-[1000px] origin-top-left px-7 pb-11 pt-16 transition-transform" style={{ transform: `scale(${scale})` }}>
         {/* Backbone header */}
@@ -68,7 +72,7 @@ export default function StoryMapView() {
             <span className="text-[10px] font-bold leading-[1.4] tracking-wide text-faint">
               RELEASE ↓<br />JOURNEY →
             </span>
-            {!readOnly && (
+            {editable && (
               <button
                 onClick={() => addModule()}
                 title="Add module / column"
@@ -126,12 +130,12 @@ export default function StoryMapView() {
                           key={f.id}
                           feature={f}
                           dim={dim}
-                          disabled={readOnly}
+                          disabled={!editable}
                           selected={!!selected && selected.id === f.id}
                           onClick={() => select({ type: 'feature', id: f.id, view: 'story' })}
                         />
                       ))}
-                      {!readOnly ? (
+                      {editable ? (
                         <button
                           onClick={() => addFeature(m.id, r.id)}
                           className={`flex items-center justify-center gap-1 rounded-[10px] border-[1.5px] border-dashed border-[#dfe3e9] text-faint transition-colors hover:border-brand hover:bg-[#f1f5ff] hover:text-brand ${

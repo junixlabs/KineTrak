@@ -50,6 +50,7 @@ interface WorkspaceState {
 
   // UI
   screen: 'home' | 'workspace'
+  present: boolean
   activeView: ViewId
   activeSnapshotId: string | null
   selected: Selection | null
@@ -66,6 +67,7 @@ interface WorkspaceState {
   // Navigation
   goHome: () => void
   openProject: (id: string) => void
+  setPresent: (v: boolean) => void
   setView: (v: ViewId) => void
   select: (sel: Selection | null) => void
   clearSelection: () => void
@@ -82,6 +84,8 @@ interface WorkspaceState {
   renameProject: (id: string, name: string) => void
   deleteProject: (id: string) => void
   switchProject: (id: string) => void
+  importProjectData: (json: string) => string | null
+  resetAll: () => void
 
   // Snapshots (active project)
   createSnapshot: (name: string) => void
@@ -130,6 +134,7 @@ export const useWorkspace = create<WorkspaceState>()(
       return {
         ...makeDefaultRoot(),
         screen: 'home',
+        present: false,
         activeView: 'swimlane',
         activeSnapshotId: null,
         selected: null,
@@ -148,9 +153,10 @@ export const useWorkspace = create<WorkspaceState>()(
         },
         isReadOnly: () => get().activeSnapshotId !== null,
 
-        goHome: () => set({ screen: 'home', selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
+        goHome: () => set({ screen: 'home', present: false, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
         openProject: (id) =>
           set({ screen: 'workspace', activeProjectId: id, activeSnapshotId: null, selected: null, hoveredId: null }),
+        setPresent: (v) => set({ present: v, alertsOpen: false, snapMenuOpen: false, selected: null }),
         setView: (v) => set({ activeView: v, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
         select: (sel) => set({ selected: sel }),
         clearSelection: () => set({ selected: null }),
@@ -210,6 +216,29 @@ export const useWorkspace = create<WorkspaceState>()(
           }),
         switchProject: (id) =>
           set({ activeProjectId: id, activeSnapshotId: null, selected: null, hoveredId: null, snapMenuOpen: false }),
+        importProjectData: (json) => {
+          try {
+            const parsed = JSON.parse(json)
+            const data = (parsed?.data ?? parsed) as WorkspaceData
+            if (!data || !Array.isArray(data.modules) || !Array.isArray(data.lanes)) return null
+            const orgId = get().orgs[0]?.id ?? get().createOrg('My workspace')
+            const id = makeId('p')
+            const proj: Project = {
+              id,
+              orgId,
+              name: (typeof parsed?.name === 'string' && parsed.name) || 'Imported project',
+              createdAt: nowISO(),
+              data: cloneData(data),
+              snapshots: Array.isArray(parsed?.snapshots) ? parsed.snapshots : [],
+            }
+            set((s) => ({ projects: [...s.projects, proj], activeProjectId: id, screen: 'workspace', activeSnapshotId: null, selected: null }))
+            return id
+          } catch {
+            return null
+          }
+        },
+        resetAll: () =>
+          set({ ...makeDefaultRoot(), screen: 'home', present: false, activeSnapshotId: null, selected: null, hoveredId: null, roleFilter: null }),
 
         // ── Snapshots ──────────────────────────────────────────────────────
         createSnapshot: (name) => {

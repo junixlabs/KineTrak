@@ -15,7 +15,7 @@ export interface MindModuleData {
 
 export default function MindModuleNode({ data }: { data: MindModuleData }) {
   const addFeature = useWorkspace((s) => s.addFeature)
-  const readOnly = useWorkspace((s) => s.isReadOnly())
+  const editable = useWorkspace((s) => !s.isReadOnly() && !s.present)
   const firstRelease = useWorkspace((s) => s.currentData().releases[0]?.id)
 
   return (
@@ -38,7 +38,7 @@ export default function MindModuleNode({ data }: { data: MindModuleData }) {
         <div className="h-full rounded-sm transition-[width] duration-300" style={{ width: `${data.ratio}%`, background: data.color }} />
       </div>
 
-      {!readOnly && firstRelease && (
+      {editable && firstRelease && (
         <button
           title="Add feature"
           onClick={(e) => {

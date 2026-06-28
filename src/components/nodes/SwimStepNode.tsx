@@ -16,7 +16,7 @@ export interface SwimStepData {
 }
 
 export default function SwimStepNode({ data }: { data: SwimStepData }) {
-  const editable = useWorkspace((s) => !s.isReadOnly())
+  const editable = useWorkspace((s) => !s.isReadOnly() && !s.present)
   const terminal = data.kind === 'start' || data.kind === 'end'
   const decision = data.kind === 'decision'
   const statusColor = nodeStatusColor[data.status]

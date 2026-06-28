@@ -40,6 +40,8 @@ function SwimlaneInner() {
   const selected = useWorkspace((s) => s.selected)
   const roleFilter = useWorkspace((s) => s.roleFilter)
   const readOnly = useWorkspace((s) => s.isReadOnly())
+  const present = useWorkspace((s) => s.present)
+  const editable = !readOnly && !present
   const setHovered = useWorkspace((s) => s.setHovered)
   const select = useWorkspace((s) => s.select)
   const addSwimNode = useWorkspace((s) => s.addSwimNode)
@@ -158,15 +160,17 @@ function SwimlaneInner() {
 
   return (
     <>
-      <ViewHint>
-        {readOnly ? (
-          <>Read-only snapshot · hover to see <b className="text-brand">impact zone</b></>
-        ) : (
-          <>Hover a node to see <b className="text-brand">impact zone</b> · drag to arrange · connect the blue dots to draw arrows · Delete to remove</>
-        )}
-      </ViewHint>
+      {!present && (
+        <ViewHint>
+          {readOnly ? (
+            <>Read-only snapshot · hover to see <b className="text-brand">impact zone</b></>
+          ) : (
+            <>Hover a node to see <b className="text-brand">impact zone</b> · drag to arrange · connect the blue dots to draw arrows · Delete to remove</>
+          )}
+        </ViewHint>
+      )}
 
-      {!readOnly && (
+      {editable && (
         <div className="absolute left-[18px] top-[18px] z-20">
           <button
             onClick={() => setLaneMenu((v) => !v)}
@@ -212,8 +216,8 @@ function SwimlaneInner() {
         minZoom={0.3}
         maxZoom={1.6}
         proOptions={{ hideAttribution: true }}
-        nodesConnectable={!readOnly}
-        nodesDraggable={!readOnly}
+        nodesConnectable={editable}
+        nodesDraggable={editable}
         elementsSelectable
         className="!bg-transparent"
       />

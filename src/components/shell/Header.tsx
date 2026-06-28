@@ -4,10 +4,12 @@ import SnapshotMenu from './SnapshotMenu'
 import RoleFilter from './RoleFilter'
 import AlertsPanel from './AlertsPanel'
 import ProjectSwitcher from './ProjectSwitcher'
+import ShareMenu from './ShareMenu'
 import { useWorkspace } from '@/store/useWorkspace'
 
 export default function Header() {
   const goHome = useWorkspace((s) => s.goHome)
+  const setPresent = useWorkspace((s) => s.setPresent)
   return (
     <header className="z-40 flex h-14 flex-none items-center gap-3.5 border-b border-line bg-white px-4">
       {/* Logo — click to go back Home */}
@@ -33,7 +35,10 @@ export default function Header() {
       <RoleFilter />
       <AlertsPanel />
 
-      <button className="flex h-[34px] items-center gap-[7px] rounded-[9px] border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]">
+      <button
+        onClick={() => setPresent(true)}
+        className="flex h-[34px] items-center gap-[7px] rounded-[9px] border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]"
+      >
         <Play size={14} className="fill-brand text-brand" />
         Present
       </button>
@@ -51,9 +56,7 @@ export default function Header() {
         </div>
       </div>
 
-      <button className="h-[34px] rounded-[9px] bg-brand px-[15px] text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(47,111,237,.30)] hover:bg-brand-dark">
-        Share
-      </button>
+      <ShareMenu />
     </header>
   )
 }

@@ -33,6 +33,7 @@ function MindmapInner() {
   const select = useWorkspace((s) => s.select)
   const addModule = useWorkspace((s) => s.addModule)
   const readOnly = useWorkspace((s) => s.isReadOnly())
+  const present = useWorkspace((s) => s.present)
 
   const zoom = useStore((s) => s.transform[2])
   const { zoomIn, zoomOut, fitView } = useReactFlow()
@@ -129,11 +130,13 @@ function MindmapInner() {
 
   return (
     <>
-      <ViewHint>
-        Click a feature for details · status labels <b className="text-brand">sync across all views</b>
-        {!showFeatures && <> · <b className="text-brand">zoom in</b> to reveal features</>}
-      </ViewHint>
-      {!readOnly && (
+      {!present && (
+        <ViewHint>
+          Click a feature for details · status labels <b className="text-brand">sync across all views</b>
+          {!showFeatures && <> · <b className="text-brand">zoom in</b> to reveal features</>}
+        </ViewHint>
+      )}
+      {!readOnly && !present && (
         <button
           onClick={() => addModule()}
           className="absolute left-[18px] top-[18px] z-20 flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-white px-3 text-[12.5px] font-bold text-brand shadow-card hover:bg-[#eef1ff]"

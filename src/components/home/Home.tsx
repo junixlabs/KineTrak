@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   LineChart,
   Search,
@@ -16,8 +16,10 @@ import {
   Sparkles,
   Gift,
   Bell,
+  Upload,
 } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
+import { useToast } from '@/store/useToast'
 import type { ProjectTemplate } from '@/store/types'
 
 const fmtDate = (iso: string) => {
@@ -35,8 +37,30 @@ export default function Home() {
   const createOrg = useWorkspace((s) => s.createOrg)
   const renameOrg = useWorkspace((s) => s.renameOrg)
   const deleteOrg = useWorkspace((s) => s.deleteOrg)
+  const importProjectData = useWorkspace((s) => s.importProjectData)
+  const resetAll = useWorkspace((s) => s.resetAll)
+  const show = useToast((s) => s.show)
 
   const [query, setQuery] = useState('')
+  const [avatarOpen, setAvatarOpen] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      show('Link copied to clipboard')
+    } catch {
+      show('Could not copy link')
+    }
+  }
+  const onImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    const id = importProjectData(await f.text())
+    show(id ? 'Project imported' : 'Invalid project file')
+    setAvatarOpen(false)
+  }
   const [nav, setNav] = useState<'home' | 'recent'>('home')
   const [orgFilter, setOrgFilter] = useState<string | null>(null)
   const [editOrg, setEditOrg] = useState<{ id: string; val: string } | null>(null)
@@ -144,19 +168,53 @@ export default function Home() {
           <span className="text-[15px] font-extrabold tracking-tight text-ink">Workspace</span>
           <span className="rounded-md bg-[#eef1ff] px-2 py-0.5 text-[11px] font-bold text-brand">Free</span>
           <div className="flex-1" />
-          <button className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]">
+          <button onClick={copyLink} className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]">
             <UserPlus size={15} strokeWidth={2} /> Invite members
           </button>
-          <button className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(47,111,237,.30)] hover:bg-brand-dark">
+          <button
+            onClick={() => show('All features are included on the local Free plan')}
+            className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(47,111,237,.30)] hover:bg-brand-dark"
+          >
             <Sparkles size={15} strokeWidth={2} /> Upgrade
           </button>
-          <button title="What's new" className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-muted hover:bg-[#f4f6f9]">
+          <button onClick={() => show('KineTrak is up to date')} title="What's new" className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-muted hover:bg-[#f4f6f9]">
             <Gift size={16} strokeWidth={2} />
           </button>
-          <button title="Notifications" className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-muted hover:bg-[#f4f6f9]">
+          <button onClick={() => show('No new notifications')} title="Notifications" className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-muted hover:bg-[#f4f6f9]">
             <Bell size={16} strokeWidth={2} />
           </button>
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-grape text-[12px] font-bold text-white">ME</div>
+          <div className="relative">
+            <button onClick={() => setAvatarOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-full bg-grape text-[12px] font-bold text-white hover:opacity-90">
+              ME
+            </button>
+            {avatarOpen && (
+              <>
+                <div className="fixed inset-0 z-[55]" onClick={() => setAvatarOpen(false)} />
+                <div className="absolute right-0 top-11 z-[60] w-[220px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
+                  <div className="px-2.5 pb-1.5 pt-2">
+                    <div className="text-[12.5px] font-bold text-ink">Local workspace</div>
+                    <div className="text-[11px] text-faint">Stored in this browser</div>
+                  </div>
+                  <button onClick={() => fileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink hover:bg-[#f4f6f9]">
+                    <Upload size={14} className="text-muted" /> Import project…
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm('Reset all data? This removes every org and project in this browser.')) {
+                        resetAll()
+                        show('All data reset')
+                      }
+                      setAvatarOpen(false)
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-[#e5484d] hover:bg-[#fdecec]"
+                  >
+                    <Trash2 size={14} /> Reset all data
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImport} />
         </header>
 
         <main className="flex-1 overflow-auto">

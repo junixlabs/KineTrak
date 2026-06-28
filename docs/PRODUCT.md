@@ -63,11 +63,19 @@ Công cụ dùng được thật, không chỉ xem seed:
 - Mã nguồn: `src/store` (types/seed/ids/store/selectors), `src/lib/{impact,layout}.ts`,
   `src/components/{shell,views,nodes,panel}` (panel có `fields.tsx` các control sửa).
 
+## 5b. Home, Present & Share (done)
+- **Home** (Miro-style): top header (Workspace · Free · Invite · Upgrade · what's-new ·
+  notifications · avatar menu with Import / Reset all data) + left sidebar (search, Home/Recent,
+  Spaces=orgs) + template cards (Blank/Sample) + project grid. Header logo returns Home.
+- **Present mode**: clean fullscreen view (project + view tabs + Exit/Esc), editing chrome hidden.
+- **Share**: Copy link, Export project (JSON download), Import project (JSON) — local-first;
+  data lives in the browser, export to hand off. Transient toasts confirm actions.
+
 ## 6. Ngoài phạm vi MVP (v.next)
 CRUD cho **lane** & **release** (giữ scaffold chuẩn từ template); sửa nhãn nhánh edge; undo/redo;
-Present mode / Export / Share; backend + DB; đồng bộ realtime qua WebSocket; webhook GitHub/GitLab
-cho cảnh báo lỗi thời; đa người dùng thật & chia sẻ org; comment threads. Kiến trúc đã chừa khe cắm
-sạch (store tách bạch data/ui, action editing tập trung, project sở hữu data).
+backend + DB; đồng bộ realtime qua WebSocket; webhook GitHub/GitLab cho cảnh báo lỗi thời;
+đa người dùng thật & chia sẻ org online; comment threads. Kiến trúc đã chừa khe cắm sạch
+(store tách bạch data/ui, action editing tập trung, project sở hữu data).
 
 ## 7. Đồng bộ với concept docs
 - **Màu brand**: ✅ đã đồng bộ. Hai file concept (`Kinetrak_Blueprint.html`,
