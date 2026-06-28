@@ -8,6 +8,7 @@ import {
   type Node,
   type NodeMouseHandler,
 } from '@xyflow/react'
+import { Plus } from 'lucide-react'
 import MindRootNode from '@/components/nodes/MindRootNode'
 import MindModuleNode from '@/components/nodes/MindModuleNode'
 import MindFeatureNode from '@/components/nodes/MindFeatureNode'
@@ -30,6 +31,8 @@ function MindmapInner() {
   const roleFilter = useWorkspace((s) => s.roleFilter)
   const setHovered = useWorkspace((s) => s.setHovered)
   const select = useWorkspace((s) => s.select)
+  const addModule = useWorkspace((s) => s.addModule)
+  const readOnly = useWorkspace((s) => s.isReadOnly())
 
   const zoom = useStore((s) => s.transform[2])
   const { zoomIn, zoomOut, fitView } = useReactFlow()
@@ -74,7 +77,7 @@ function MindmapInner() {
         id: m.id,
         type: 'mindModule',
         position: layout.modules[m.id],
-        data: { name: m.name, color: m.color, ...prog, dim: roleDim || focusDim, highlight: focusSet.has(m.id) },
+        data: { id: m.id, name: m.name, color: m.color, ...prog, dim: roleDim || focusDim, highlight: focusSet.has(m.id) },
         draggable: false,
       })
     })
@@ -130,6 +133,14 @@ function MindmapInner() {
         Bấm tính năng để mở chi tiết · nhãn trạng thái <b className="text-brand">đồng bộ mọi View</b>
         {!showFeatures && <> · <b className="text-brand">phóng to</b> để hiện tính năng</>}
       </ViewHint>
+      {!readOnly && (
+        <button
+          onClick={() => addModule()}
+          className="absolute left-[18px] top-[18px] z-20 flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-white px-3 text-[12.5px] font-bold text-brand shadow-card hover:bg-[#eef1ff]"
+        >
+          <Plus size={15} strokeWidth={2.5} /> Module
+        </button>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}

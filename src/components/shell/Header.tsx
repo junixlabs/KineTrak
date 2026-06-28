@@ -1,8 +1,9 @@
-import { ChevronDown, Play, LineChart } from 'lucide-react'
+import { Play, LineChart } from 'lucide-react'
 import ViewTabs from './ViewTabs'
 import SnapshotMenu from './SnapshotMenu'
 import RoleFilter from './RoleFilter'
 import AlertsPanel from './AlertsPanel'
+import ProjectSwitcher from './ProjectSwitcher'
 
 export default function Header() {
   return (
@@ -20,13 +21,7 @@ export default function Header() {
 
       <div className="h-6 w-px bg-line" />
 
-      {/* Project switcher (static) */}
-      <button className="flex h-8 items-center gap-[7px] rounded-lg border border-line bg-white px-[11px] hover:bg-[#f4f6f9]">
-        <span className="h-[7px] w-[7px] rounded-full bg-[#16a34a] shadow-[0_0_0_3px_#e7f6ee]" />
-        <span className="text-[13px] font-semibold text-ink">KineTrak Platform</span>
-        <ChevronDown size={11} className="text-faint" strokeWidth={2.4} />
-      </button>
-
+      <ProjectSwitcher />
       <SnapshotMenu />
 
       <div className="flex-1" />

@@ -60,6 +60,8 @@ export interface SwimLane {
 
 export interface SwimNode {
   id: string
+  /** Short display chip (A, B, …). Auto-assigned for new nodes since id is now a uuid. */
+  code?: string
   label: string
   lane: number
   kind: NodeKind
@@ -90,6 +92,8 @@ export interface Snapshot {
   tagColor: string
   tagBg: string
   dot: string
+  /** Frozen copy of the project's data at capture time (read-only history). */
+  data: WorkspaceData
 }
 
 export type AlertKind = 'impact' | 'outdated' | 'dod'
@@ -112,6 +116,7 @@ export type Selection =
   | { type: 'module'; id: string; view: ViewId }
   | { type: 'swimnode'; id: string; view: ViewId }
 
+/** The editable diagram graph owned by a project (and frozen inside each snapshot). */
 export interface WorkspaceData {
   modules: Module[]
   features: Feature[]
@@ -119,20 +124,25 @@ export interface WorkspaceData {
   lanes: SwimLane[]
   swimNodes: SwimNode[]
   swimEdges: SwimEdge[]
-  snapshots: Snapshot[]
   alerts: Alert[]
 }
 
-/**
- * User edits persisted as id-keyed deltas on top of the canonical seed.
- * Keeping only deltas (never the whole graph) means a seed-shape change can never
- * be shadowed by stale storage: unknown ids are simply ignored, new seed content
- * always appears. This is the persistence boundary for the SSOT.
- */
-export interface Overrides {
-  featureStatus: Record<string, FeatureStatus>
-  featureRelease: Record<string, string>
-  swimStatus: Record<string, NodeStatus>
+// ── Multi-project / org ──────────────────────────────────────────────────────
+
+export interface Org {
+  id: string
+  name: string
 }
 
-export const emptyOverrides = (): Overrides => ({ featureStatus: {}, featureRelease: {}, swimStatus: {} })
+export interface Project {
+  id: string
+  orgId: string
+  name: string
+  createdAt: string
+  /** The live, editable graph. */
+  data: WorkspaceData
+  /** Frozen historical snapshots (version control). */
+  snapshots: Snapshot[]
+}
+
+export type ProjectTemplate = 'sample' | 'blank'

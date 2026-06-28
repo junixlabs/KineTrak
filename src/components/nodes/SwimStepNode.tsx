@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import { nodeStatusColor } from '@/theme/tokens'
+import { useWorkspace } from '@/store/useWorkspace'
 import type { NodeKind, NodeStatus } from '@/store/types'
 
 export interface SwimStepData {
@@ -15,9 +16,13 @@ export interface SwimStepData {
 }
 
 export default function SwimStepNode({ data }: { data: SwimStepData }) {
+  const editable = useWorkspace((s) => !s.isReadOnly())
   const terminal = data.kind === 'start' || data.kind === 'end'
   const decision = data.kind === 'decision'
   const statusColor = nodeStatusColor[data.status]
+  const handleCls = editable
+    ? '!h-2 !w-2 !border-2 !border-white !bg-brand'
+    : '!opacity-0'
 
   const base =
     'flex items-center gap-2 rounded-xl border px-3 transition-[opacity,box-shadow,border-color] duration-200'
@@ -40,7 +45,7 @@ export default function SwimStepNode({ data }: { data: SwimStepData }) {
         cursor: 'pointer',
       }}
     >
-      <Handle type="target" position={Position.Left} className="!opacity-0" isConnectable={false} />
+      <Handle type="target" position={Position.Left} className={handleCls} isConnectable={editable} />
 
       <span
         className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-md font-mono text-[12px] font-bold"
@@ -61,7 +66,7 @@ export default function SwimStepNode({ data }: { data: SwimStepData }) {
 
       <span className="h-2 w-2 flex-none rounded-full" style={{ background: statusColor }} />
 
-      <Handle type="source" position={Position.Right} className="!opacity-0" isConnectable={false} />
+      <Handle type="source" position={Position.Right} className={handleCls} isConnectable={editable} />
     </div>
   )
 }

@@ -1,7 +1,8 @@
-import { X, Check, Link2, ChevronRight } from 'lucide-react'
+import { X, Link2, ChevronRight, Trash2 } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor, hexA } from '@/theme/tokens'
-import type { CrossLink, FeatureStatus, Module, NodeStatus, Selection } from '@/store/types'
+import { FieldLabel, TextField, TextArea, SelectField, ListEditor, RoleChips } from './fields'
+import type { CrossLink, FeatureStatus, NodeKind, NodeStatus, Selection } from '@/store/types'
 
 const NODE_STATUS: { key: NodeStatus; label: string }[] = [
   { key: 'todo', label: 'Chưa làm' },
@@ -9,6 +10,21 @@ const NODE_STATUS: { key: NodeStatus; label: string }[] = [
   { key: 'done', label: 'Hoàn thành' },
   { key: 'blocked', label: 'Bị chặn' },
 ]
+const NODE_KINDS: { value: NodeKind; label: string }[] = [
+  { value: 'start', label: 'Bắt đầu' },
+  { value: 'process', label: 'Xử lý' },
+  { value: 'decision', label: 'Quyết định' },
+  { value: 'end', label: 'Kết thúc' },
+]
+
+const initials = (s: string) =>
+  s
+    .trim()
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || '?'
 
 export default function DetailPanel() {
   const selected = useWorkspace((s) => s.selected)
@@ -28,22 +44,19 @@ export default function DetailPanel() {
           ? { type: 'swimnode', id: l.targetId, view: l.view }
           : { type: 'feature', id: l.targetId, view: l.view }
       select(sel)
-    } else {
-      select(null)
-    }
+    } else select(null)
   }
 
-  let body: PanelContent | null = null
-  if (selected.type === 'feature') body = featurePanel(selected, data)
-  else if (selected.type === 'module') body = modulePanel(selected, data)
-  else if (selected.type === 'swimnode') body = swimPanel(selected, data)
-  if (!body) return null
+  let body: React.ReactNode = null
+  if (selected.type === 'feature') body = <FeatureEditor id={selected.id} view={selected.view} readOnly={readOnly} goLink={goLink} />
+  else if (selected.type === 'module') body = <ModuleEditor id={selected.id} readOnly={readOnly} />
+  else if (selected.type === 'swimnode') body = <SwimEditor id={selected.id} readOnly={readOnly} goLink={goLink} />
+  // Selection points at an entity that no longer exists (e.g. deleted) -> nothing to show.
+  if (!data || body === null) return null
 
   return (
     <div className="absolute bottom-0 right-0 top-0 z-30 flex w-[384px] animate-panelIn flex-col border-l border-line bg-white shadow-panel">
-      {/* Header */}
-      <div className="flex flex-none items-center justify-between px-4 pt-3.5">
-        <span className="text-[11px] font-bold tracking-wide text-faint">{body.crumb}</span>
+      <div className="flex flex-none items-center justify-end px-4 pt-3">
         <button
           onClick={clearSelection}
           className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#f4f6f9] text-muted hover:bg-[#e9edf2]"
@@ -51,251 +64,267 @@ export default function DetailPanel() {
           <X size={14} strokeWidth={2.2} />
         </button>
       </div>
-
-      <div className="flex flex-none items-start gap-2.5 px-4 pt-2.5">
-        <span className="mt-0.5 flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg bg-[#eef1ff] font-mono text-[14px] font-bold text-[#3a4fc4]">
-          {body.idChip}
-        </span>
-        <div className="flex-1">
-          <div className="text-[17px] font-bold leading-tight text-ink">{body.title}</div>
-          <span
-            className="mt-1.5 inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold"
-            style={{ color: body.kindColor, background: body.kindBg }}
-          >
-            {body.kindLabel}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-4">
-        {/* Status editor */}
-        {body.status && (
-          <>
-            <div className="mb-2 text-[11px] font-bold tracking-wide text-faint">TRẠNG THÁI</div>
-            <div className="flex flex-wrap gap-1.5">
-              {body.status.options.map((o) => {
-                const active = o.key === body!.status!.current
-                return (
-                  <button
-                    key={o.key}
-                    disabled={readOnly}
-                    onClick={() => body!.status!.onPick(o.key)}
-                    className="flex h-9 items-center justify-center gap-[5px] rounded-lg border text-[10.5px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60"
-                    style={{
-                      flex: '1 1 calc(50% - 3px)',
-                      borderColor: active ? o.color : '#e5e8ec',
-                      background: active ? hexA(o.color, 0.12) : '#fff',
-                      color: active ? o.color : '#5b6470',
-                    }}
-                  >
-                    <span className="h-[7px] w-[7px] flex-none rounded-full" style={{ background: o.color }} />
-                    {o.label}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="mt-2.5 flex items-center gap-[7px] rounded-lg bg-[#eaf6f0] px-2.5 py-2">
-              <span className="h-[7px] w-[7px] flex-none animate-pulse2 rounded-full bg-[#16a34a]" />
-              <span className="text-[11.5px] font-semibold text-[#0f7a44]">
-                Đồng bộ tức thì tới mọi View (SSOT)
-              </span>
-            </div>
-            <div className="my-4 h-px bg-[#eef0f3]" />
-          </>
-        )}
-
-        {/* Owner + lane/module */}
-        <div className="grid grid-cols-2 gap-3.5">
-          <div>
-            <div className="mb-1.5 text-[10.5px] font-bold text-faint">PHỤ TRÁCH</div>
-            <div className="flex items-center gap-[7px]">
-              <span
-                className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full text-[9.5px] font-bold text-white"
-                style={{ background: body.ownerColor }}
-              >
-                {body.ownerInit}
-              </span>
-              <span className="text-[12.5px] font-semibold text-ink">{body.owner}</span>
-            </div>
-          </div>
-          <div>
-            <div className="mb-1.5 text-[10.5px] font-bold text-faint">{body.contextLabel}</div>
-            <div className="pt-0.5 text-[12.5px] font-semibold text-ink">{body.context}</div>
-          </div>
-        </div>
-
-        {/* Description */}
-        {body.desc && (
-          <div className="mt-4">
-            <div className="mb-[7px] text-[11px] font-bold tracking-wide text-faint">MÔ TẢ</div>
-            <div className="text-[13px] leading-[1.55] text-[#3a4048]">{body.desc}</div>
-          </div>
-        )}
-
-        {/* Constraints */}
-        {body.constraints && body.constraints.length > 0 && (
-          <div className="mt-4">
-            <div className="mb-[7px] text-[11px] font-bold tracking-wide text-faint">
-              RÀNG BUỘC API / KỸ THUẬT
-            </div>
-            {body.constraints.map((c, i) => (
-              <div key={i} className="mb-1.5 flex items-start gap-2">
-                <span className="mt-px flex-none font-bold text-brand">›</span>
-                <span className="font-mono text-[12px] leading-[1.45] text-[#3a4048]">{c}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Validations */}
-        {body.validations && body.validations.length > 0 && (
-          <div className="mt-3.5">
-            <div className="mb-[7px] text-[11px] font-bold tracking-wide text-faint">QUY TẮC VALIDATE</div>
-            {body.validations.map((v, i) => (
-              <div key={i} className="mb-1.5 flex items-start gap-2">
-                <Check size={14} className="mt-px flex-none text-[#16a34a]" strokeWidth={2.4} />
-                <span className="text-[12.5px] leading-[1.45] text-[#3a4048]">{v}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Cross-links */}
-        {body.crossLinks && body.crossLinks.length > 0 && (
-          <div className="mt-4">
-            <div className="mb-[7px] text-[11px] font-bold tracking-wide text-faint">
-              LIÊN KẾT CHÉO · DYNAMIC LINKING
-            </div>
-            {body.crossLinks.map((l, i) => (
-              <button
-                key={i}
-                onClick={() => goLink(l)}
-                className="mb-1.5 flex w-full items-center gap-2 rounded-lg border border-line bg-[#fbfcfd] px-[11px] py-[9px] text-left hover:border-[#c9d8ff] hover:bg-[#f1f5ff]"
-              >
-                <Link2 size={14} className="flex-none text-brand" strokeWidth={1.8} />
-                <span className="flex-1 text-[12px] font-semibold text-[#2a4a8f]">{l.label}</span>
-                <ChevronRight size={13} className="flex-none text-faint" strokeWidth={2} />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <div className="flex-1 overflow-auto px-4 pb-5">{body}</div>
     </div>
   )
 }
 
-// ── Panel content builders ──────────────────────────────────────────────────
+// ── Shared bits ──────────────────────────────────────────────────────────────
 
-interface PanelContent {
-  crumb: string
-  idChip: string
-  title: string
-  kindLabel: string
-  kindColor: string
-  kindBg: string
-  owner: string
-  ownerInit: string
-  ownerColor: string
-  contextLabel: string
-  context: string
-  desc?: string
-  constraints?: string[]
-  validations?: string[]
-  crossLinks?: CrossLink[]
-  status?: {
-    current: string
-    options: { key: string; label: string; color: string }[]
-    onPick: (key: string) => void
-  }
+function Crumb({ children }: { children: React.ReactNode }) {
+  return <div className="mb-2 text-[11px] font-bold tracking-wide text-faint">{children}</div>
+}
+function IdChip({ code, label, color, bg }: { code: string; label: string; color: string; bg: string }) {
+  return (
+    <div className="mb-3 flex items-center gap-2.5">
+      <span className="flex h-[30px] min-w-[30px] flex-none items-center justify-center rounded-lg px-1.5 font-mono text-[13px] font-bold" style={{ color, background: bg }}>
+        {code}
+      </span>
+      <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ color, background: bg }}>
+        {label}
+      </span>
+    </div>
+  )
+}
+function Divider() {
+  return <div className="my-4 h-px bg-[#eef0f3]" />
+}
+function SsotNote() {
+  return (
+    <div className="mt-2.5 flex items-center gap-[7px] rounded-lg bg-[#eaf6f0] px-2.5 py-2">
+      <span className="h-[7px] w-[7px] flex-none animate-pulse2 rounded-full bg-[#16a34a]" />
+      <span className="text-[11.5px] font-semibold text-[#0f7a44]">Đồng bộ tức thì tới mọi View (SSOT)</span>
+    </div>
+  )
+}
+function DeleteButton({ onDelete, label }: { onDelete: () => void; label: string }) {
+  return (
+    <button
+      onClick={() => {
+        if (confirm(`Xoá ${label}?`)) onDelete()
+      }}
+      className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#f3c9cb] bg-[#fdecec] py-2 text-[12.5px] font-bold text-[#e5484d] hover:bg-[#fbdedf]"
+    >
+      <Trash2 size={14} /> Xoá {label}
+    </button>
+  )
+}
+function StatusGrid<T extends string>({
+  current,
+  options,
+  onPick,
+  readOnly,
+}: {
+  current: T
+  options: { key: T; label: string; color: string }[]
+  onPick: (k: T) => void
+  readOnly?: boolean
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((o) => {
+        const active = o.key === current
+        return (
+          <button
+            key={o.key}
+            disabled={readOnly}
+            onClick={() => onPick(o.key)}
+            className="flex h-9 items-center justify-center gap-[5px] rounded-lg border text-[10.5px] font-bold transition-all disabled:cursor-default"
+            style={{
+              flex: '1 1 calc(50% - 3px)',
+              borderColor: active ? o.color : '#e5e8ec',
+              background: active ? hexA(o.color, 0.12) : '#fff',
+              color: active ? o.color : '#5b6470',
+            }}
+          >
+            <span className="h-[7px] w-[7px] flex-none rounded-full" style={{ background: o.color }} />
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+function CrossLinks({ links, onGo }: { links: CrossLink[]; onGo: (l: CrossLink) => void }) {
+  if (!links.length) return null
+  return (
+    <div className="mt-4">
+      <FieldLabel>LIÊN KẾT CHÉO · DYNAMIC LINKING</FieldLabel>
+      {links.map((l, i) => (
+        <button
+          key={i}
+          onClick={() => onGo(l)}
+          className="mb-1.5 flex w-full items-center gap-2 rounded-lg border border-line bg-[#fbfcfd] px-[11px] py-[9px] text-left hover:border-[#c9d8ff] hover:bg-[#f1f5ff]"
+        >
+          <Link2 size={14} className="flex-none text-brand" strokeWidth={1.8} />
+          <span className="flex-1 text-[12px] font-semibold text-[#2a4a8f]">{l.label}</span>
+          <ChevronRight size={13} className="flex-none text-faint" strokeWidth={2} />
+        </button>
+      ))}
+    </div>
+  )
 }
 
-/** Owner display is derived from the data model's module.owners — no side table to drift. */
-function moduleOwner(m: Module): { owner: string; init: string; color: string } {
-  return { owner: m.owners.join(' · '), init: m.owners[0] ?? '?', color: m.color }
-}
+// ── Feature editor ───────────────────────────────────────────────────────────
 
-function featurePanel(sel: Selection & { type: 'feature' }, data: ReturnType<typeof storeData>): PanelContent | null {
-  const f = data.features.find((x) => x.id === sel.id)
+function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: string; readOnly: boolean; goLink: (l: CrossLink) => void }) {
+  const data = useWorkspace((s) => s.currentData())
+  const updateFeature = useWorkspace((s) => s.updateFeature)
+  const deleteFeature = useWorkspace((s) => s.deleteFeature)
+  const f = data.features.find((x) => x.id === id)
   if (!f) return null
   const m = data.modules.find((x) => x.id === f.moduleId)
-  if (!m) return null // orphan feature — degrade gracefully instead of crashing
-  const owners = moduleOwner(m)
-  return {
-    crumb: `${sel.view === 'story' ? 'Story Map' : 'Mindmap'} · ${m.name}`,
-    idChip: f.id.replace('f', 'F'),
-    title: f.name,
-    kindLabel: 'Tính năng',
-    kindColor: '#3a4fc4',
-    kindBg: '#eef1ff',
-    owner: owners.owner,
-    ownerInit: owners.init,
-    ownerColor: owners.color,
-    contextLabel: 'MODULE',
-    context: m.name,
-    desc:
-      f.desc ||
-      `"${f.name}" thuộc module ${m.name}. Nhãn trạng thái gắn trực tiếp trên node và đồng bộ tới Story Map theo cơ chế SSOT.`,
-    constraints: f.constraints,
-    crossLinks: f.crossLinks ?? [{ view: 'story', label: `Story Map · ${f.name}`, targetId: f.id }],
-    status: {
-      current: f.status,
-      options: featureStatusOrder.map((k) => ({ key: k, label: featureStatusMeta[k].label, color: featureStatusMeta[k].color })),
-      onPick: (k) => useWorkspace.getState().setFeatureStatus(f.id, k as FeatureStatus),
-    },
-  }
+  const idx = data.features.indexOf(f)
+
+  return (
+    <>
+      <Crumb>{view === 'story' ? 'Story Map' : 'Mindmap'} · {m?.name ?? '—'}</Crumb>
+      <IdChip code={`F${idx + 1}`} label="Tính năng" color="#3a4fc4" bg="#eef1ff" />
+      <TextField value={f.name} onChange={(v) => updateFeature(id, { name: v })} readOnly={readOnly} placeholder="Tên tính năng" big />
+
+      <div className="mt-4">
+        <FieldLabel>TRẠNG THÁI</FieldLabel>
+        <StatusGrid
+          current={f.status}
+          readOnly={readOnly}
+          options={featureStatusOrder.map((k) => ({ key: k, label: featureStatusMeta[k].label, color: featureStatusMeta[k].color }))}
+          onPick={(k: FeatureStatus) => updateFeature(id, { status: k })}
+        />
+        {!readOnly && <SsotNote />}
+      </div>
+
+      <Divider />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <FieldLabel>MODULE</FieldLabel>
+          <SelectField value={f.moduleId} readOnly={readOnly} onChange={(v) => updateFeature(id, { moduleId: v })} options={data.modules.map((m) => ({ value: m.id, label: m.name }))} />
+        </div>
+        <div>
+          <FieldLabel>RELEASE</FieldLabel>
+          <SelectField value={f.releaseId} readOnly={readOnly} onChange={(v) => updateFeature(id, { releaseId: v })} options={data.releases.map((r) => ({ value: r.id, label: r.name }))} />
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <FieldLabel>MÔ TẢ</FieldLabel>
+        <TextArea value={f.desc ?? ''} readOnly={readOnly} onChange={(v) => updateFeature(id, { desc: v })} placeholder="Mô tả tính năng…" />
+      </div>
+      <div className="mt-4">
+        <FieldLabel>RÀNG BUỘC API / KỸ THUẬT</FieldLabel>
+        <ListEditor items={f.constraints ?? []} readOnly={readOnly} mono onChange={(next) => updateFeature(id, { constraints: next })} placeholder="Thêm ràng buộc" />
+      </div>
+      <div className="mt-4">
+        <FieldLabel>QUY TẮC VALIDATE</FieldLabel>
+        <ListEditor items={f.validations ?? []} readOnly={readOnly} onChange={(next) => updateFeature(id, { validations: next })} placeholder="Thêm quy tắc" />
+      </div>
+
+      <CrossLinks links={f.crossLinks ?? []} onGo={goLink} />
+      {!readOnly && <DeleteButton label="tính năng" onDelete={() => deleteFeature(id)} />}
+    </>
+  )
 }
 
-function modulePanel(sel: Selection & { type: 'module' }, data: ReturnType<typeof storeData>): PanelContent | null {
-  const m = data.modules.find((x) => x.id === sel.id)
+// ── Module editor ────────────────────────────────────────────────────────────
+
+function ModuleEditor({ id, readOnly }: { id: string; readOnly: boolean }) {
+  const data = useWorkspace((s) => s.currentData())
+  const updateModule = useWorkspace((s) => s.updateModule)
+  const deleteModule = useWorkspace((s) => s.deleteModule)
+  const m = data.modules.find((x) => x.id === id)
   if (!m) return null
-  const owners = moduleOwner(m)
-  const fs = data.features.filter((f) => f.moduleId === m.id)
-  return {
-    crumb: 'Mindmap · Module',
-    idChip: m.id.replace('m', 'M'),
-    title: m.name,
-    kindLabel: 'Module',
-    kindColor: '#0f7a44',
-    kindBg: '#e7f6ee',
-    owner: owners.owner,
-    ownerInit: owners.init,
-    ownerColor: owners.color,
-    contextLabel: 'SỐ TÍNH NĂNG',
-    context: `${fs.length} tính năng`,
-    desc: `Module "${m.name}" gồm ${fs.length} tính năng. Bấm một tính năng con để xem chi tiết và chỉnh trạng thái.`,
-    crossLinks: [{ view: 'story', label: `Story Map · cột ${m.backbone.name}` }],
-  }
+  const idx = data.modules.indexOf(m)
+  const featureCount = data.features.filter((f) => f.moduleId === id).length
+
+  return (
+    <>
+      <Crumb>Mindmap · Module</Crumb>
+      <IdChip code={`M${idx + 1}`} label="Module" color="#0f7a44" bg="#e7f6ee" />
+      <TextField value={m.name} onChange={(v) => updateModule(id, { name: v })} readOnly={readOnly} placeholder="Tên module" big />
+
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div>
+          <FieldLabel>CỘT STORY MAP</FieldLabel>
+          <TextField value={m.backbone.name} readOnly={readOnly} onChange={(v) => updateModule(id, { backbone: { ...m.backbone, name: v } })} placeholder="Tên cột" />
+        </div>
+        <div>
+          <FieldLabel>MÔ TẢ CỘT</FieldLabel>
+          <TextField value={m.backbone.sub} readOnly={readOnly} onChange={(v) => updateModule(id, { backbone: { ...m.backbone, sub: v } })} placeholder="Phụ đề" />
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <FieldLabel>VAI TRÒ PHỤ TRÁCH (lọc theo role)</FieldLabel>
+        <RoleChips value={m.owners} readOnly={readOnly} onChange={(next) => updateModule(id, { owners: next })} />
+      </div>
+
+      <Divider />
+      <div className="text-[12.5px] text-muted">
+        Module này gồm <b className="text-ink">{featureCount}</b> tính năng. Bấm một tính năng con để sửa chi tiết.
+      </div>
+      {!readOnly && <DeleteButton label="module (kèm tính năng con)" onDelete={() => deleteModule(id)} />}
+    </>
+  )
 }
 
-function swimPanel(sel: Selection & { type: 'swimnode' }, data: ReturnType<typeof storeData>): PanelContent | null {
-  const n = data.swimNodes.find((x) => x.id === sel.id)
+// ── Swimlane node editor ─────────────────────────────────────────────────────
+
+function SwimEditor({ id, readOnly, goLink }: { id: string; readOnly: boolean; goLink: (l: CrossLink) => void }) {
+  const data = useWorkspace((s) => s.currentData())
+  const updateSwimNode = useWorkspace((s) => s.updateSwimNode)
+  const deleteSwimNode = useWorkspace((s) => s.deleteSwimNode)
+  const n = data.swimNodes.find((x) => x.id === id)
   if (!n) return null
   const lane = data.lanes.find((l) => l.id === n.lane)
-  return {
-    crumb: 'Swimlane Workflow',
-    idChip: n.id,
-    title: n.label,
-    kindLabel: n.kind === 'decision' ? 'Điểm quyết định' : n.kind === 'start' ? 'Điểm bắt đầu' : n.kind === 'end' ? 'Điểm kết thúc' : 'Bước xử lý',
-    kindColor: '#2f6fed',
-    kindBg: '#e9f1ff',
-    owner: n.owner || '—',
-    ownerInit: n.ownerInit || '?',
-    ownerColor: n.ownerColor || '#9aa2ad',
-    contextLabel: 'PHÂN LÀN',
-    context: lane?.name ?? '—',
-    desc: n.desc,
-    constraints: n.constraints,
-    validations: n.validations,
-    crossLinks: n.crossLinks,
-    status: {
-      current: n.status,
-      options: NODE_STATUS.map((s) => ({ key: s.key, label: s.label, color: nodeStatusColor[s.key] })),
-      onPick: (k) => useWorkspace.getState().setSwimStatus(n.id, k as NodeStatus),
-    },
-  }
-}
 
-// Type helper for builder signatures.
-function storeData() {
-  return useWorkspace.getState().currentData()
+  return (
+    <>
+      <Crumb>Swimlane Workflow</Crumb>
+      <IdChip code={n.code ?? '•'} label="Bước xử lý" color="#2f6fed" bg="#e9f1ff" />
+      <TextField value={n.label} onChange={(v) => updateSwimNode(id, { label: v })} readOnly={readOnly} placeholder="Tên bước" big />
+
+      <div className="mt-4">
+        <FieldLabel>TRẠNG THÁI</FieldLabel>
+        <StatusGrid
+          current={n.status}
+          readOnly={readOnly}
+          options={NODE_STATUS.map((s) => ({ key: s.key, label: s.label, color: nodeStatusColor[s.key] }))}
+          onPick={(k: NodeStatus) => updateSwimNode(id, { status: k })}
+        />
+        {!readOnly && <SsotNote />}
+      </div>
+
+      <Divider />
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <FieldLabel>PHÂN LÀN</FieldLabel>
+          <SelectField value={String(n.lane)} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { lane: Number(v) })} options={data.lanes.map((l) => ({ value: String(l.id), label: l.name }))} />
+        </div>
+        <div>
+          <FieldLabel>LOẠI BƯỚC</FieldLabel>
+          <SelectField value={n.kind} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { kind: v as NodeKind })} options={NODE_KINDS.map((k) => ({ value: k.value, label: k.label }))} />
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <FieldLabel>PHỤ TRÁCH</FieldLabel>
+        <TextField value={n.owner ?? ''} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { owner: v, ownerInit: initials(v), ownerColor: n.ownerColor ?? '#6e8bff' })} placeholder="Tên người/nhóm" />
+      </div>
+      <div className="mt-4">
+        <FieldLabel>MÔ TẢ</FieldLabel>
+        <TextArea value={n.desc ?? ''} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { desc: v })} placeholder="Mô tả bước…" />
+      </div>
+      <div className="mt-4">
+        <FieldLabel>RÀNG BUỘC API / KỸ THUẬT</FieldLabel>
+        <ListEditor items={n.constraints ?? []} readOnly={readOnly} mono onChange={(next) => updateSwimNode(id, { constraints: next })} placeholder="Thêm ràng buộc" />
+      </div>
+      <div className="mt-4">
+        <FieldLabel>QUY TẮC VALIDATE</FieldLabel>
+        <ListEditor items={n.validations ?? []} readOnly={readOnly} onChange={(next) => updateSwimNode(id, { validations: next })} placeholder="Thêm quy tắc" />
+      </div>
+
+      <CrossLinks links={n.crossLinks ?? []} onGo={goLink} />
+      <div className="mt-2 text-[11px] text-faint">Làn hiện tại: {lane?.name ?? '—'}</div>
+      {!readOnly && <DeleteButton label="bước (kèm mũi tên liên quan)" onDelete={() => deleteSwimNode(id)} />}
+    </>
+  )
 }

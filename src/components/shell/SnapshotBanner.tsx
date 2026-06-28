@@ -2,12 +2,12 @@ import { Clock } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 
 export default function SnapshotBanner() {
-  const data = useWorkspace((s) => s.currentData())
-  const activeSnapshot = useWorkspace((s) => s.activeSnapshot)
+  const project = useWorkspace((s) => s.activeProject())
+  const activeSnapshotId = useWorkspace((s) => s.activeSnapshotId)
   const setSnapshot = useWorkspace((s) => s.setSnapshot)
-  if (activeSnapshot === 'current') return null
+  if (!activeSnapshotId) return null
 
-  const snap = data.snapshots.find((s) => s.id === activeSnapshot)
+  const snap = project?.snapshots.find((s) => s.id === activeSnapshotId)
 
   return (
     <div className="flex flex-none items-center gap-2.5 border-b border-[#f5d98b] bg-[#fff7e6] px-[18px] py-2 text-[12.5px] font-semibold text-[#8a6d1f]">
@@ -17,7 +17,7 @@ export default function SnapshotBanner() {
         đọc.
       </span>
       <button
-        onClick={() => setSnapshot('current')}
+        onClick={() => setSnapshot(null)}
         className="ml-1.5 h-6 rounded-md border border-[#e7c66a] bg-white px-2.5 text-[12px] font-bold text-[#8a6d1f]"
       >
         Quay lại bản hiện tại
