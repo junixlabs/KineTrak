@@ -12,6 +12,10 @@ import {
   Network,
   LayoutGrid,
   Workflow,
+  UserPlus,
+  Sparkles,
+  Gift,
+  Bell,
 } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import type { ProjectTemplate } from '@/store/types'
@@ -134,9 +138,29 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-[1180px] px-8 py-7">
+      {/* Main column: top header + scrollable content */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 flex-none items-center gap-3 border-b border-line bg-white px-6">
+          <span className="text-[15px] font-extrabold tracking-tight text-ink">Workspace</span>
+          <span className="rounded-md bg-[#eef1ff] px-2 py-0.5 text-[11px] font-bold text-brand">Free</span>
+          <div className="flex-1" />
+          <button className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]">
+            <UserPlus size={15} strokeWidth={2} /> Invite members
+          </button>
+          <button className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(47,111,237,.30)] hover:bg-brand-dark">
+            <Sparkles size={15} strokeWidth={2} /> Upgrade
+          </button>
+          <button title="What's new" className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-muted hover:bg-[#f4f6f9]">
+            <Gift size={16} strokeWidth={2} />
+          </button>
+          <button title="Notifications" className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-muted hover:bg-[#f4f6f9]">
+            <Bell size={16} strokeWidth={2} />
+          </button>
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-grape text-[12px] font-bold text-white">ME</div>
+        </header>
+
+        <main className="flex-1 overflow-auto">
+          <div className="mx-auto max-w-[1180px] px-8 py-7">
           {/* Templates */}
           <div className="mb-8">
             <h2 className="mb-3 text-[15px] font-bold text-ink">Start a new project</h2>
@@ -214,8 +238,9 @@ export default function Home() {
               })}
             </div>
           )}
-        </div>
-      </main>
+          </div>
+        </main>
+      </div>
     </div>
   )
 }
