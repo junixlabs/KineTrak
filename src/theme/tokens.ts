@@ -18,8 +18,8 @@ export const palette = {
 /** Feature status meta — drives pills across Mindmap / Story Map / Detail panel. */
 export const featureStatusMeta: Record<FeatureStatus, { label: string; color: string; bg: string }> = {
   must: { label: 'Must-have', color: '#e5484d', bg: '#fdecec' },
-  progress: { label: 'Đang phát triển', color: '#f59e0b', bg: '#fef3e2' },
-  done: { label: 'Đã hoàn thành', color: '#16a34a', bg: '#e7f6ee' },
+  progress: { label: 'In progress', color: '#f59e0b', bg: '#fef3e2' },
+  done: { label: 'Done', color: '#16a34a', bg: '#e7f6ee' },
   nice: { label: 'Nice-to-have', color: '#6e8bff', bg: '#eef1ff' },
 }
 

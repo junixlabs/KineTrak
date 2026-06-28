@@ -48,8 +48,8 @@ export default function SnapshotMenu() {
             >
               <span className="h-2 w-2 flex-none rounded-full bg-[#16a34a]" />
               <span className="flex flex-1 flex-col gap-px">
-                <span className="text-[12.5px] font-semibold text-ink">Bản hiện tại (Live)</span>
-                <span className="font-mono text-[11px] text-faint">đang chỉnh sửa</span>
+                <span className="text-[12.5px] font-semibold text-ink">Live (current)</span>
+                <span className="font-mono text-[11px] text-faint">editing now</span>
               </span>
               {!activeSnapshotId && <Check size={14} className="text-brand" strokeWidth={2.5} />}
             </button>
@@ -74,7 +74,7 @@ export default function SnapshotMenu() {
                 <button
                   onClick={() => deleteSnapshot(snap.id)}
                   className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-faint opacity-0 hover:bg-[#fdecec] hover:text-[#e5484d] group-hover:opacity-100"
-                  title="Xoá snapshot"
+                  title="Delete snapshot"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -82,7 +82,7 @@ export default function SnapshotMenu() {
             ))}
 
             {snapshots.length === 0 && (
-              <div className="px-2.5 py-2 text-[11.5px] text-faint">Chưa có snapshot nào.</div>
+              <div className="px-2.5 py-2 text-[11.5px] text-faint">No snapshots yet.</div>
             )}
 
             {/* Create */}
@@ -91,14 +91,14 @@ export default function SnapshotMenu() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && save()}
-                placeholder="Tên snapshot…"
+                placeholder="Snapshot name…"
                 className="h-8 flex-1 rounded-lg border border-line px-2.5 text-[12.5px] outline-none focus:border-brand"
               />
               <button
                 onClick={save}
                 className="flex h-8 items-center gap-1 rounded-lg bg-brand px-2.5 text-[12px] font-bold text-white hover:bg-brand-dark"
               >
-                <Plus size={13} strokeWidth={2.5} /> Tạo
+                <Plus size={13} strokeWidth={2.5} /> New
               </button>
             </div>
           </div>

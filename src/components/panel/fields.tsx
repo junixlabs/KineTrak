@@ -123,7 +123,7 @@ export function ListEditor({
       ))}
       {!readOnly && (
         <button onClick={add} className="flex w-fit items-center gap-1 rounded-md px-1.5 py-1 text-[11.5px] font-semibold text-brand hover:bg-[#eef1ff]">
-          <Plus size={12} strokeWidth={2.5} /> {placeholder ?? 'Thêm dòng'}
+          <Plus size={12} strokeWidth={2.5} /> {placeholder ?? 'Add line'}
         </button>
       )}
     </div>

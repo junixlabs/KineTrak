@@ -160,9 +160,9 @@ function SwimlaneInner() {
     <>
       <ViewHint>
         {readOnly ? (
-          <>Snapshot chỉ đọc · rê chuột xem <b className="text-brand">vùng tác động</b></>
+          <>Read-only snapshot · hover to see <b className="text-brand">impact zone</b></>
         ) : (
-          <>Rê node xem <b className="text-brand">vùng tác động</b> · kéo node để sắp xếp · nối chấm xanh để vẽ mũi tên · Delete để xoá</>
+          <>Hover a node to see <b className="text-brand">impact zone</b> · drag to arrange · connect the blue dots to draw arrows · Delete to remove</>
         )}
       </ViewHint>
 
@@ -172,13 +172,13 @@ function SwimlaneInner() {
             onClick={() => setLaneMenu((v) => !v)}
             className="flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-white px-3 text-[12.5px] font-bold text-brand shadow-card hover:bg-[#eef1ff]"
           >
-            <Plus size={15} strokeWidth={2.5} /> Bước
+            <Plus size={15} strokeWidth={2.5} /> Step
           </button>
           {laneMenu && (
             <>
               <div className="fixed inset-0 z-[1]" onClick={() => setLaneMenu(false)} />
               <div className="absolute left-0 top-[42px] z-[2] w-[220px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
-                <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-bold tracking-wide text-faint">THÊM BƯỚC VÀO LÀN</div>
+                <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-bold tracking-wide text-faint">ADD STEP TO LANE</div>
                 {data.lanes.map((l) => (
                   <button
                     key={l.id}

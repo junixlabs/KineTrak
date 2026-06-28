@@ -25,7 +25,7 @@ export default function RoleFilter() {
           className="text-[12.5px] font-semibold"
           style={{ color: roleFilter ? '#2f6fed' : '#5b6470' }}
         >
-          {roleFilter ? `Vai trò: ${roleFilter}` : 'Tất cả vai trò'}
+          {roleFilter ? `Role: ${roleFilter}` : 'All roles'}
         </span>
         <ChevronDown size={11} className="text-faint" strokeWidth={2.4} />
       </button>
@@ -35,7 +35,7 @@ export default function RoleFilter() {
           <div className="fixed inset-0 z-[55]" onClick={() => setOpen(false)} />
           <div className="absolute left-0 top-[38px] z-[60] w-[200px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
             <div className="px-2.5 pb-1.5 pt-2 text-[10.5px] font-bold tracking-wide text-faint">
-              LỌC THEO VAI TRÒ
+              FILTER BY ROLE
             </div>
             <button
               onClick={() => {
@@ -44,7 +44,7 @@ export default function RoleFilter() {
               }}
               className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink hover:bg-[#f4f6f9]"
             >
-              Tất cả vai trò
+              All roles
               {!roleFilter && <Check size={14} className="text-brand" strokeWidth={2.5} />}
             </button>
             {ROLES.map((r) => (

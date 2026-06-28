@@ -5,16 +5,16 @@ import { FieldLabel, TextField, TextArea, SelectField, ListEditor, RoleChips } f
 import type { CrossLink, FeatureStatus, NodeKind, NodeStatus, Selection } from '@/store/types'
 
 const NODE_STATUS: { key: NodeStatus; label: string }[] = [
-  { key: 'todo', label: 'Chưa làm' },
-  { key: 'progress', label: 'Đang xử lý' },
-  { key: 'done', label: 'Hoàn thành' },
-  { key: 'blocked', label: 'Bị chặn' },
+  { key: 'todo', label: 'To do' },
+  { key: 'progress', label: 'In progress' },
+  { key: 'done', label: 'Done' },
+  { key: 'blocked', label: 'Blocked' },
 ]
 const NODE_KINDS: { value: NodeKind; label: string }[] = [
-  { value: 'start', label: 'Bắt đầu' },
-  { value: 'process', label: 'Xử lý' },
-  { value: 'decision', label: 'Quyết định' },
-  { value: 'end', label: 'Kết thúc' },
+  { value: 'start', label: 'Start' },
+  { value: 'process', label: 'Process' },
+  { value: 'decision', label: 'Decision' },
+  { value: 'end', label: 'End' },
 ]
 
 const initials = (s: string) =>
@@ -93,7 +93,7 @@ function SsotNote() {
   return (
     <div className="mt-2.5 flex items-center gap-[7px] rounded-lg bg-[#eaf6f0] px-2.5 py-2">
       <span className="h-[7px] w-[7px] flex-none animate-pulse2 rounded-full bg-[#16a34a]" />
-      <span className="text-[11.5px] font-semibold text-[#0f7a44]">Đồng bộ tức thì tới mọi View (SSOT)</span>
+      <span className="text-[11.5px] font-semibold text-[#0f7a44]">Synced instantly to every view (SSOT)</span>
     </div>
   )
 }
@@ -101,11 +101,11 @@ function DeleteButton({ onDelete, label }: { onDelete: () => void; label: string
   return (
     <button
       onClick={() => {
-        if (confirm(`Xoá ${label}?`)) onDelete()
+        if (confirm(`Delete ${label}?`)) onDelete()
       }}
       className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#f3c9cb] bg-[#fdecec] py-2 text-[12.5px] font-bold text-[#e5484d] hover:bg-[#fbdedf]"
     >
-      <Trash2 size={14} /> Xoá {label}
+      <Trash2 size={14} /> Delete {label}
     </button>
   )
 }
@@ -149,7 +149,7 @@ function CrossLinks({ links, onGo }: { links: CrossLink[]; onGo: (l: CrossLink) 
   if (!links.length) return null
   return (
     <div className="mt-4">
-      <FieldLabel>LIÊN KẾT CHÉO · DYNAMIC LINKING</FieldLabel>
+      <FieldLabel>CROSS-LINKS · DYNAMIC LINKING</FieldLabel>
       {links.map((l, i) => (
         <button
           key={i}
@@ -179,11 +179,11 @@ function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: strin
   return (
     <>
       <Crumb>{view === 'story' ? 'Story Map' : 'Mindmap'} · {m?.name ?? '—'}</Crumb>
-      <IdChip code={`F${idx + 1}`} label="Tính năng" color="#3a4fc4" bg="#eef1ff" />
-      <TextField value={f.name} onChange={(v) => updateFeature(id, { name: v })} readOnly={readOnly} placeholder="Tên tính năng" big />
+      <IdChip code={`F${idx + 1}`} label="Feature" color="#3a4fc4" bg="#eef1ff" />
+      <TextField value={f.name} onChange={(v) => updateFeature(id, { name: v })} readOnly={readOnly} placeholder="Feature name" big />
 
       <div className="mt-4">
-        <FieldLabel>TRẠNG THÁI</FieldLabel>
+        <FieldLabel>STATUS</FieldLabel>
         <StatusGrid
           current={f.status}
           readOnly={readOnly}
@@ -206,20 +206,20 @@ function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: strin
       </div>
 
       <div className="mt-4">
-        <FieldLabel>MÔ TẢ</FieldLabel>
-        <TextArea value={f.desc ?? ''} readOnly={readOnly} onChange={(v) => updateFeature(id, { desc: v })} placeholder="Mô tả tính năng…" />
+        <FieldLabel>DESCRIPTION</FieldLabel>
+        <TextArea value={f.desc ?? ''} readOnly={readOnly} onChange={(v) => updateFeature(id, { desc: v })} placeholder="Feature description…" />
       </div>
       <div className="mt-4">
-        <FieldLabel>RÀNG BUỘC API / KỸ THUẬT</FieldLabel>
-        <ListEditor items={f.constraints ?? []} readOnly={readOnly} mono onChange={(next) => updateFeature(id, { constraints: next })} placeholder="Thêm ràng buộc" />
+        <FieldLabel>API / TECHNICAL CONSTRAINTS</FieldLabel>
+        <ListEditor items={f.constraints ?? []} readOnly={readOnly} mono onChange={(next) => updateFeature(id, { constraints: next })} placeholder="Add constraint" />
       </div>
       <div className="mt-4">
-        <FieldLabel>QUY TẮC VALIDATE</FieldLabel>
-        <ListEditor items={f.validations ?? []} readOnly={readOnly} onChange={(next) => updateFeature(id, { validations: next })} placeholder="Thêm quy tắc" />
+        <FieldLabel>VALIDATION RULES</FieldLabel>
+        <ListEditor items={f.validations ?? []} readOnly={readOnly} onChange={(next) => updateFeature(id, { validations: next })} placeholder="Add rule" />
       </div>
 
       <CrossLinks links={f.crossLinks ?? []} onGo={goLink} />
-      {!readOnly && <DeleteButton label="tính năng" onDelete={() => deleteFeature(id)} />}
+      {!readOnly && <DeleteButton label="feature" onDelete={() => deleteFeature(id)} />}
     </>
   )
 }
@@ -239,29 +239,29 @@ function ModuleEditor({ id, readOnly }: { id: string; readOnly: boolean }) {
     <>
       <Crumb>Mindmap · Module</Crumb>
       <IdChip code={`M${idx + 1}`} label="Module" color="#0f7a44" bg="#e7f6ee" />
-      <TextField value={m.name} onChange={(v) => updateModule(id, { name: v })} readOnly={readOnly} placeholder="Tên module" big />
+      <TextField value={m.name} onChange={(v) => updateModule(id, { name: v })} readOnly={readOnly} placeholder="Module name" big />
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div>
-          <FieldLabel>CỘT STORY MAP</FieldLabel>
-          <TextField value={m.backbone.name} readOnly={readOnly} onChange={(v) => updateModule(id, { backbone: { ...m.backbone, name: v } })} placeholder="Tên cột" />
+          <FieldLabel>STORY MAP COLUMN</FieldLabel>
+          <TextField value={m.backbone.name} readOnly={readOnly} onChange={(v) => updateModule(id, { backbone: { ...m.backbone, name: v } })} placeholder="Column name" />
         </div>
         <div>
-          <FieldLabel>MÔ TẢ CỘT</FieldLabel>
-          <TextField value={m.backbone.sub} readOnly={readOnly} onChange={(v) => updateModule(id, { backbone: { ...m.backbone, sub: v } })} placeholder="Phụ đề" />
+          <FieldLabel>COLUMN SUBTITLE</FieldLabel>
+          <TextField value={m.backbone.sub} readOnly={readOnly} onChange={(v) => updateModule(id, { backbone: { ...m.backbone, sub: v } })} placeholder="Subtitle" />
         </div>
       </div>
 
       <div className="mt-4">
-        <FieldLabel>VAI TRÒ PHỤ TRÁCH (lọc theo role)</FieldLabel>
+        <FieldLabel>OWNER ROLES (role filter)</FieldLabel>
         <RoleChips value={m.owners} readOnly={readOnly} onChange={(next) => updateModule(id, { owners: next })} />
       </div>
 
       <Divider />
       <div className="text-[12.5px] text-muted">
-        Module này gồm <b className="text-ink">{featureCount}</b> tính năng. Bấm một tính năng con để sửa chi tiết.
+        This module has <b className="text-ink">{featureCount}</b> features. Click a child feature to edit its details.
       </div>
-      {!readOnly && <DeleteButton label="module (kèm tính năng con)" onDelete={() => deleteModule(id)} />}
+      {!readOnly && <DeleteButton label="module (and its features)" onDelete={() => deleteModule(id)} />}
     </>
   )
 }
@@ -279,11 +279,11 @@ function SwimEditor({ id, readOnly, goLink }: { id: string; readOnly: boolean; g
   return (
     <>
       <Crumb>Swimlane Workflow</Crumb>
-      <IdChip code={n.code ?? '•'} label="Bước xử lý" color="#2f6fed" bg="#e9f1ff" />
-      <TextField value={n.label} onChange={(v) => updateSwimNode(id, { label: v })} readOnly={readOnly} placeholder="Tên bước" big />
+      <IdChip code={n.code ?? '•'} label="Process step" color="#2f6fed" bg="#e9f1ff" />
+      <TextField value={n.label} onChange={(v) => updateSwimNode(id, { label: v })} readOnly={readOnly} placeholder="Step name" big />
 
       <div className="mt-4">
-        <FieldLabel>TRẠNG THÁI</FieldLabel>
+        <FieldLabel>STATUS</FieldLabel>
         <StatusGrid
           current={n.status}
           readOnly={readOnly}
@@ -296,35 +296,35 @@ function SwimEditor({ id, readOnly, goLink }: { id: string; readOnly: boolean; g
       <Divider />
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <FieldLabel>PHÂN LÀN</FieldLabel>
+          <FieldLabel>LANE</FieldLabel>
           <SelectField value={String(n.lane)} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { lane: Number(v) })} options={data.lanes.map((l) => ({ value: String(l.id), label: l.name }))} />
         </div>
         <div>
-          <FieldLabel>LOẠI BƯỚC</FieldLabel>
+          <FieldLabel>STEP TYPE</FieldLabel>
           <SelectField value={n.kind} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { kind: v as NodeKind })} options={NODE_KINDS.map((k) => ({ value: k.value, label: k.label }))} />
         </div>
       </div>
 
       <div className="mt-4">
-        <FieldLabel>PHỤ TRÁCH</FieldLabel>
-        <TextField value={n.owner ?? ''} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { owner: v, ownerInit: initials(v), ownerColor: n.ownerColor ?? '#6e8bff' })} placeholder="Tên người/nhóm" />
+        <FieldLabel>OWNER</FieldLabel>
+        <TextField value={n.owner ?? ''} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { owner: v, ownerInit: initials(v), ownerColor: n.ownerColor ?? '#6e8bff' })} placeholder="Person / team" />
       </div>
       <div className="mt-4">
-        <FieldLabel>MÔ TẢ</FieldLabel>
-        <TextArea value={n.desc ?? ''} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { desc: v })} placeholder="Mô tả bước…" />
+        <FieldLabel>DESCRIPTION</FieldLabel>
+        <TextArea value={n.desc ?? ''} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { desc: v })} placeholder="Step description…" />
       </div>
       <div className="mt-4">
-        <FieldLabel>RÀNG BUỘC API / KỸ THUẬT</FieldLabel>
-        <ListEditor items={n.constraints ?? []} readOnly={readOnly} mono onChange={(next) => updateSwimNode(id, { constraints: next })} placeholder="Thêm ràng buộc" />
+        <FieldLabel>API / TECHNICAL CONSTRAINTS</FieldLabel>
+        <ListEditor items={n.constraints ?? []} readOnly={readOnly} mono onChange={(next) => updateSwimNode(id, { constraints: next })} placeholder="Add constraint" />
       </div>
       <div className="mt-4">
-        <FieldLabel>QUY TẮC VALIDATE</FieldLabel>
-        <ListEditor items={n.validations ?? []} readOnly={readOnly} onChange={(next) => updateSwimNode(id, { validations: next })} placeholder="Thêm quy tắc" />
+        <FieldLabel>VALIDATION RULES</FieldLabel>
+        <ListEditor items={n.validations ?? []} readOnly={readOnly} onChange={(next) => updateSwimNode(id, { validations: next })} placeholder="Add rule" />
       </div>
 
       <CrossLinks links={n.crossLinks ?? []} onGo={goLink} />
-      <div className="mt-2 text-[11px] text-faint">Làn hiện tại: {lane?.name ?? '—'}</div>
-      {!readOnly && <DeleteButton label="bước (kèm mũi tên liên quan)" onDelete={() => deleteSwimNode(id)} />}
+      <div className="mt-2 text-[11px] text-faint">Current lane: {lane?.name ?? '—'}</div>
+      {!readOnly && <DeleteButton label="step (and its edges)" onDelete={() => deleteSwimNode(id)} />}
     </>
   )
 }

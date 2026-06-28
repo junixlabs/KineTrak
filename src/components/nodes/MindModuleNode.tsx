@@ -40,7 +40,7 @@ export default function MindModuleNode({ data }: { data: MindModuleData }) {
 
       {!readOnly && firstRelease && (
         <button
-          title="Thêm tính năng"
+          title="Add feature"
           onClick={(e) => {
             e.stopPropagation()
             addFeature(data.id, firstRelease)

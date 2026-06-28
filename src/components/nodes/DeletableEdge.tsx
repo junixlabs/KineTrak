@@ -33,7 +33,7 @@ export default function DeletableEdge({
           )}
           {!readOnly && d?.from && d?.to && (
             <button
-              title="Xoá mũi tên"
+              title="Delete arrow"
               onClick={() => deleteSwimEdge(d.from!, d.to!)}
               className="flex h-5 w-5 items-center justify-center rounded-full border border-line bg-white text-[12px] font-bold leading-none text-faint opacity-0 shadow-card transition-opacity hover:bg-[#fdecec] hover:text-[#e5484d] group-hover/edge:opacity-100"
             >

@@ -4,10 +4,14 @@ import MindmapView from '@/components/views/MindmapView'
 import StoryMapView from '@/components/views/StoryMapView'
 import SwimlaneView from '@/components/views/SwimlaneView'
 import DetailPanel from '@/components/panel/DetailPanel'
+import Home from '@/components/home/Home'
 import { useWorkspace } from '@/store/useWorkspace'
 
 export default function App() {
+  const screen = useWorkspace((s) => s.screen)
   const activeView = useWorkspace((s) => s.activeView)
+
+  if (screen === 'home') return <Home />
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

@@ -4,20 +4,22 @@ import SnapshotMenu from './SnapshotMenu'
 import RoleFilter from './RoleFilter'
 import AlertsPanel from './AlertsPanel'
 import ProjectSwitcher from './ProjectSwitcher'
+import { useWorkspace } from '@/store/useWorkspace'
 
 export default function Header() {
+  const goHome = useWorkspace((s) => s.goHome)
   return (
     <header className="z-40 flex h-14 flex-none items-center gap-3.5 border-b border-line bg-white px-4">
-      {/* Logo */}
-      <div className="flex items-center gap-2.5">
+      {/* Logo — click to go back Home */}
+      <button onClick={goHome} className="flex items-center gap-2.5 rounded-lg p-0.5 hover:opacity-80" title="Home">
         <div className="flex h-[30px] w-[30px] items-center justify-center rounded-[9px] bg-gradient-to-br from-brand to-brand-light shadow-[0_2px_6px_rgba(47,111,237,.35)]">
           <LineChart size={17} className="text-white" strokeWidth={2.4} />
         </div>
-        <div className="flex flex-col leading-none">
+        <div className="flex flex-col items-start leading-none">
           <span className="text-[15px] font-extrabold tracking-tight">KineTrak</span>
           <span className="mt-0.5 text-[8.5px] font-bold tracking-[2px] text-faint">PLATFORM</span>
         </div>
-      </div>
+      </button>
 
       <div className="h-6 w-px bg-line" />
 

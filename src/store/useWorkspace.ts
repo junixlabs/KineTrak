@@ -49,6 +49,7 @@ interface WorkspaceState {
   activeProjectId: string | null
 
   // UI
+  screen: 'home' | 'workspace'
   activeView: ViewId
   activeSnapshotId: string | null
   selected: Selection | null
@@ -63,6 +64,8 @@ interface WorkspaceState {
   isReadOnly: () => boolean
 
   // Navigation
+  goHome: () => void
+  openProject: (id: string) => void
   setView: (v: ViewId) => void
   select: (sel: Selection | null) => void
   clearSelection: () => void
@@ -126,6 +129,7 @@ export const useWorkspace = create<WorkspaceState>()(
 
       return {
         ...makeDefaultRoot(),
+        screen: 'home',
         activeView: 'swimlane',
         activeSnapshotId: null,
         selected: null,
@@ -144,6 +148,9 @@ export const useWorkspace = create<WorkspaceState>()(
         },
         isReadOnly: () => get().activeSnapshotId !== null,
 
+        goHome: () => set({ screen: 'home', selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
+        openProject: (id) =>
+          set({ screen: 'workspace', activeProjectId: id, activeSnapshotId: null, selected: null, hoveredId: null }),
         setView: (v) => set({ activeView: v, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
         select: (sel) => set({ selected: sel }),
         clearSelection: () => set({ selected: null }),
@@ -155,7 +162,7 @@ export const useWorkspace = create<WorkspaceState>()(
         // ── Org / project ──────────────────────────────────────────────────
         createOrg: (name) => {
           const id = makeId('org')
-          set((s) => ({ orgs: [...s.orgs, { id, name: name.trim() || 'Org mới' }] }))
+          set((s) => ({ orgs: [...s.orgs, { id, name: name.trim() || 'New org' }] }))
           return id
         },
         renameOrg: (id, name) => set((s) => ({ orgs: s.orgs.map((o) => (o.id === id ? { ...o, name } : o)) })),
@@ -177,7 +184,7 @@ export const useWorkspace = create<WorkspaceState>()(
           const proj: Project = {
             id,
             orgId,
-            name: name.trim() || 'Project mới',
+            name: name.trim() || 'New project',
             createdAt: nowISO(),
             data: templateData(template),
             snapshots: [],
@@ -185,6 +192,7 @@ export const useWorkspace = create<WorkspaceState>()(
           set((s) => ({
             projects: [...s.projects, proj],
             activeProjectId: id,
+            screen: 'workspace',
             activeSnapshotId: null,
             selected: null,
             hoveredId: null,
@@ -238,7 +246,7 @@ export const useWorkspace = create<WorkspaceState>()(
           const color = MODULE_PALETTE[get().currentData().modules.length % MODULE_PALETTE.length]
           patchData((d) => ({
             ...d,
-            modules: [...d.modules, { id, name: 'Module mới', color, backbone: { name: 'Bước mới', sub: '' }, owners: [] }],
+            modules: [...d.modules, { id, name: 'New module', color, backbone: { name: 'New step', sub: '' }, owners: [] }],
           }))
           set({ selected: { type: 'module', id, view: 'mindmap' } })
         },
@@ -257,7 +265,7 @@ export const useWorkspace = create<WorkspaceState>()(
           const id = makeId('f')
           patchData((d) => ({
             ...d,
-            features: [...d.features, { id, moduleId, releaseId, name: 'Tính năng mới', status: 'progress' }],
+            features: [...d.features, { id, moduleId, releaseId, name: 'New feature', status: 'progress' }],
           }))
           set({ selected: { type: 'feature', id, view: editView() } })
         },
@@ -278,7 +286,7 @@ export const useWorkspace = create<WorkspaceState>()(
           const y = (laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80)
           patchData((d) => ({
             ...d,
-            swimNodes: [...d.swimNodes, { id, code, label: 'Bước mới', lane, kind: 'process', status: 'todo', x, y }],
+            swimNodes: [...d.swimNodes, { id, code, label: 'New step', lane, kind: 'process', status: 'todo', x, y }],
           }))
           set({ selected: { type: 'swimnode', id, view: 'swimlane' } })
         },
@@ -320,6 +328,7 @@ export const useWorkspace = create<WorkspaceState>()(
         orgs: s.orgs,
         projects: s.projects,
         activeProjectId: s.activeProjectId,
+        screen: s.screen,
         activeView: s.activeView,
         roleFilter: s.roleFilter,
       }),
@@ -340,6 +349,7 @@ export const useWorkspace = create<WorkspaceState>()(
         }
         return {
           ...root,
+          screen: 'home' as const,
           activeView: (p.activeView as ViewId) ?? 'swimlane',
           roleFilter: (p.roleFilter as Role) ?? null,
         }
@@ -350,7 +360,7 @@ export const useWorkspace = create<WorkspaceState>()(
         if (!Array.isArray(p.projects) || p.projects.length === 0) {
           return { ...current, ...makeDefaultRoot(), activeView: p.activeView ?? current.activeView, roleFilter: p.roleFilter ?? null }
         }
-        return { ...current, ...p, activeSnapshotId: null, selected: null, hoveredId: null }
+        return { ...current, ...p, screen: p.screen ?? 'home', activeSnapshotId: null, selected: null, hoveredId: null }
       },
     },
   ),

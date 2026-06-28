@@ -3,8 +3,8 @@ import { useWorkspace } from '@/store/useWorkspace'
 import type { AlertKind } from '@/store/types'
 
 const KIND_META: Record<AlertKind, { c: string; bg: string; label: string }> = {
-  impact: { c: '#e5484d', bg: '#fdecec', label: 'TÁC ĐỘNG' },
-  outdated: { c: '#f59e0b', bg: '#fef3e2', label: 'LỖI THỜI' },
+  impact: { c: '#e5484d', bg: '#fdecec', label: 'IMPACT' },
+  outdated: { c: '#f59e0b', bg: '#fef3e2', label: 'OUTDATED' },
   dod: { c: '#2f6fed', bg: '#e9f1ff', label: 'DEF. OF DONE' },
 }
 
@@ -39,7 +39,7 @@ export default function AlertsPanel() {
               </span>
               <div className="flex-1">
                 <div className="text-[13.5px] font-bold text-ink">Impact Warning AI</div>
-                <div className="text-[11px] text-faint">Cảnh báo lỗi thời · tác động · điều kiện nghiệm thu</div>
+                <div className="text-[11px] text-faint">Outdated · impact · acceptance alerts</div>
               </div>
             </div>
             <div className="max-h-[440px] overflow-auto">

@@ -15,7 +15,7 @@ export default function MindRootNode({ data }: { data: MindRootData }) {
       <div className="flex flex-col gap-0.5">
         <span className="text-[15px] font-extrabold tracking-tight text-white">KineTrak Platform</span>
         <span className="text-[10.5px] font-semibold text-white/80">
-          {data.moduleCount} module · {data.featureCount} tính năng
+          {data.moduleCount} modules · {data.featureCount} features
         </span>
       </div>
       <Handle type="source" position={Position.Right} className="!opacity-0" isConnectable={false} />

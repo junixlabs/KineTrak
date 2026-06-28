@@ -52,7 +52,7 @@ export default function ProjectSwitcher() {
       >
         <span className="h-[7px] w-[7px] rounded-full bg-[#16a34a] shadow-[0_0_0_3px_#e7f6ee]" />
         <span className="max-w-[180px] truncate text-[13px] font-semibold text-ink">
-          {activeProject?.name ?? 'Chưa có project'}
+          {activeProject?.name ?? 'No project'}
         </span>
         <ChevronDown size={11} className="text-faint" strokeWidth={2.4} />
       </button>
@@ -64,7 +64,7 @@ export default function ProjectSwitcher() {
             <div className="flex items-center justify-between px-2.5 pb-1.5 pt-2">
               <span className="text-[10.5px] font-bold tracking-wide text-faint">ORG &amp; PROJECT</span>
               <button
-                onClick={() => createOrg('Org mới')}
+                onClick={() => createOrg('New org')}
                 className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-bold text-brand hover:bg-[#eef1ff]"
               >
                 <Plus size={12} strokeWidth={2.5} /> Org
@@ -80,12 +80,12 @@ export default function ProjectSwitcher() {
                   ) : (
                     <>
                       <span className="flex-1 truncate text-[11px] font-bold uppercase tracking-wide text-muted">{org.name}</span>
-                      <RowBtn title="Đổi tên org" onClick={() => startEdit('org', org.id, org.name)}><Pencil size={12} /></RowBtn>
+                      <RowBtn title="Rename org" onClick={() => startEdit('org', org.id, org.name)}><Pencil size={12} /></RowBtn>
                       <RowBtn
-                        title="Xoá org"
+                        title="Delete org"
                         danger
                         onClick={() => {
-                          if (confirm(`Xoá org "${org.name}" và toàn bộ project bên trong?`)) deleteOrg(org.id)
+                          if (confirm(`Delete org "${org.name}" and all its projects?`)) deleteOrg(org.id)
                         }}
                       >
                         <Trash2 size={12} />
@@ -122,12 +122,12 @@ export default function ProjectSwitcher() {
                               <span className="flex-1 truncate text-[12.5px] font-semibold text-ink">{p.name}</span>
                               {active && <Check size={14} className="text-brand" strokeWidth={2.5} />}
                             </button>
-                            <RowBtn title="Đổi tên project" onClick={() => startEdit('project', p.id, p.name)}><Pencil size={12} /></RowBtn>
+                            <RowBtn title="Rename project" onClick={() => startEdit('project', p.id, p.name)}><Pencil size={12} /></RowBtn>
                             <RowBtn
-                              title="Xoá project"
+                              title="Delete project"
                               danger
                               onClick={() => {
-                                if (confirm(`Xoá project "${p.name}"?`)) deleteProject(p.id)
+                                if (confirm(`Delete project "${p.name}"?`)) deleteProject(p.id)
                               }}
                             >
                               <Trash2 size={12} />
@@ -146,7 +146,7 @@ export default function ProjectSwitcher() {
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && commitCreate()}
-                      placeholder="Tên project…"
+                      placeholder="Project name…"
                       className="mb-2 h-8 w-full rounded-md border border-line px-2.5 text-[12.5px] outline-none focus:border-brand"
                     />
                     <div className="mb-2 flex gap-1.5">
@@ -161,16 +161,16 @@ export default function ProjectSwitcher() {
                             color: template === t ? '#2f6fed' : '#5b6470',
                           }}
                         >
-                          {t === 'sample' ? 'Dữ liệu mẫu' : 'Trống'}
+                          {t === 'sample' ? 'Sample data' : 'Blank'}
                         </button>
                       ))}
                     </div>
                     <div className="flex gap-1.5">
                       <button onClick={commitCreate} className="flex-1 rounded-md bg-brand py-1.5 text-[12px] font-bold text-white hover:bg-brand-dark">
-                        Tạo
+                        Create
                       </button>
                       <button onClick={() => setCreating(null)} className="rounded-md border border-line px-3 py-1.5 text-[12px] font-semibold text-muted hover:bg-[#f4f6f9]">
-                        Huỷ
+                        Cancel
                       </button>
                     </div>
                   </div>
@@ -179,7 +179,7 @@ export default function ProjectSwitcher() {
                     onClick={() => startCreate(org.id)}
                     className="mt-0.5 flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold text-brand hover:bg-[#eef1ff]"
                   >
-                    <Plus size={13} strokeWidth={2.5} /> Project mới
+                    <Plus size={13} strokeWidth={2.5} /> New project
                   </button>
                 )}
               </div>

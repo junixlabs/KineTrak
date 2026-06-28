@@ -57,8 +57,8 @@ export default function StoryMapView() {
   return (
     <div className="absolute inset-0 overflow-auto">
       <ViewHint>
-        Trục ngang = hành trình · trục dọc = release · kéo thẻ đổi release ·{' '}
-        <b className="text-brand">đồng bộ realtime</b>
+        Columns = journey · rows = release · drag a card to change release ·{' '}
+        <b className="text-brand">realtime sync</b>
       </ViewHint>
 
       <div className="min-w-[1000px] origin-top-left px-7 pb-11 pt-16 transition-transform" style={{ transform: `scale(${scale})` }}>
@@ -66,12 +66,12 @@ export default function StoryMapView() {
         <div className="mb-3.5 grid gap-3" style={{ gridTemplateColumns: cols }}>
           <div className="flex items-end justify-between px-1 pb-2">
             <span className="text-[10px] font-bold leading-[1.4] tracking-wide text-faint">
-              RELEASE ↓<br />HÀNH TRÌNH →
+              RELEASE ↓<br />JOURNEY →
             </span>
             {!readOnly && (
               <button
                 onClick={() => addModule()}
-                title="Thêm module / cột"
+                title="Add module / column"
                 className="flex h-6 items-center gap-1 rounded-md border border-line bg-white px-1.5 text-[10.5px] font-bold text-brand hover:bg-[#eef1ff]"
               >
                 <Plus size={12} strokeWidth={2.5} />
@@ -95,7 +95,7 @@ export default function StoryMapView() {
             </div>
           ))}
           {data.modules.length === 0 && (
-            <div className="flex items-center text-[12px] text-faint">Chưa có module — bấm ＋ để thêm cột.</div>
+            <div className="flex items-center text-[12px] text-faint">No modules — click ＋ to add a column.</div>
           )}
         </div>
 
@@ -109,7 +109,7 @@ export default function StoryMapView() {
                   <span className="text-[13px] font-extrabold" style={{ color: r.color }}>{r.name}</span>
                   <span className="font-mono text-[10.5px] font-semibold text-muted">{r.tag}</span>
                   <div className="mt-auto">
-                    <span className="text-[10px] font-bold text-muted">{prog.done}/{prog.total} hoàn thành</span>
+                    <span className="text-[10px] font-bold text-muted">{prog.done}/{prog.total} done</span>
                     <div className="mt-[5px] h-1 overflow-hidden rounded-sm bg-[rgba(20,24,31,.08)]">
                       <div className="h-full rounded-sm transition-[width] duration-300" style={{ width: `${prog.ratio}%`, background: r.color }} />
                     </div>
@@ -139,7 +139,7 @@ export default function StoryMapView() {
                           }`}
                         >
                           <Plus size={cards.length === 0 ? 18 : 13} strokeWidth={2.2} />
-                          {cards.length > 0 && <span className="text-[11px] font-semibold">Thêm thẻ</span>}
+                          {cards.length > 0 && <span className="text-[11px] font-semibold">Add card</span>}
                         </button>
                       ) : (
                         cards.length === 0 && (

@@ -9,51 +9,51 @@ export function cloneData(d: WorkspaceData): WorkspaceData {
 
 // Standard scaffold shared by both templates (blank starts from these, empty otherwise).
 const standardReleases: Release[] = [
-  { id: 'mvp', name: 'MVP', tag: 'Bản tối thiểu', color: '#16a34a', bg: '#eaf6ef', bdr: '#cdecd9' },
+  { id: 'mvp', name: 'MVP', tag: 'Minimum viable', color: '#16a34a', bg: '#eaf6ef', bdr: '#cdecd9' },
   { id: 'r1', name: 'Release 1', tag: 'Q3 · 2026', color: '#2f6fed', bg: '#eaf1fe', bdr: '#cfe0fb' },
   { id: 'r2', name: 'Release 2', tag: 'Q4 · 2026', color: '#7c5cff', bg: '#efeaff', bdr: '#ddd2fb' },
 ]
 
 const standardLanes: SwimLane[] = [
-  { id: 0, name: 'User / PM / PO', sub: 'Người dùng cuối', color: '#6e8bff', owners: ['PM', 'PO'], y: 40, h: 104 },
-  { id: 1, name: 'Frontend Interface', sub: 'Giao diện', color: '#2f6fed', owners: ['Dev', 'Tester'], y: 144, h: 150 },
-  { id: 2, name: 'Backend & Database', sub: 'Xử lý · lưu trữ', color: '#0d9488', owners: ['Dev', 'BA', 'Tester'], y: 294, h: 176 },
-  { id: 3, name: 'Notification Engine', sub: 'Cảnh báo', color: '#f59e0b', owners: ['Dev'], y: 470, h: 104 },
+  { id: 0, name: 'User / PM / PO', sub: 'End users', color: '#6e8bff', owners: ['PM', 'PO'], y: 40, h: 104 },
+  { id: 1, name: 'Frontend Interface', sub: 'UI', color: '#2f6fed', owners: ['Dev', 'Tester'], y: 144, h: 150 },
+  { id: 2, name: 'Backend & Database', sub: 'Process · storage', color: '#0d9488', owners: ['Dev', 'BA', 'Tester'], y: 294, h: 176 },
+  { id: 3, name: 'Notification Engine', sub: 'Alerts', color: '#f59e0b', owners: ['Dev'], y: 470, h: 104 },
 ]
 
 const sampleSwimNodes: SwimNode[] = ([
-  { id: 'A', label: 'Bắt đầu: kéo thẻ → Done', lane: 0, kind: 'start', status: 'done', x: 176, y: 69, owner: 'Phạm An', ownerInit: 'PA', ownerColor: '#6e8bff', desc: 'Người dùng kéo một thẻ Task từ In Progress sang Done trên Story Map.' },
-  { id: 'B', label: 'Ghi nhận hành động kéo thả', lane: 1, kind: 'process', status: 'done', x: 392, y: 190, owner: 'FE Team', ownerInit: 'FE', ownerColor: '#2f6fed', desc: 'Frontend bắt sự kiện drag-drop và optimistic-update giao diện.' },
-  { id: 'C', label: 'Gửi API cập nhật trạng thái', lane: 1, kind: 'process', status: 'done', x: 588, y: 190, owner: 'FE Team', ownerInit: 'FE', ownerColor: '#2f6fed', constraints: ['PATCH /tasks/:id { status }', 'Debounce 200ms cho thao tác liên tiếp.'] },
-  { id: 'D', label: 'Nhận yêu cầu cập nhật', lane: 2, kind: 'process', status: 'done', x: 588, y: 353, owner: 'BE Team', ownerInit: 'BE', ownerColor: '#0d9488' },
+  { id: 'A', label: 'Start: drag card → Done', lane: 0, kind: 'start', status: 'done', x: 176, y: 69, owner: 'Alex P', ownerInit: 'AP', ownerColor: '#6e8bff', desc: 'The user drags a Task card from In Progress to Done on the Story Map.' },
+  { id: 'B', label: 'Capture drag-and-drop action', lane: 1, kind: 'process', status: 'done', x: 392, y: 190, owner: 'FE Team', ownerInit: 'FE', ownerColor: '#2f6fed', desc: 'Frontend captures the drag-drop event and optimistically updates the UI.' },
+  { id: 'C', label: 'Send status update API', lane: 1, kind: 'process', status: 'done', x: 588, y: 190, owner: 'FE Team', ownerInit: 'FE', ownerColor: '#2f6fed', constraints: ['PATCH /tasks/:id { status }', 'Debounce 200ms for rapid actions.'] },
+  { id: 'D', label: 'Receive update request', lane: 2, kind: 'process', status: 'done', x: 588, y: 353, owner: 'BE Team', ownerInit: 'BE', ownerColor: '#0d9488' },
   {
-    id: 'E', label: 'Thẻ có liên kết Workflow?', lane: 2, kind: 'decision', status: 'done', x: 790, y: 349,
+    id: 'E', label: 'Card linked to a Workflow?', lane: 2, kind: 'decision', status: 'done', x: 790, y: 349,
     owner: 'BE Team', ownerInit: 'BE', ownerColor: '#0d9488',
-    desc: 'Kiểm tra thẻ có nằm trong một luồng Workflow (swimlane) hay không để quyết định có tính vùng tác động.',
-    constraints: ['Tra bảng workflow_links.', 'Nếu có → tính impact; nếu không → cập nhật trực tiếp.'],
+    desc: 'Check whether the card belongs to a Workflow (swimlane) to decide if the impact zone must be computed.',
+    constraints: ['Look up the workflow_links table.', 'If linked → compute impact; otherwise update directly.'],
     crossLinks: [{ view: 'mindmap', label: 'Mindmap · Automatic impact calculation', targetId: 'f6' }],
   },
-  { id: 'F', label: 'Cập nhật các node liên quan', lane: 2, kind: 'process', status: 'progress', x: 1014, y: 318, owner: 'BE Team', ownerInit: 'BE', ownerColor: '#0d9488', desc: 'Lan truyền thay đổi tới các node liên kết trong workflow (impact propagation).' },
-  { id: 'G', label: 'Cập nhật trạng thái thẻ → DB', lane: 2, kind: 'process', status: 'done', x: 1014, y: 402, owner: 'BE Team', ownerInit: 'BE', ownerColor: '#0d9488' },
-  { id: 'H', label: 'Tạo thông báo Impact Warning', lane: 3, kind: 'process', status: 'progress', x: 1014, y: 493, owner: 'Notif', ownerInit: 'NT', ownerColor: '#f59e0b', desc: 'Sinh cảnh báo tác động và gắn tag BA/PO để review.' },
-  { id: 'I', label: 'Hiển thị cảnh báo tác động', lane: 1, kind: 'process', status: 'todo', x: 1240, y: 190, owner: 'FE Team', ownerInit: 'FE', ownerColor: '#2f6fed' },
+  { id: 'F', label: 'Update related nodes', lane: 2, kind: 'process', status: 'progress', x: 1014, y: 318, owner: 'BE Team', ownerInit: 'BE', ownerColor: '#0d9488', desc: 'Propagate the change to linked workflow nodes (impact propagation).' },
+  { id: 'G', label: 'Update card status → DB', lane: 2, kind: 'process', status: 'done', x: 1014, y: 402, owner: 'BE Team', ownerInit: 'BE', ownerColor: '#0d9488' },
+  { id: 'H', label: 'Create Impact Warning', lane: 3, kind: 'process', status: 'progress', x: 1014, y: 493, owner: 'Notif', ownerInit: 'NT', ownerColor: '#f59e0b', desc: 'Generate an impact warning and tag BA/PO for review.' },
+  { id: 'I', label: 'Show impact alert', lane: 1, kind: 'process', status: 'todo', x: 1240, y: 190, owner: 'FE Team', ownerInit: 'FE', ownerColor: '#2f6fed' },
   {
-    id: 'J', label: 'Cập nhật UI → Done & lưu', lane: 1, kind: 'process', status: 'done', x: 1454, y: 190,
+    id: 'J', label: 'Update UI → Done & save', lane: 1, kind: 'process', status: 'done', x: 1454, y: 190,
     owner: 'FE Team', ownerInit: 'FE', ownerColor: '#2f6fed',
-    desc: 'Phản ánh trạng thái Done trên mọi View theo cơ chế SSOT và lưu trữ.',
-    validations: ['Trạng thái phải đồng bộ Mindmap + Story Map trước khi đóng.'],
+    desc: 'Reflect the Done status across every view via SSOT and persist it.',
+    validations: ['Status must be synced to Mindmap + Story Map before closing.'],
     crossLinks: [{ view: 'mindmap', label: 'Mindmap · Real-time sync with workflow', targetId: 'f8' }],
   },
-  { id: 'K', label: 'Kết thúc', lane: 0, kind: 'end', status: 'done', x: 1670, y: 69 },
+  { id: 'K', label: 'End', lane: 0, kind: 'end', status: 'done', x: 1670, y: 69 },
 ] as SwimNode[]).map((n) => ({ ...n, code: n.id }))
 
 /** Demo data ported from the KineTrak design prototype — the "Sample" template. */
 export const sampleTemplate: WorkspaceData = {
   modules: [
-    { id: 'm1', name: 'Feature Mapping & Mindmap', color: '#2f6fed', backbone: { name: 'Define Scope', sub: 'Phạm vi & tính năng' }, owners: ['BA', 'PO'] },
+    { id: 'm1', name: 'Feature Mapping & Mindmap', color: '#2f6fed', backbone: { name: 'Define Scope', sub: 'Scope & features' }, owners: ['BA', 'PO'] },
     { id: 'm2', name: 'Workflow & Swimlane Diagram', color: '#0d9488', backbone: { name: 'Design Workflows', sub: 'Logic & swimlane' }, owners: ['BA', 'Dev'] },
-    { id: 'm3', name: 'Execution & Story Mapping', color: '#7c5cff', backbone: { name: 'Build & Sync', sub: 'Thực thi & đồng bộ' }, owners: ['PM', 'PO'] },
-    { id: 'm4', name: 'Collaboration & Access', color: '#f59e0b', backbone: { name: 'Collaborate & Release', sub: 'Cộng tác & phát hành' }, owners: ['PM', 'PO', 'BA', 'Dev', 'Tester'] },
+    { id: 'm3', name: 'Execution & Story Mapping', color: '#7c5cff', backbone: { name: 'Build & Sync', sub: 'Build & sync' }, owners: ['PM', 'PO'] },
+    { id: 'm4', name: 'Collaboration & Access', color: '#f59e0b', backbone: { name: 'Collaborate & Release', sub: 'Collaborate & release' }, owners: ['PM', 'PO', 'BA', 'Dev', 'Tester'] },
   ],
   releases: standardReleases,
   features: [
@@ -64,19 +64,19 @@ export const sampleTemplate: WorkspaceData = {
     { id: 'f5', moduleId: 'm2', name: 'Multi-lane layout', status: 'done', releaseId: 'mvp' },
     {
       id: 'f6', moduleId: 'm2', name: 'Automatic impact calculation', status: 'progress', releaseId: 'r1',
-      desc: 'Tự động tính vùng tác động khi một thẻ/node thay đổi: lan truyền theo liên kết Workflow và làm sáng các làn bị ảnh hưởng. Đây là lõi của cơ chế Impact Highlighting.',
-      constraints: ['Thuật toán BFS theo workflow_links.', 'Ngưỡng cảnh báo cấu hình theo project.'],
+      desc: 'Automatically computes the impact zone when a card/node changes: propagates along Workflow links and highlights affected lanes. This is the core of Impact Highlighting.',
+      constraints: ['BFS over workflow_links.', 'Alert threshold configurable per project.'],
       crossLinks: [
-        { view: 'swimlane', label: 'Swimlane · E · Quyết định liên kết', targetId: 'E' },
+        { view: 'swimlane', label: 'Swimlane · E · Link decision', targetId: 'E' },
         { view: 'story', label: 'Story Map · Impact engine' },
       ],
     },
     { id: 'f7', moduleId: 'm3', name: 'Dynamic release lanes', status: 'progress', releaseId: 'r1' },
     {
       id: 'f8', moduleId: 'm3', name: 'Real-time sync with workflow', status: 'must', releaseId: 'mvp',
-      desc: 'Đồng bộ thời gian thực giữa Story Map và Swimlane: trạng thái đổi ở một View phản ánh tức thì ở các View khác theo cơ chế SSOT.',
-      constraints: ['WebSocket channel theo project.', 'Reconcile khi mất kết nối.'],
-      crossLinks: [{ view: 'swimlane', label: 'Swimlane · J · Cập nhật & lưu', targetId: 'J' }],
+      desc: 'Real-time sync between Story Map and Swimlane: a status change in one view reflects instantly in the others via SSOT.',
+      constraints: ['WebSocket channel per project.', 'Reconcile on reconnect.'],
+      crossLinks: [{ view: 'swimlane', label: 'Swimlane · J · Update & save', targetId: 'J' }],
     },
     { id: 'f9', moduleId: 'm3', name: 'Color-coded task cards', status: 'done', releaseId: 'r2' },
     { id: 'f10', moduleId: 'm4', name: 'Comment threads', status: 'nice', releaseId: 'r1' },
@@ -90,8 +90,8 @@ export const sampleTemplate: WorkspaceData = {
     { from: 'B', to: 'C' },
     { from: 'C', to: 'D' },
     { from: 'D', to: 'E' },
-    { from: 'E', to: 'F', branch: 'Có' },
-    { from: 'E', to: 'G', branch: 'Không' },
+    { from: 'E', to: 'F', branch: 'Yes' },
+    { from: 'E', to: 'G', branch: 'No' },
     { from: 'F', to: 'H' },
     { from: 'H', to: 'I' },
     { from: 'I', to: 'J' },
@@ -99,9 +99,9 @@ export const sampleTemplate: WorkspaceData = {
     { from: 'J', to: 'K' },
   ],
   alerts: [
-    { id: 'al1', kind: 'impact', title: 'Tác động chưa được duyệt', detail: '"Real-time sync with workflow" vừa chuyển sang Must-have — ảnh hưởng nhánh quyết định và 6 bước phía sau trong Swimlane.', tags: ['@BA', '@Dev'], time: '5 phút trước', actionLabel: 'Xem vùng tác động', action: { view: 'swimlane', selection: { type: 'swimnode', id: 'E', view: 'swimlane' } } },
-    { id: 'al2', kind: 'outdated', title: 'Sơ đồ có thể đã lỗi thời', detail: 'Swimlane "Cập nhật UI → Done & lưu" chưa cập nhật 32 ngày sau khi PR #142 được merge vào Production.', tags: ['@PO'], time: '2 giờ trước', actionLabel: 'Mở bước liên quan', action: { view: 'swimlane', selection: { type: 'swimnode', id: 'J', view: 'swimlane' } } },
-    { id: 'al3', kind: 'dod', title: 'Điều kiện nghiệm thu (DoD)', detail: '"Automatic impact calculation" cần BA xác nhận sơ đồ Swimlane khớp 100% Production trước khi được đánh dấu Released.', tags: ['@BA'], time: 'Hôm nay', actionLabel: 'Mở tính năng', action: { view: 'mindmap', selection: { type: 'feature', id: 'f6', view: 'mindmap' } } },
+    { id: 'al1', kind: 'impact', title: 'Unapproved impact', detail: '"Real-time sync with workflow" was just set to Must-have — it affects the decision branch and 6 downstream steps in the Swimlane.', tags: ['@BA', '@Dev'], time: '5 min ago', actionLabel: 'View impact zone', action: { view: 'swimlane', selection: { type: 'swimnode', id: 'E', view: 'swimlane' } } },
+    { id: 'al2', kind: 'outdated', title: 'Diagram may be outdated', detail: 'Swimlane "Update UI → Done & save" has not been updated for 32 days since PR #142 was merged to Production.', tags: ['@PO'], time: '2 hours ago', actionLabel: 'Open related step', action: { view: 'swimlane', selection: { type: 'swimnode', id: 'J', view: 'swimlane' } } },
+    { id: 'al3', kind: 'dod', title: 'Definition of Done', detail: '"Automatic impact calculation" needs BA to confirm the Swimlane matches Production 100% before it can be marked Released.', tags: ['@BA'], time: 'Today', actionLabel: 'Open feature', action: { view: 'mindmap', selection: { type: 'feature', id: 'f6', view: 'mindmap' } } },
   ],
 }
 

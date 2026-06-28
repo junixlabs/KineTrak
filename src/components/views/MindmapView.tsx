@@ -130,8 +130,8 @@ function MindmapInner() {
   return (
     <>
       <ViewHint>
-        Bấm tính năng để mở chi tiết · nhãn trạng thái <b className="text-brand">đồng bộ mọi View</b>
-        {!showFeatures && <> · <b className="text-brand">phóng to</b> để hiện tính năng</>}
+        Click a feature for details · status labels <b className="text-brand">sync across all views</b>
+        {!showFeatures && <> · <b className="text-brand">zoom in</b> to reveal features</>}
       </ViewHint>
       {!readOnly && (
         <button

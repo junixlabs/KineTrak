@@ -12,7 +12,7 @@ export default function ZoomControl({ zoomPercent, onMinus, onPlus, onFit }: Zoo
       <button
         onClick={onMinus}
         className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-[18px] text-muted hover:bg-[#f4f6f9]"
-        aria-label="Thu nhỏ"
+        aria-label="Zoom out"
       >
         −
       </button>
@@ -22,7 +22,7 @@ export default function ZoomControl({ zoomPercent, onMinus, onPlus, onFit }: Zoo
       <button
         onClick={onPlus}
         className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] text-[18px] text-muted hover:bg-[#f4f6f9]"
-        aria-label="Phóng to"
+        aria-label="Zoom in"
       >
         +
       </button>
