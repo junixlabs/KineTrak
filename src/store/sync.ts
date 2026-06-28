@@ -1,7 +1,11 @@
 import { useWorkspace, setCommandPusher } from './useWorkspace'
 import type { Command, Root } from '@/shared/board'
 
-const SYNC_URL = (import.meta.env.VITE_SYNC_URL as string | undefined) || 'http://localhost:8787'
+// Dev (Vite on :5173) → talk to the server on :8787.
+// Production (served by the server itself) → same origin.
+const SYNC_URL =
+  (import.meta.env.VITE_SYNC_URL as string | undefined) ||
+  (import.meta.env.DEV ? 'http://localhost:8787' : window.location.origin)
 
 let ws: WebSocket | null = null
 let started = false

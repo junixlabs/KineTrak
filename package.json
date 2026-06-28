@@ -6,10 +6,12 @@
   "description": "KineTrak — visual operating interface: 3 synchronized living diagrams over a single source of truth",
   "scripts": {
     "dev": "vite",
+    "dev:all": "concurrently -k -n web,api -c blue,green \"vite\" \"tsx watch server/index.ts\"",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "server": "tsx watch server/index.ts",
     "server:start": "tsx server/index.ts",
+    "start": "npm run build && tsx server/index.ts",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -34,6 +36,7 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^10.0.3",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.22.4",

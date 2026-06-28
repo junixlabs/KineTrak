@@ -1,8 +1,14 @@
 import { createServer } from 'node:http'
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import express from 'express'
 import { WebSocketServer, WebSocket } from 'ws'
 import { applyAndBroadcast, getRoot, onChange } from './state'
 import { registerMcp } from './mcp'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const DIST = join(HERE, '..', 'dist')
 
 const app = express()
 app.use(express.json({ limit: '8mb' }))
@@ -32,6 +38,18 @@ app.post('/api/command', (req, res) => {
 // MCP (Streamable HTTP) at /mcp.
 registerMcp(app)
 
+// Serve the built web client (production: web + API + MCP on one port).
+const hasDist = existsSync(join(DIST, 'index.html'))
+if (hasDist) {
+  app.use(express.static(DIST))
+  // SPA fallback — serve index.html for app routes (not API/MCP/WS).
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next()
+    if (req.path.startsWith('/api') || req.path.startsWith('/mcp') || req.path.startsWith('/ws')) return next()
+    res.sendFile(join(DIST, 'index.html'))
+  })
+}
+
 const server = createServer(app)
 
 // Realtime broadcast to browsers.
@@ -49,6 +67,8 @@ onChange((root) => {
 const PORT = Number(process.env.PORT) || 8787
 server.listen(PORT, () => {
   console.log(`KineTrak server → http://localhost:${PORT}`)
+  if (hasDist) console.log(`  • web app  : http://localhost:${PORT}  (serving dist/)`)
+  else console.log(`  • web app  : run "npm run dev" (Vite on 5173) or "npm run build" first`)
   console.log(`  • web sync : GET /api/state · POST /api/command · WS /ws`)
   console.log(`  • MCP (HTTP): POST /mcp`)
 })

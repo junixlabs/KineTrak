@@ -7,10 +7,20 @@ Visual Operating Interface — điều hành dự án qua 3 sơ đồ sống (Mi
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run build    # type-check + build production vào dist/
-npm run preview  # xem thử bản build
+
+# Một lệnh — web + API + WS + MCP chung 1 port:
+npm start        # build web rồi phục vụ tất cả ở http://localhost:8787
+
+# Dev (hot reload, 1 lệnh chạy cả hai):
+npm run dev:all  # Vite (5173) + server (8787)
+
+# Lẻ:
+npm run dev      # chỉ web (5173)
+npm run server   # chỉ server/MCP (8787)
+npm run build    # type-check + build vào dist/
 ```
+
+Kết nối agent qua MCP: xem [`docs/MCP.md`](docs/MCP.md) (endpoint `http://localhost:8787/mcp`).
 
 ## Cấu trúc
 

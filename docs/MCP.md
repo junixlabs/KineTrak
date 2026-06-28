@@ -21,15 +21,22 @@ broadcast to all browsers instantly.
 
 ## Run
 
+**One command — everything on one port (recommended):**
 ```bash
 npm install
-npm run server     # http://localhost:8787  (MCP + sync)
-npm run dev        # http://localhost:5173  (web UI; auto-connects to the server)
+npm start          # builds the web, then serves web + API + WS + MCP on http://localhost:8787
 ```
+Open `http://localhost:8787` — the web app, sync API/WS, and the MCP endpoint all share that origin.
 
-The web app auto-detects the server; the header shows **Live · synced** when connected, **Local**
-when running standalone (localStorage only). Override the server URL with `VITE_SYNC_URL`.
-Board state persists to `server/data/board.json` (git-ignored; delete it to reseed the sample).
+**Dev (hot reload, one command):**
+```bash
+npm run dev:all    # Vite (http://localhost:5173) + server (http://localhost:8787) together
+```
+In dev the web runs on 5173 and auto-connects to the server on 8787.
+
+The header shows **Live · synced** when connected to the server, **Local** when standalone
+(localStorage only — the app still works with no server). Override the server URL with
+`VITE_SYNC_URL`. Board state persists to `server/data/board.json` (git-ignored; delete it to reseed).
 
 ## Connect an agent (Claude Code / Desktop)
 
