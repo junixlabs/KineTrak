@@ -1,0 +1,15 @@
+services:
+  kinetrak:
+    build: .
+    image: kinetrak
+    container_name: kinetrak
+    ports:
+      - "8787:8787"
+    environment:
+      - PORT=8787
+    volumes:
+      - kinetrak-data:/app/server/data
+    restart: unless-stopped
+
+volumes:
+  kinetrak-data:

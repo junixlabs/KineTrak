@@ -22,6 +22,20 @@ npm run build    # type-check + build vào dist/
 
 Kết nối agent qua MCP: xem [`docs/MCP.md`](docs/MCP.md) (endpoint `http://localhost:8787/mcp`).
 
+### Docker (1 lệnh)
+
+```bash
+# Docker Compose (build + run + volume lưu board):
+docker compose up --build          # → http://localhost:8787
+
+# hoặc docker thuần:
+docker build -t kinetrak .
+docker run -p 8787:8787 -v kinetrak-data:/app/server/data kinetrak
+```
+
+Board lưu ở volume `kinetrak-data` (mount `/app/server/data`) nên giữ qua các lần restart.
+Web + API + WS + MCP đều ở `http://localhost:8787` (MCP: `/mcp`).
+
 ## Cấu trúc
 
 ```

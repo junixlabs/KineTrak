@@ -34,6 +34,13 @@ npm run dev:all    # Vite (http://localhost:5173) + server (http://localhost:878
 ```
 In dev the web runs on 5173 and auto-connects to the server on 8787.
 
+**Docker (one command):**
+```bash
+docker compose up --build          # → http://localhost:8787
+# or: docker build -t kinetrak . && docker run -p 8787:8787 -v kinetrak-data:/app/server/data kinetrak
+```
+Board state persists in the `kinetrak-data` volume (`/app/server/data`).
+
 The header shows **Live · synced** when connected to the server, **Local** when standalone
 (localStorage only — the app still works with no server). Override the server URL with
 `VITE_SYNC_URL`. Board state persists to `server/data/board.json` (git-ignored; delete it to reseed).
