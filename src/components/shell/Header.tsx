@@ -7,9 +7,17 @@ import ProjectSwitcher from './ProjectSwitcher'
 import ShareMenu from './ShareMenu'
 import { useWorkspace } from '@/store/useWorkspace'
 
+const SYNC_META = {
+  live: { label: 'Live · synced', dot: '#16a34a', color: '#0f7a44', bg: '#e7f6ee' },
+  connecting: { label: 'Connecting…', dot: '#f59e0b', color: '#8a6d1f', bg: '#fef3e2' },
+  local: { label: 'Local', dot: '#9aa2ad', color: '#5b6470', bg: '#eef0f3' },
+} as const
+
 export default function Header() {
   const goHome = useWorkspace((s) => s.goHome)
   const setPresent = useWorkspace((s) => s.setPresent)
+  const syncStatus = useWorkspace((s) => s.syncStatus)
+  const sync = SYNC_META[syncStatus]
   return (
     <header className="z-40 flex h-14 flex-none items-center gap-3.5 border-b border-line bg-white px-4">
       {/* Logo — click to go back Home */}
@@ -27,6 +35,14 @@ export default function Header() {
 
       <ProjectSwitcher />
       <SnapshotMenu />
+      <span
+        title={syncStatus === 'live' ? 'Connected to the KineTrak server — agents can co-edit and changes appear live' : syncStatus === 'local' ? 'No server — changes stay in this browser' : 'Connecting to the server…'}
+        className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-bold"
+        style={{ color: sync.color, background: sync.bg }}
+      >
+        <span className="h-[7px] w-[7px] rounded-full" style={{ background: sync.dot }} />
+        {sync.label}
+      </span>
 
       <div className="flex-1" />
       <ViewTabs />

@@ -71,11 +71,25 @@ Công cụ dùng được thật, không chỉ xem seed:
 - **Share**: Copy link, Export project (JSON download), Import project (JSON) — local-first;
   data lives in the browser, export to hand off. Transient toasts confirm actions.
 
-## 6. Ngoài phạm vi MVP (v.next)
-CRUD cho **lane** & **release** (giữ scaffold chuẩn từ template); sửa nhãn nhánh edge; undo/redo;
-backend + DB; đồng bộ realtime qua WebSocket; webhook GitHub/GitLab cho cảnh báo lỗi thời;
-đa người dùng thật & chia sẻ org online; comment threads. Kiến trúc đã chừa khe cắm sạch
-(store tách bạch data/ui, action editing tập trung, project sở hữu data).
+## 5c. Agent-operable board over MCP + realtime sync
+- **Node server** (`server/`, port 8787): owns the board (`server/data/board.json`), serves the web
+  client (`GET /api/state`, `POST /api/command`, `WS /ws`) and an **MCP Streamable-HTTP** endpoint
+  (`POST /mcp`). Run with `npm run server`.
+- **One command reducer** (`src/shared/board.ts`, `applyCommand`) is shared by the client store, the
+  server, and the MCP tools → human edits and agent edits are identical; every change broadcasts
+  over WS so humans watch agent actions live. Header shows **Live · synced** / **Local**.
+- **Client sync** (`src/store/sync.ts`): hydrates from the server, applies WS state, pushes commands;
+  falls back to localStorage when no server (the app still runs standalone).
+- **MCP tools**: read/memory (`get_board`, `list_projects`, `search`) + full CRUD
+  (modules/features/swim nodes+edges) + `create_snapshot`, `append_note`. The board doubles as
+  inspectable agent memory/context. See `docs/MCP.md` to connect an agent.
+
+## 6. Ngoài phạm vi (v.next)
+CRUD cho **lane** & **release**; sửa nhãn nhánh edge; undo/redo; DB thật (thay JSON file);
+auth + đa người dùng & access control; conflict resolution nâng cao (OT/CRDT) thay cho
+last-write + full-state echo; MCP stdio transport; webhook GitHub/GitLab cho cảnh báo lỗi thời;
+comment threads; cloud hosting. Kiến trúc (một reducer, command stream, server-authoritative)
+đã chừa khe cắm sạch cho các phần này.
 
 ## 7. Đồng bộ với concept docs
 - **Màu brand**: ✅ đã đồng bộ. Hai file concept (`Kinetrak_Blueprint.html`,

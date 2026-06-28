@@ -14,13 +14,11 @@ import type {
   ViewId,
   WorkspaceData,
 } from './types'
-import { cloneData, sampleTemplate, blankTemplate, templateData } from './seed'
+import { cloneData, sampleTemplate, blankTemplate } from './seed'
 import { makeId, nextNodeCode } from './ids'
+import { applyCommand, type Command, type Root } from '@/shared/board'
 
 const PERSIST_VERSION = 2
-
-const MODULE_PALETTE = ['#2f6fed', '#0d9488', '#7c5cff', '#f59e0b', '#16a34a', '#e5484d', '#6e8bff']
-
 const EMPTY_DATA: WorkspaceData = blankTemplate()
 
 const nowISO = () => new Date().toISOString()
@@ -43,6 +41,14 @@ function makeDefaultRoot() {
   return { orgs: [org], projects: [proj], activeProjectId: proj.id as string | null }
 }
 
+// Sync seam — Phase 3 (client sync layer) installs a real pusher; no-op in local mode.
+let pushCommand: (cmd: Command) => void = () => {}
+export function setCommandPusher(fn: (cmd: Command) => void) {
+  pushCommand = fn
+}
+
+export type SyncStatus = 'local' | 'connecting' | 'live'
+
 interface WorkspaceState {
   orgs: Org[]
   projects: Project[]
@@ -58,6 +64,7 @@ interface WorkspaceState {
   roleFilter: Role | null
   alertsOpen: boolean
   snapMenuOpen: boolean
+  syncStatus: SyncStatus
 
   // Derived
   activeProject: () => Project | undefined
@@ -76,6 +83,15 @@ interface WorkspaceState {
   toggleAlerts: (open?: boolean) => void
   toggleSnapMenu: (open?: boolean) => void
 
+  // Snapshots
+  setSnapshot: (id: string | null) => void
+  createSnapshot: (name: string) => void
+  deleteSnapshot: (id: string) => void
+
+  // Sync (used by the client sync layer)
+  setSyncStatus: (s: SyncStatus) => void
+  applyServerRoot: (root: Root) => void
+
   // Org / project
   createOrg: (name: string) => string
   renameOrg: (id: string, name: string) => void
@@ -87,12 +103,7 @@ interface WorkspaceState {
   importProjectData: (json: string) => string | null
   resetAll: () => void
 
-  // Snapshots (active project)
-  createSnapshot: (name: string) => void
-  deleteSnapshot: (id: string) => void
-  setSnapshot: (id: string | null) => void
-
-  // Entity CRUD (active project live data; no-op while read-only)
+  // Entity CRUD
   addModule: () => void
   updateModule: (id: string, patch: Partial<Module>) => void
   deleteModule: (id: string) => void
@@ -106,7 +117,7 @@ interface WorkspaceState {
   addSwimEdge: (from: string, to: string) => void
   deleteSwimEdge: (from: string, to: string) => void
 
-  // Convenience wrappers (status editors)
+  // Convenience wrappers
   setFeatureStatus: (id: string, status: FeatureStatus) => void
   setSwimStatus: (id: string, status: NodeStatus) => void
   moveFeatureToRelease: (id: string, releaseId: string) => void
@@ -115,21 +126,18 @@ interface WorkspaceState {
 export const useWorkspace = create<WorkspaceState>()(
   persist(
     (set, get) => {
-      /** Apply an immutable transform to the active project's live data (no-op if read-only). */
-      const patchData = (fn: (d: WorkspaceData) => WorkspaceData) => {
-        if (get().isReadOnly()) return
-        const pid = get().activeProjectId
-        if (!pid) return
-        set((s) => ({ projects: s.projects.map((p) => (p.id === pid ? { ...p, data: fn(p.data) } : p)) }))
+      /** Apply a command locally (optimistic) and push it to the server when synced. */
+      const dispatch = (cmd: Command) => {
+        set((s) => applyCommand({ orgs: s.orgs, projects: s.projects }, cmd))
+        pushCommand(cmd)
       }
+      const editable = () => !get().isReadOnly() && !!get().activeProjectId
+      const pid = () => get().activeProjectId as string
       const clearSelIf = (id: string) => {
         const sel = get().selected
         if (sel && sel.id === id) set({ selected: null })
       }
-      const editView = (): ViewId => {
-        const v = get().activeView
-        return v === 'story' ? 'story' : 'mindmap'
-      }
+      const editView = (): ViewId => (get().activeView === 'story' ? 'story' : 'mindmap')
 
       return {
         ...makeDefaultRoot(),
@@ -142,6 +150,7 @@ export const useWorkspace = create<WorkspaceState>()(
         roleFilter: null,
         alertsOpen: false,
         snapMenuOpen: false,
+        syncStatus: 'local',
 
         activeProject: () => get().projects.find((p) => p.id === get().activeProjectId),
         currentData: () => {
@@ -154,8 +163,7 @@ export const useWorkspace = create<WorkspaceState>()(
         isReadOnly: () => get().activeSnapshotId !== null,
 
         goHome: () => set({ screen: 'home', present: false, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
-        openProject: (id) =>
-          set({ screen: 'workspace', activeProjectId: id, activeSnapshotId: null, selected: null, hoveredId: null }),
+        openProject: (id) => set({ screen: 'workspace', activeProjectId: id, activeSnapshotId: null, selected: null, hoveredId: null }),
         setPresent: (v) => set({ present: v, alertsOpen: false, snapMenuOpen: false, selected: null }),
         setView: (v) => set({ activeView: v, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
         select: (sel) => set({ selected: sel }),
@@ -165,57 +173,44 @@ export const useWorkspace = create<WorkspaceState>()(
         toggleAlerts: (open) => set((s) => ({ alertsOpen: open ?? !s.alertsOpen, snapMenuOpen: false })),
         toggleSnapMenu: (open) => set((s) => ({ snapMenuOpen: open ?? !s.snapMenuOpen, alertsOpen: false })),
 
+        setSyncStatus: (s) => set({ syncStatus: s }),
+        applyServerRoot: (root) =>
+          set((s) => {
+            const activeProjectId = root.projects.some((p) => p.id === s.activeProjectId)
+              ? s.activeProjectId
+              : root.projects[0]?.id ?? null
+            return { orgs: root.orgs, projects: root.projects, activeProjectId }
+          }),
+
         // ── Org / project ──────────────────────────────────────────────────
         createOrg: (name) => {
           const id = makeId('org')
-          set((s) => ({ orgs: [...s.orgs, { id, name: name.trim() || 'New org' }] }))
+          dispatch({ type: 'createOrg', id, name })
           return id
         },
-        renameOrg: (id, name) => set((s) => ({ orgs: s.orgs.map((o) => (o.id === id ? { ...o, name } : o)) })),
-        deleteOrg: (id) =>
-          set((s) => {
-            const projects = s.projects.filter((p) => p.orgId !== id)
-            const orgs = s.orgs.filter((o) => o.id !== id)
-            const stillActive = projects.some((p) => p.id === s.activeProjectId)
-            return {
-              orgs,
-              projects,
-              activeProjectId: stillActive ? s.activeProjectId : projects[0]?.id ?? null,
-              activeSnapshotId: null,
-              selected: null,
-            }
-          }),
+        renameOrg: (id, name) => dispatch({ type: 'renameOrg', id, name }),
+        deleteOrg: (id) => {
+          dispatch({ type: 'deleteOrg', id })
+          const left = get().projects
+          if (!left.some((p) => p.id === get().activeProjectId))
+            set({ activeProjectId: left[0]?.id ?? null, activeSnapshotId: null, selected: null })
+        },
         createProject: (orgId, name, template) => {
           const id = makeId('p')
-          const proj: Project = {
-            id,
-            orgId,
-            name: name.trim() || 'New project',
-            createdAt: nowISO(),
-            data: templateData(template),
-            snapshots: [],
-          }
-          set((s) => ({
-            projects: [...s.projects, proj],
-            activeProjectId: id,
-            screen: 'workspace',
-            activeSnapshotId: null,
-            selected: null,
-            hoveredId: null,
-            snapMenuOpen: false,
-          }))
+          dispatch({ type: 'createProject', id, orgId, name, template, createdAt: nowISO() })
+          set({ activeProjectId: id, screen: 'workspace', activeSnapshotId: null, selected: null, hoveredId: null, snapMenuOpen: false })
           return id
         },
-        renameProject: (id, name) =>
-          set((s) => ({ projects: s.projects.map((p) => (p.id === id ? { ...p, name } : p)) })),
-        deleteProject: (id) =>
-          set((s) => {
-            const projects = s.projects.filter((p) => p.id !== id)
-            const active = s.activeProjectId === id ? projects[0]?.id ?? null : s.activeProjectId
-            return { projects, activeProjectId: active, activeSnapshotId: null, selected: null, hoveredId: null }
-          }),
-        switchProject: (id) =>
-          set({ activeProjectId: id, activeSnapshotId: null, selected: null, hoveredId: null, snapMenuOpen: false }),
+        renameProject: (id, name) => dispatch({ type: 'renameProject', id, name }),
+        deleteProject: (id) => {
+          const wasActive = get().activeProjectId === id
+          dispatch({ type: 'deleteProject', id })
+          if (wasActive) {
+            const left = get().projects
+            set({ activeProjectId: left[0]?.id ?? null, activeSnapshotId: null, selected: null, hoveredId: null })
+          }
+        },
+        switchProject: (id) => set({ activeProjectId: id, activeSnapshotId: null, selected: null, hoveredId: null, snapMenuOpen: false }),
         importProjectData: (json) => {
           try {
             const parsed = JSON.parse(json)
@@ -223,15 +218,16 @@ export const useWorkspace = create<WorkspaceState>()(
             if (!data || !Array.isArray(data.modules) || !Array.isArray(data.lanes)) return null
             const orgId = get().orgs[0]?.id ?? get().createOrg('My workspace')
             const id = makeId('p')
-            const proj: Project = {
+            dispatch({
+              type: 'importProject',
               id,
               orgId,
               name: (typeof parsed?.name === 'string' && parsed.name) || 'Imported project',
               createdAt: nowISO(),
-              data: cloneData(data),
+              data,
               snapshots: Array.isArray(parsed?.snapshots) ? parsed.snapshots : [],
-            }
-            set((s) => ({ projects: [...s.projects, proj], activeProjectId: id, screen: 'workspace', activeSnapshotId: null, selected: null }))
+            })
+            set({ activeProjectId: id, screen: 'workspace', activeSnapshotId: null, selected: null })
             return id
           } catch {
             return null
@@ -240,107 +236,85 @@ export const useWorkspace = create<WorkspaceState>()(
         resetAll: () =>
           set({ ...makeDefaultRoot(), screen: 'home', present: false, activeSnapshotId: null, selected: null, hoveredId: null, roleFilter: null }),
 
-        // ── Snapshots ──────────────────────────────────────────────────────
-        createSnapshot: (name) => {
-          const p = get().activeProject()
-          if (!p) return
-          const snap = {
-            id: makeId('snap'),
-            name: name.trim() || 'Snapshot',
-            date: dateLabel(),
-            tag: 'SNAP',
-            tagColor: '#2f6fed',
-            tagBg: '#e9f1ff',
-            dot: '#2f6fed',
-            data: cloneData(p.data),
-          }
-          set((s) => ({
-            projects: s.projects.map((x) => (x.id === p.id ? { ...x, snapshots: [snap, ...x.snapshots] } : x)),
-            snapMenuOpen: false,
-          }))
-        },
-        deleteSnapshot: (id) => {
-          const pid = get().activeProjectId
-          set((s) => ({
-            projects: s.projects.map((x) => (x.id === pid ? { ...x, snapshots: x.snapshots.filter((sn) => sn.id !== id) } : x)),
-            activeSnapshotId: s.activeSnapshotId === id ? null : s.activeSnapshotId,
-          }))
-        },
-        setSnapshot: (id) => set({ activeSnapshotId: id, snapMenuOpen: false, selected: null, hoveredId: null }),
-
         // ── Entity CRUD ────────────────────────────────────────────────────
         addModule: () => {
-          if (get().isReadOnly() || !get().activeProjectId) return
+          if (!editable()) return
           const id = makeId('m')
-          const color = MODULE_PALETTE[get().currentData().modules.length % MODULE_PALETTE.length]
-          patchData((d) => ({
-            ...d,
-            modules: [...d.modules, { id, name: 'New module', color, backbone: { name: 'New step', sub: '' }, owners: [] }],
-          }))
+          dispatch({ type: 'addModule', projectId: pid(), id })
           set({ selected: { type: 'module', id, view: 'mindmap' } })
         },
-        updateModule: (id, patch) =>
-          patchData((d) => ({ ...d, modules: d.modules.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
+        updateModule: (id, patch) => {
+          if (!editable()) return
+          dispatch({ type: 'updateModule', projectId: pid(), id, patch })
+        },
         deleteModule: (id) => {
-          patchData((d) => ({
-            ...d,
-            modules: d.modules.filter((m) => m.id !== id),
-            features: d.features.filter((f) => f.moduleId !== id),
-          }))
+          if (!editable()) return
+          dispatch({ type: 'deleteModule', projectId: pid(), id })
           clearSelIf(id)
         },
         addFeature: (moduleId, releaseId) => {
-          if (get().isReadOnly() || !get().activeProjectId) return
+          if (!editable()) return
           const id = makeId('f')
-          patchData((d) => ({
-            ...d,
-            features: [...d.features, { id, moduleId, releaseId, name: 'New feature', status: 'progress' }],
-          }))
+          dispatch({ type: 'addFeature', projectId: pid(), id, moduleId, releaseId })
           set({ selected: { type: 'feature', id, view: editView() } })
         },
-        updateFeature: (id, patch) =>
-          patchData((d) => ({ ...d, features: d.features.map((f) => (f.id === id ? { ...f, ...patch } : f)) })),
+        updateFeature: (id, patch) => {
+          if (!editable()) return
+          dispatch({ type: 'updateFeature', projectId: pid(), id, patch })
+        },
         deleteFeature: (id) => {
-          patchData((d) => ({ ...d, features: d.features.filter((f) => f.id !== id) }))
+          if (!editable()) return
+          dispatch({ type: 'deleteFeature', projectId: pid(), id })
           clearSelIf(id)
         },
         addSwimNode: (lane) => {
-          if (get().isReadOnly() || !get().activeProjectId) return
+          if (!editable()) return
+          const d = get().currentData()
+          const code = nextNodeCode(d.swimNodes.map((n) => n.code))
+          const laneObj = d.lanes.find((l) => l.id === lane)
+          const count = d.swimNodes.filter((n) => n.lane === lane).length
+          const x = 220 + count * 210
+          const y = laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80
           const id = makeId('n')
-          const d0 = get().currentData()
-          const code = nextNodeCode(d0.swimNodes.map((n) => n.code))
-          const laneObj = d0.lanes.find((l) => l.id === lane)
-          const countInLane = d0.swimNodes.filter((n) => n.lane === lane).length
-          const x = 220 + countInLane * 210
-          const y = (laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80)
-          patchData((d) => ({
-            ...d,
-            swimNodes: [...d.swimNodes, { id, code, label: 'New step', lane, kind: 'process', status: 'todo', x, y }],
-          }))
+          dispatch({ type: 'addSwimNode', projectId: pid(), id, code, lane, x, y })
           set({ selected: { type: 'swimnode', id, view: 'swimlane' } })
         },
-        updateSwimNode: (id, patch) =>
-          patchData((d) => ({ ...d, swimNodes: d.swimNodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) })),
-        updateSwimNodePos: (id, x, y) =>
-          patchData((d) => ({ ...d, swimNodes: d.swimNodes.map((n) => (n.id === id ? { ...n, x, y } : n)) })),
+        updateSwimNode: (id, patch) => {
+          if (!editable()) return
+          dispatch({ type: 'updateSwimNode', projectId: pid(), id, patch })
+        },
+        updateSwimNodePos: (id, x, y) => {
+          if (!editable()) return
+          dispatch({ type: 'updateSwimNodePos', projectId: pid(), id, x, y })
+        },
         deleteSwimNode: (id) => {
-          patchData((d) => ({
-            ...d,
-            swimNodes: d.swimNodes.filter((n) => n.id !== id),
-            swimEdges: d.swimEdges.filter((e) => e.from !== id && e.to !== id),
-          }))
+          if (!editable()) return
+          dispatch({ type: 'deleteSwimNode', projectId: pid(), id })
           clearSelIf(id)
         },
         addSwimEdge: (from, to) => {
-          if (from === to) return
-          patchData((d) =>
-            d.swimEdges.some((e) => e.from === from && e.to === to)
-              ? d
-              : { ...d, swimEdges: [...d.swimEdges, { from, to }] },
-          )
+          if (!editable()) return
+          dispatch({ type: 'addSwimEdge', projectId: pid(), from, to })
         },
-        deleteSwimEdge: (from, to) =>
-          patchData((d) => ({ ...d, swimEdges: d.swimEdges.filter((e) => !(e.from === from && e.to === to)) })),
+        deleteSwimEdge: (from, to) => {
+          if (!editable()) return
+          dispatch({ type: 'deleteSwimEdge', projectId: pid(), from, to })
+        },
+
+        // ── Snapshots ──────────────────────────────────────────────────────
+        setSnapshot: (id) => set({ activeSnapshotId: id, snapMenuOpen: false, selected: null, hoveredId: null }),
+        createSnapshot: (name) => {
+          const p = get().activeProjectId
+          if (!p) return
+          dispatch({ type: 'createSnapshot', projectId: p, id: makeId('snap'), name, date: dateLabel() })
+          set({ snapMenuOpen: false })
+        },
+        deleteSnapshot: (id) => {
+          const p = get().activeProjectId
+          if (!p) return
+          dispatch({ type: 'deleteSnapshot', projectId: p, id })
+          if (get().activeSnapshotId === id) set({ activeSnapshotId: null })
+        },
 
         // ── Convenience wrappers ───────────────────────────────────────────
         setFeatureStatus: (id, status) => get().updateFeature(id, { status }),
@@ -361,12 +335,12 @@ export const useWorkspace = create<WorkspaceState>()(
         activeView: s.activeView,
         roleFilter: s.roleFilter,
       }),
-      // v0/v1 stored a single seed + id-keyed overrides. Convert to one org + one project,
-      // applying old status/release edits best-effort so nothing visible is lost.
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Record<string, unknown>
         const root = makeDefaultRoot()
-        const ov = p.overrides as { featureStatus?: Record<string, FeatureStatus>; featureRelease?: Record<string, string>; swimStatus?: Record<string, NodeStatus> } | undefined
+        const ov = p.overrides as
+          | { featureStatus?: Record<string, FeatureStatus>; featureRelease?: Record<string, string>; swimStatus?: Record<string, NodeStatus> }
+          | undefined
         if (ov) {
           const proj = root.projects[0]
           proj.data.features = proj.data.features.map((f) => ({
@@ -376,22 +350,15 @@ export const useWorkspace = create<WorkspaceState>()(
           }))
           proj.data.swimNodes = proj.data.swimNodes.map((n) => (ov.swimStatus?.[n.id] ? { ...n, status: ov.swimStatus[n.id] } : n))
         }
-        return {
-          ...root,
-          screen: 'home' as const,
-          activeView: (p.activeView as ViewId) ?? 'swimlane',
-          roleFilter: (p.roleFilter as Role) ?? null,
-        }
+        return { ...root, screen: 'home' as const, activeView: (p.activeView as ViewId) ?? 'swimlane', roleFilter: (p.roleFilter as Role) ?? null }
       },
-      // Guard against empty / corrupt persisted state.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<WorkspaceState>
         if (!Array.isArray(p.projects) || p.projects.length === 0) {
           return { ...current, ...makeDefaultRoot(), activeView: p.activeView ?? current.activeView, roleFilter: p.roleFilter ?? null }
         }
-        return { ...current, ...p, screen: p.screen ?? 'home', activeSnapshotId: null, selected: null, hoveredId: null }
+        return { ...current, ...p, screen: p.screen ?? 'home', present: false, syncStatus: 'local', activeSnapshotId: null, selected: null, hoveredId: null }
       },
     },
   ),
 )
-
