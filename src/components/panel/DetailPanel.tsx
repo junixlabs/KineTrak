@@ -1,7 +1,7 @@
 import { X, Link2, ChevronRight, Trash2 } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor, hexA } from '@/theme/tokens'
-import { FieldLabel, TextField, TextArea, SelectField, ListEditor, RoleChips } from './fields'
+import { FieldLabel, TextField, TextArea, SelectField, ListEditor, ChecklistEditor, RoleChips } from './fields'
 import type { CrossLink, FeatureStatus, NodeKind, NodeStatus, Selection } from '@/store/types'
 
 const NODE_STATUS: { key: NodeStatus; label: string }[] = [
@@ -214,8 +214,17 @@ function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: strin
         <ListEditor items={f.constraints ?? []} readOnly={readOnly} mono onChange={(next) => updateFeature(id, { constraints: next })} placeholder="Add constraint" />
       </div>
       <div className="mt-4">
-        <FieldLabel>VALIDATION RULES</FieldLabel>
-        <ListEditor items={f.validations ?? []} readOnly={readOnly} onChange={(next) => updateFeature(id, { validations: next })} placeholder="Add rule" />
+        <FieldLabel>VALIDATION CHECKLIST</FieldLabel>
+        <ChecklistEditor
+          items={f.validations ?? []}
+          done={f.validationsDone ?? []}
+          readOnly={readOnly}
+          onChangeItems={(next) => updateFeature(id, { validations: next })}
+          onToggle={(text, checked) => {
+            const cur = f.validationsDone ?? []
+            updateFeature(id, { validationsDone: checked ? [...new Set([...cur, text])] : cur.filter((t) => t !== text) })
+          }}
+        />
       </div>
 
       <CrossLinks links={f.crossLinks ?? []} onGo={goLink} />
@@ -318,8 +327,17 @@ function SwimEditor({ id, readOnly, goLink }: { id: string; readOnly: boolean; g
         <ListEditor items={n.constraints ?? []} readOnly={readOnly} mono onChange={(next) => updateSwimNode(id, { constraints: next })} placeholder="Add constraint" />
       </div>
       <div className="mt-4">
-        <FieldLabel>VALIDATION RULES</FieldLabel>
-        <ListEditor items={n.validations ?? []} readOnly={readOnly} onChange={(next) => updateSwimNode(id, { validations: next })} placeholder="Add rule" />
+        <FieldLabel>VALIDATION CHECKLIST</FieldLabel>
+        <ChecklistEditor
+          items={n.validations ?? []}
+          done={n.validationsDone ?? []}
+          readOnly={readOnly}
+          onChangeItems={(next) => updateSwimNode(id, { validations: next })}
+          onToggle={(text, checked) => {
+            const cur = n.validationsDone ?? []
+            updateSwimNode(id, { validationsDone: checked ? [...new Set([...cur, text])] : cur.filter((t) => t !== text) })
+          }}
+        />
       </div>
 
       <CrossLinks links={n.crossLinks ?? []} onGo={goLink} />

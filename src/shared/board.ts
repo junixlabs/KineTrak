@@ -105,7 +105,8 @@ export function applyCommand(root: Root, cmd: Command): Root {
             id: cmd.id,
             name: cmd.name ?? 'New module',
             color: cmd.color ?? MODULE_PALETTE[d.modules.length % MODULE_PALETTE.length],
-            backbone: { name: 'New step', sub: '' },
+            // Default the Story Map column to the module's name (not a generic "New step").
+            backbone: { name: cmd.name?.trim() || 'New module', sub: '' },
             owners: [],
           },
         ],

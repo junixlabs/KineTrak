@@ -35,6 +35,8 @@ export interface Feature {
   desc?: string
   constraints?: string[]
   validations?: string[]
+  /** Subset of `validations` checked off (matched by text) — the tester checklist. */
+  validationsDone?: string[]
   crossLinks?: CrossLink[]
 }
 
@@ -77,6 +79,8 @@ export interface SwimNode {
   ownerColor?: string
   constraints?: string[]
   validations?: string[]
+  /** Subset of `validations` checked off (matched by text) — the tester checklist. */
+  validationsDone?: string[]
   crossLinks?: CrossLink[]
 }
 

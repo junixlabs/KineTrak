@@ -1,5 +1,6 @@
 import { useDraggable } from '@dnd-kit/core'
-import { featureStatusMeta } from '@/theme/tokens'
+import { featureStatusMeta, featureStatusOrder } from '@/theme/tokens'
+import { useWorkspace } from '@/store/useWorkspace'
 import type { Feature } from '@/store/types'
 
 interface StoryCardProps {
@@ -12,7 +13,16 @@ interface StoryCardProps {
 
 export default function StoryCard({ feature, selected, dim, disabled, onClick }: StoryCardProps) {
   const meta = featureStatusMeta[feature.status]
+  const setFeatureStatus = useWorkspace((s) => s.setFeatureStatus)
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: feature.id, disabled })
+
+  // One click on the status pill cycles status — the Dev/Tester daily loop, no panel needed.
+  const cycleStatus = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (disabled) return
+    const i = featureStatusOrder.indexOf(feature.status)
+    setFeatureStatus(feature.id, featureStatusOrder[(i + 1) % featureStatusOrder.length])
+  }
 
   return (
     <div
@@ -35,12 +45,16 @@ export default function StoryCard({ feature, selected, dim, disabled, onClick }:
         <span className="mt-1 h-2 w-2 flex-none rounded-full" style={{ background: meta.color }} />
         <span className="flex-1 text-[12.5px] font-bold leading-[1.25] text-ink">{feature.name}</span>
       </div>
-      <span
-        className="self-start rounded-full px-2 py-0.5 text-[10px] font-bold"
+      <button
+        onClick={cycleStatus}
+        onPointerDown={(e) => e.stopPropagation()}
+        disabled={disabled}
+        title={disabled ? meta.label : 'Click to change status'}
+        className="self-start rounded-full px-2 py-0.5 text-[10px] font-bold transition-transform enabled:hover:scale-[1.06] enabled:cursor-pointer disabled:cursor-default"
         style={{ color: meta.color, background: meta.bg }}
       >
         {meta.label}
-      </span>
+      </button>
     </div>
   )
 }

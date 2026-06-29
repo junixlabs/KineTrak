@@ -1,4 +1,4 @@
-import { Plus, X } from 'lucide-react'
+import { Plus, X, Check } from 'lucide-react'
 import type { Role } from '@/store/types'
 
 const ALL_ROLES: Role[] = ['PM', 'PO', 'BA', 'Dev', 'Tester']
@@ -124,6 +124,73 @@ export function ListEditor({
       {!readOnly && (
         <button onClick={add} className="flex w-fit items-center gap-1 rounded-md px-1.5 py-1 text-[11.5px] font-semibold text-brand hover:bg-[#eef1ff]">
           <Plus size={12} strokeWidth={2.5} /> {placeholder ?? 'Add line'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Validation rules as a tickable checklist (criteria + per-item done state). */
+export function ChecklistEditor({
+  items,
+  done,
+  onChangeItems,
+  onToggle,
+  placeholder,
+  readOnly,
+}: {
+  items: string[]
+  done: string[]
+  onChangeItems: (next: string[]) => void
+  onToggle: (text: string, checked: boolean) => void
+  placeholder?: string
+  readOnly?: boolean
+}) {
+  const doneSet = new Set(done)
+  const set = (i: number, v: string) => onChangeItems(items.map((x, j) => (j === i ? v : x)))
+  const remove = (i: number) => onChangeItems(items.filter((_, j) => j !== i))
+  const add = () => onChangeItems([...items, ''])
+  const checkedCount = items.filter((x) => doneSet.has(x)).length
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {items.length > 0 && (
+        <div className="text-[11px] font-semibold text-faint">
+          {checkedCount}/{items.length} passed
+        </div>
+      )}
+      {items.map((it, i) => {
+        const checked = doneSet.has(it)
+        return (
+          <div key={i} className="flex items-start gap-1.5">
+            <button
+              onClick={() => it.trim() && onToggle(it, !checked)}
+              disabled={readOnly || !it.trim()}
+              title={checked ? 'Passed' : 'Mark passed'}
+              className="mt-1 flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[5px] border transition-colors disabled:cursor-default"
+              style={{ borderColor: checked ? '#16a34a' : '#cdd5e0', background: checked ? '#16a34a' : '#fff' }}
+            >
+              {checked && <Check size={12} className="text-white" strokeWidth={3} />}
+            </button>
+            <input
+              value={it}
+              readOnly={readOnly}
+              onChange={(e) => set(i, e.target.value)}
+              className={`flex-1 rounded-md border border-line bg-white px-2 py-1.5 text-[12px] leading-[1.4] outline-none read-only:border-transparent read-only:bg-transparent focus:border-brand ${
+                checked ? 'text-faint line-through' : 'text-[#3a4048]'
+              }`}
+            />
+            {!readOnly && (
+              <button onClick={() => remove(i)} className="mt-1 flex h-6 w-6 flex-none items-center justify-center rounded-md text-faint hover:bg-[#fdecec] hover:text-[#e5484d]">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        )
+      })}
+      {!readOnly && (
+        <button onClick={add} className="flex w-fit items-center gap-1 rounded-md px-1.5 py-1 text-[11.5px] font-semibold text-brand hover:bg-[#eef1ff]">
+          <Plus size={12} strokeWidth={2.5} /> {placeholder ?? 'Add rule'}
         </button>
       )}
     </div>
