@@ -1,113 +1,153 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { applyCommand, type Command, type Root } from '../src/shared/board'
+import type { Org, Project, ProjectHeader } from '../src/store/types'
 import { recordChange, type Actor } from './activity'
-import { isPgEnabled } from './infra/db'
-import { orgRepo, projectRepo } from './infra/repositories'
+import { getStore, type Catalog } from './infra/store'
+import { ProjectRegistry } from './runtime/ProjectRegistry'
 import { revokeOrgKeys } from './keys'
 import { pruneShares } from './shares'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = join(HERE, 'data')
-const FILE = join(DATA_DIR, 'board.json')
+// ── Orchestrator (Phase 2: on-demand per-project) ────────────────────────────
+// The catalog (orgs + project headers) stays resident for cheap listing/scoping;
+// each project's heavy board loads on demand through the registry and is evicted
+// when idle. Board commands go through the project aggregate (serialized writes);
+// catalog commands (org/project lifecycle) mutate the resident catalog + store.
 
-// Accounts own all data, so the board starts empty — each user seeds their own
-// org + sample project on sign-up (see server/index.ts).
-function defaultRoot(): Root {
-  return { orgs: [], projects: [] }
-}
+const store = getStore()
+const registry = new ProjectRegistry(store)
 
-function load(): Root {
-  if (existsSync(FILE)) {
-    try {
-      const parsed = JSON.parse(readFileSync(FILE, 'utf8'))
-      if (Array.isArray(parsed?.orgs) && Array.isArray(parsed?.projects)) return parsed
-    } catch {
-      /* fall through to default */
-    }
-  }
-  return defaultRoot()
-}
+let catalog: Catalog = { orgs: [], headers: [] }
+const listeners = new Set<() => void>()
 
-let root: Root = isPgEnabled() ? defaultRoot() : load()
-const listeners = new Set<(r: Root) => void>()
-let saveTimer: ReturnType<typeof setTimeout> | null = null
+const header = (p: Project): ProjectHeader => ({ id: p.id, orgId: p.orgId, name: p.name, createdAt: p.createdAt })
 
-/** Warm the whole board into RAM from Postgres (Pg mode only). Called at boot.
- *  Phase 1 keeps the whole root resident; Phase 2 switches to per-project loading. */
+/** Load the resident catalog from the store. Called once at boot (both modes). */
 export async function hydrateState(): Promise<void> {
-  if (!isPgEnabled()) return
-  const [orgs, projects] = await Promise.all([orgRepo.all(), projectRepo.all()])
-  root = { orgs, projects }
+  catalog = await store.loadCatalog()
 }
 
-function persistFile() {
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    mkdirSync(DATA_DIR, { recursive: true })
-    writeFileSync(FILE, JSON.stringify(root, null, 2))
-  }, 150)
+export function getCatalog(): Catalog {
+  return catalog
 }
 
-const projectOf = (cmd: Command): string | undefined => {
-  if ('projectId' in cmd && cmd.projectId) return cmd.projectId
-  if (cmd.type === 'createProject' || cmd.type === 'importProject') return cmd.id
-  return undefined
+/** The live board for a project, loaded on demand. null if it doesn't exist. */
+export async function getProject(id: string): Promise<Project | null> {
+  const lp = await registry.acquire(id)
+  return lp?.project ?? null
 }
 
-/** Write the command's effect to Postgres, mapping each command to the minimal
- *  repo op. FK cascade handles dependent rows on org/project deletion. */
-async function persistPg(cmd: Command, after: Root): Promise<void> {
-  switch (cmd.type) {
-    case 'createOrg': {
-      const org = after.orgs.find((o) => o.id === cmd.id)
-      if (org) await orgRepo.insert(org)
-      return
-    }
-    case 'renameOrg':
-      await orgRepo.rename(cmd.id, after.orgs.find((o) => o.id === cmd.id)?.name ?? cmd.name)
-      return
-    case 'deleteOrg':
-      await orgRepo.delete(cmd.id)
-      revokeOrgKeys(cmd.id) // RAM cache (DB rows already cascaded)
-      pruneShares(new Set(after.projects.map((p) => p.id)))
-      return
-    case 'renameProject':
-      await projectRepo.rename(cmd.id, after.projects.find((p) => p.id === cmd.id)?.name ?? cmd.name)
-      return
-    case 'deleteProject':
-      await projectRepo.delete(cmd.id)
-      pruneShares(new Set(after.projects.map((p) => p.id)))
-      return
-    default: {
-      // createProject / importProject + every board mutation → save the project.
-      const pid = projectOf(cmd)
-      const p = pid ? after.projects.find((x) => x.id === pid) : undefined
-      if (p) await projectRepo.save(p)
-    }
-  }
+export function projectHeader(id: string): ProjectHeader | undefined {
+  return catalog.headers.find((h) => h.id === id)
 }
 
-export function getRoot(): Root {
-  return root
+export function projectOrgId(id: string): string | undefined {
+  return catalog.headers.find((h) => h.id === id)?.orgId
 }
+
+export function residentProjectCount(): number {
+  return registry.residentCount()
+}
+
+// ── Scoped views ──────────────────────────────────────────────────────────────
+
+/** Catalog scoped to a user's owned orgs (sync — headers only). */
+export function scopeCatalogForUser(userId: string): Catalog {
+  const orgs = catalog.orgs.filter((o) => o.ownerId === userId)
+  const own = new Set(orgs.map((o) => o.id))
+  return { orgs, headers: catalog.headers.filter((h) => own.has(h.orgId)) }
+}
+
+/** Full board for a user (loads each owned project on demand). Bridge for the
+ *  current whole-root web client + WS; Phase 3 replaces this with per-project rooms. */
+export async function scopedRootForUser(userId: string): Promise<Root> {
+  const { orgs, headers } = scopeCatalogForUser(userId)
+  const projects = (await Promise.all(headers.map((h) => getProject(h.id)))).filter((p): p is Project => !!p)
+  return { orgs, projects }
+}
+
+/** A single project's board, scoped to a share view ({orgs:[], projects:[p]}). */
+export async function projectRoot(projectId: string): Promise<Root | null> {
+  const p = await getProject(projectId)
+  return p ? { orgs: [], projects: [p] } : null
+}
+
+// ── Mutations ──────────────────────────────────────────────────────────────────
+
+const CATALOG_CMDS = new Set(['createOrg', 'renameOrg', 'deleteOrg', 'createProject', 'importProject', 'renameProject', 'deleteProject'])
 
 /**
- * Apply a command, persist it durably, log the change (when an actor is given),
- * and notify listeners. Async so the durable write is awaited before the caller
- * responds (no lost writes on crash); file mode keeps its debounced write.
+ * Apply a command, persist it durably, log the change, and notify listeners.
+ * Board commands flow through the project aggregate; catalog commands mutate the
+ * resident catalog + store.
  */
-export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<Root> {
-  root = applyCommand(root, cmd)
-  if (isPgEnabled()) await persistPg(cmd, root)
-  else persistFile()
-  recordChange(actor, cmd, root)
-  listeners.forEach((l) => l(root))
-  return root
+export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<void> {
+  let affected: Project | undefined
+
+  if (CATALOG_CMDS.has(cmd.type)) {
+    affected = await applyCatalog(cmd)
+  } else {
+    const pid = (cmd as { projectId?: string }).projectId
+    const lp = pid ? await registry.acquire(pid) : null
+    if (!lp) throw new Error('project not found')
+    affected = await lp.apply(cmd)
+  }
+
+  recordChange(actor, cmd, affected)
+  listeners.forEach((l) => l())
 }
 
-export function onChange(fn: (r: Root) => void): () => void {
+async function applyCatalog(cmd: Command): Promise<Project | undefined> {
+  switch (cmd.type) {
+    case 'createOrg': {
+      const org = applyCommand({ orgs: [], projects: [] }, cmd).orgs[0] as Org
+      catalog.orgs.push(org)
+      await store.insertOrg(org)
+      return undefined
+    }
+    case 'renameOrg': {
+      const o = catalog.orgs.find((x) => x.id === cmd.id)
+      if (o) o.name = cmd.name
+      await store.renameOrg(cmd.id, cmd.name)
+      return undefined
+    }
+    case 'deleteOrg': {
+      catalog.orgs = catalog.orgs.filter((o) => o.id !== cmd.id)
+      const gone = catalog.headers.filter((h) => h.orgId === cmd.id)
+      catalog.headers = catalog.headers.filter((h) => h.orgId !== cmd.id)
+      gone.forEach((h) => registry.evict(h.id))
+      await store.deleteOrg(cmd.id) // FK cascade in Pg
+      revokeOrgKeys(cmd.id)
+      pruneShares(new Set(catalog.headers.map((h) => h.id)))
+      return undefined
+    }
+    case 'createProject':
+    case 'importProject': {
+      const project = applyCommand({ orgs: [], projects: [] }, cmd).projects[0]
+      catalog.headers.push(header(project))
+      registry.put(project)
+      await store.saveProject(project)
+      return project
+    }
+    case 'renameProject': {
+      const h = catalog.headers.find((x) => x.id === cmd.id)
+      if (h) h.name = cmd.name
+      const lp = await registry.acquire(cmd.id)
+      if (lp) lp.project = { ...lp.project, name: cmd.name }
+      await store.renameProject(cmd.id, cmd.name)
+      return undefined
+    }
+    case 'deleteProject': {
+      catalog.headers = catalog.headers.filter((h) => h.id !== cmd.id)
+      registry.evict(cmd.id)
+      await store.deleteProject(cmd.id)
+      pruneShares(new Set(catalog.headers.map((h) => h.id)))
+      return undefined
+    }
+    default:
+      return undefined
+  }
+}
+
+export function onChange(fn: () => void): () => void {
   listeners.add(fn)
   return () => listeners.delete(fn)
 }

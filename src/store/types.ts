@@ -153,6 +153,10 @@ export interface Project {
   snapshots: Snapshot[]
 }
 
+/** A project without its heavy board payload — the catalog view used for listing
+ *  and scoping (server keeps these resident; full `data` loads on demand). */
+export type ProjectHeader = Pick<Project, 'id' | 'orgId' | 'name' | 'createdAt'>
+
 export type ProjectTemplate = 'sample' | 'blank'
 
 /** Authenticated account (server mode). Never carries the password hash. */

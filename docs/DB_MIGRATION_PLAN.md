@@ -2,10 +2,14 @@
 
 > Direction **(B)**: PostgreSQL as the durable store + **on-demand per-project loading**
 > (no longer hold the whole `Root` in RAM). Designed with proper layering / DDD patterns.
-> Status: **Phase 0 + Phase 1 complete** (Postgres store behind `DATABASE_URL`, file-JSON fallback
-> intact). Verified: migrations apply, repo round-trip tests pass, register/command/keys/shares/
-> activity persist, MCP works with hashed keys, data survives restart (hydrate), importer is
-> idempotent. Phases 2–5 (on-demand loading, realtime rooms, search projection, cutover) pending.
+> Status: **Phase 0 + 1 complete & cut over to prod Postgres (2026-06-30).** **Phase 2 complete**
+> (on a branch, not yet deployed): on-demand per-project loading via Store port + `LoadedProject`
+> aggregate + `ProjectRegistry` (identity map + TTL eviction). The resident catalog (orgs + project
+> headers) stays in RAM; project boards load on demand and evict when idle. Both Postgres and
+> file-JSON modes run through the same orchestrator. A WS/`/api/state` **bridge** still ships the
+> whole scoped root (assembled on demand) — Phase 3 replaces it with per-project rooms.
+> Verified: 10 unit/repo tests, PG + file e2e, durability across restart, web build.
+> Phases 3–5 (realtime rooms + frontend, search projection, cleanup) pending.
 
 ## 0. Core trade-off (read first)
 

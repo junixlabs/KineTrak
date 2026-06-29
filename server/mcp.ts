@@ -4,10 +4,11 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
-import { applyAndBroadcast as applyRaw, getRoot } from './state'
+import { applyAndBroadcast as applyRaw, getCatalog, getProject } from './state'
 import { bearerFrom, verifyKey, type ApiKey } from './keys'
 import { recordNote, listActivity, type Actor } from './activity'
-import { findProject, searchBoard } from '../src/shared/board'
+import { searchBoard } from '../src/shared/board'
+import type { Project } from '../src/store/types'
 import { makeId, nextNodeCode } from '../src/store/ids'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
@@ -76,16 +77,22 @@ function buildMcpServer(key: ApiKey): McpServer {
   // Every agent mutation is attributed to this key in the activity log.
   const applyAndBroadcast = (cmd: Parameters<typeof applyRaw>[0]) => applyRaw(cmd, actor)
   // Scope every lookup to the key's org — the agent only ever sees that workspace.
-  const orgProjects = () => getRoot().projects.filter((p) => p.orgId === orgId)
-  const proj = (id?: string) => {
-    const p = id ? findProject(getRoot(), id) : orgProjects()[0]
-    return p && p.orgId === orgId ? p : undefined
+  const orgHeaders = () => getCatalog().headers.filter((h) => h.orgId === orgId)
+  const proj = async (id?: string): Promise<Project | undefined> => {
+    const pid = id ?? orgHeaders()[0]?.id
+    if (!pid) return undefined
+    const h = getCatalog().headers.find((x) => x.id === pid)
+    if (!h || h.orgId !== orgId) return undefined // outside this workspace
+    return (await getProject(pid)) ?? undefined
   }
-  const requireProj = (id?: string) => {
-    const p = proj(id)
+  const requireProj = async (id?: string): Promise<Project> => {
+    const p = await proj(id)
     if (!p) throw new Error('project not found in this workspace')
     return p
   }
+  /** Load every project in this org (used by list/search — heavier than a single get). */
+  const orgProjects = async (): Promise<Project[]> =>
+    (await Promise.all(orgHeaders().map((h) => getProject(h.id)))).filter((p): p is Project => !!p)
 
   // ── Read / memory ──────────────────────────────────────────────────────────
   server.registerTool(
@@ -93,7 +100,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'List all KineTrak projects with ids, org, and entity counts.' },
     async () =>
       json(
-        orgProjects().map((p) => ({
+        (await orgProjects()).map((p) => ({
           id: p.id,
           name: p.name,
           orgId: p.orgId,
@@ -109,7 +116,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'get_board',
     { description: 'Read a project board as full structured context (modules, features, lanes, swimlane graph, releases). Use as memory/context.', inputSchema: { projectId: z.string().optional() } },
     async ({ projectId }) => {
-      const p = proj(projectId)
+      const p = await proj(projectId)
       if (!p) return json({ error: 'project not found' })
       return json({ id: p.id, name: p.name, data: p.data, snapshots: p.snapshots.map((s) => ({ id: s.id, name: s.name, date: s.date })) })
     },
@@ -119,9 +126,9 @@ function buildMcpServer(key: ApiKey): McpServer {
     'search',
     { description: 'Search the board (memory recall) across module/feature/step names, descriptions and constraints.', inputSchema: { query: z.string(), projectId: z.string().optional() } },
     async ({ query, projectId }) => {
-      if (projectId && !proj(projectId)) return json({ error: 'project not found in this workspace' })
-      const scoped = { orgs: [], projects: orgProjects() }
-      return json(searchBoard(scoped, query, projectId))
+      if (projectId && !(await proj(projectId))) return json({ error: 'project not found in this workspace' })
+      const projects = projectId ? [await proj(projectId)].filter((p): p is Project => !!p) : await orgProjects()
+      return json(searchBoard({ orgs: [], projects }, query, projectId))
     },
   )
 
@@ -133,7 +140,7 @@ function buildMcpServer(key: ApiKey): McpServer {
       inputSchema: { projectId: z.string().optional(), since: z.number().optional() },
     },
     async ({ projectId, since }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const items = listActivity(p.id, since ?? 0, since === undefined ? 50 : 200)
       const d = p.data
       const entityOf = (id?: string) => {
@@ -163,7 +170,7 @@ function buildMcpServer(key: ApiKey): McpServer {
       inputSchema: { projectId: z.string().optional() },
     },
     async ({ projectId }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const d = p.data
       const issues: { severity: 'error' | 'warning'; kind: string; message: string; ids?: string[] }[] = []
       const moduleIds = new Set(d.modules.map((m) => m.id))
@@ -202,7 +209,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'add_module',
     { description: 'Add a module (also a Story Map column).', inputSchema: { projectId: z.string().optional(), name: z.string().optional(), color: z.string().optional() } },
     async ({ projectId, name, color }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const id = makeId('m')
       await applyAndBroadcast({ type: 'addModule', projectId: p.id, id, name, color })
       return json({ id })
@@ -212,7 +219,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'find_or_create_module',
     { description: 'Idempotent add: return the existing module with this name (case-insensitive) or create it. Safe to call when re-running a task. Returns {id, created}.', inputSchema: { projectId: z.string().optional(), name: z.string(), color: z.string().optional() } },
     async ({ projectId, name, color }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const found = p.data.modules.find((m) => m.name.trim().toLowerCase() === name.trim().toLowerCase())
       if (found) return json({ id: found.id, created: false })
       const id = makeId('m')
@@ -224,7 +231,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'update_module',
     { description: 'Update a module (name, color, owners, backbone column labels, Mindmap side). side pins the Mindmap branch to "left"/"right" of the root; omit/null to auto-balance.', inputSchema: { projectId: z.string().optional(), id: z.string(), name: z.string().optional(), color: z.string().optional(), owners: z.array(z.string()).optional(), backboneName: z.string().optional(), backboneSub: z.string().optional(), side: z.enum(['left', 'right', 'auto']).optional() } },
     async ({ projectId, id, name, color, owners, backboneName, backboneSub, side }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const cur = p.data.modules.find((m) => m.id === id)
       if (!cur) return json({ error: 'module not found' })
       const patch: Record<string, unknown> = {}
@@ -242,7 +249,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'delete_module',
     { description: 'Delete a module and its features.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'deleteModule', projectId: p.id, id })
       return json({ ok: true })
     },
@@ -253,7 +260,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'add_feature',
     { description: 'Add a feature under a module (optionally in a release).', inputSchema: { projectId: z.string().optional(), moduleId: z.string(), releaseId: z.string().optional(), name: z.string().optional() } },
     async ({ projectId, moduleId, releaseId, name }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const rel = releaseId ?? p.data.releases[0]?.id
       if (!rel) return json({ error: 'no release available' })
       const id = makeId('f')
@@ -265,7 +272,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'find_or_create_feature',
     { description: 'Idempotent add: return the existing feature with this name in the module (case-insensitive) or create it. Returns {id, created}.', inputSchema: { projectId: z.string().optional(), moduleId: z.string(), name: z.string(), releaseId: z.string().optional() } },
     async ({ projectId, moduleId, name, releaseId }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       if (!p.data.modules.some((m) => m.id === moduleId)) return json({ error: 'module not found' })
       const found = p.data.features.find((f) => f.moduleId === moduleId && f.name.trim().toLowerCase() === name.trim().toLowerCase())
       if (found) return json({ id: found.id, created: false })
@@ -280,7 +287,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'update_feature',
     { description: 'Update a feature (name, status, module, release, description, constraints, validations).', inputSchema: { projectId: z.string().optional(), id: z.string(), name: z.string().optional(), status: featureStatus.optional(), moduleId: z.string().optional(), releaseId: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional(), validations: z.array(z.string()).optional() } },
     async ({ projectId, id, ...rest }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
       await applyAndBroadcast({ type: 'updateFeature', projectId: p.id, id, patch })
       return json({ ok: true })
@@ -290,7 +297,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'delete_feature',
     { description: 'Delete a feature.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'deleteFeature', projectId: p.id, id })
       return json({ ok: true })
     },
@@ -301,7 +308,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'reorder_modules',
     { description: 'Set the display order of modules (Mindmap branches / Story Map columns). Pass module ids in the desired order; any omitted keep their relative order at the end.', inputSchema: { projectId: z.string().optional(), orderedIds: z.array(z.string()) } },
     async ({ projectId, orderedIds }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'reorderModules', projectId: p.id, orderedIds })
       return json({ ok: true })
     },
@@ -310,7 +317,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'reorder_features',
     { description: 'Set the display order of features (top→bottom within their module on Mindmap / Story Map). Pass feature ids in the desired order; omitted ones keep their relative order at the end.', inputSchema: { projectId: z.string().optional(), orderedIds: z.array(z.string()) } },
     async ({ projectId, orderedIds }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'reorderFeatures', projectId: p.id, orderedIds })
       return json({ ok: true })
     },
@@ -321,7 +328,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'add_swim_node',
     { description: 'Add a swimlane step to a lane (lane is the numeric lane id from get_board).', inputSchema: { projectId: z.string().optional(), lane: z.number().int(), label: z.string().optional(), kind: nodeKind.optional() } },
     async ({ projectId, lane, label, kind }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const d = p.data
       const code = nextNodeCode(d.swimNodes.map((n) => n.code))
       const count = d.swimNodes.filter((n) => n.lane === lane).length
@@ -337,7 +344,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'update_swim_node',
     { description: 'Update a swimlane step (label, status, kind, lane, owner, description, constraints).', inputSchema: { projectId: z.string().optional(), id: z.string(), label: z.string().optional(), status: nodeStatus.optional(), kind: nodeKind.optional(), lane: z.number().int().optional(), owner: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional() } },
     async ({ projectId, id, ...rest }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
       await applyAndBroadcast({ type: 'updateSwimNode', projectId: p.id, id, patch })
       return json({ ok: true })
@@ -347,7 +354,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'move_swim_node',
     { description: 'Set a swimlane step\'s canvas position (x,y in px). Use to arrange the flow layout yourself.', inputSchema: { projectId: z.string().optional(), id: z.string(), x: z.number(), y: z.number() } },
     async ({ projectId, id, x, y }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       if (!p.data.swimNodes.some((n) => n.id === id)) return json({ error: 'swim node not found' })
       await applyAndBroadcast({ type: 'updateSwimNodePos', projectId: p.id, id, x: Math.round(x), y: Math.round(y) })
       return json({ ok: true })
@@ -357,7 +364,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'arrange_swimlane',
     { description: 'Auto-tidy the swimlane: lay every step left→right by its flow depth (longest path along arrows) and vertically centered in its lane. One call cleans up the whole diagram.', inputSchema: { projectId: z.string().optional() } },
     async ({ projectId }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const placed = arrangeSwimlane(p.data)
       for (const n of placed) await applyAndBroadcast({ type: 'updateSwimNodePos', projectId: p.id, id: n.id, x: n.x, y: n.y })
       return json({ ok: true, moved: placed.length })
@@ -367,7 +374,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'delete_swim_node',
     { description: 'Delete a swimlane step and its connected edges.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'deleteSwimNode', projectId: p.id, id })
       return json({ ok: true })
     },
@@ -376,7 +383,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'add_swim_edge',
     { description: 'Connect two swimlane steps with an arrow (ids from get_board).', inputSchema: { projectId: z.string().optional(), from: z.string(), to: z.string(), branch: z.string().optional() } },
     async ({ projectId, from, to, branch }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'addSwimEdge', projectId: p.id, from, to, branch })
       return json({ ok: true })
     },
@@ -385,7 +392,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'delete_swim_edge',
     { description: 'Remove an arrow between two swimlane steps.', inputSchema: { projectId: z.string().optional(), from: z.string(), to: z.string() } },
     async ({ projectId, from, to }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'deleteSwimEdge', projectId: p.id, from, to })
       return json({ ok: true })
     },
@@ -396,7 +403,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'create_snapshot',
     { description: 'Freeze the current board as a read-only snapshot.', inputSchema: { projectId: z.string().optional(), name: z.string() } },
     async ({ projectId, name }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       const id = makeId('snap')
       await applyAndBroadcast({ type: 'createSnapshot', projectId: p.id, id, name, date: dateLabel() })
       return json({ id })
@@ -406,7 +413,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'log_activity',
     { description: 'Narrate what you are doing or why, to the human watching the board. Appears in the live activity feed (not attached to any node). Use it to explain intent before/after a batch of edits.', inputSchema: { projectId: z.string().optional(), message: z.string() } },
     async ({ projectId, message }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       recordNote(p.id, actor, message)
       return json({ ok: true })
     },
@@ -415,7 +422,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     'append_note',
     { description: 'Append a line of text to a feature or swimlane step description (memory write).', inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string(), text: z.string() } },
     async ({ projectId, target, id, text }) => {
-      const p = requireProj(projectId)
+      const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'appendNote', projectId: p.id, target, id, text })
       return json({ ok: true })
     },

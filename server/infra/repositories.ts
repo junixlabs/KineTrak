@@ -1,7 +1,7 @@
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
 import { requireDb } from './db'
 import * as t from './schema'
-import type { Org, Project } from '../../src/store/types'
+import type { Org, Project, ProjectHeader } from '../../src/store/types'
 import type { User } from '../auth'
 import type { ApiKey } from '../keys'
 import type { Share } from '../shares'
@@ -82,17 +82,30 @@ export const orgRepo = {
 }
 
 // ── Projects (catalog header + board JSONB) ──────────────────────────────────
+const toProject = (r: typeof t.projects.$inferSelect): Project => ({
+  id: r.id,
+  orgId: r.orgId,
+  name: r.name,
+  createdAt: iso(r.createdAt),
+  data: r.data,
+  snapshots: r.snapshots,
+})
+
 export const projectRepo = {
   async all(): Promise<Project[]> {
     const rows = await requireDb().select().from(t.projects)
-    return rows.map((r) => ({
-      id: r.id,
-      orgId: r.orgId,
-      name: r.name,
-      createdAt: iso(r.createdAt),
-      data: r.data,
-      snapshots: r.snapshots,
-    }))
+    return rows.map(toProject)
+  },
+  /** Catalog view — headers only, no heavy board payload (Phase 2 on-demand). */
+  async headers(): Promise<ProjectHeader[]> {
+    const rows = await requireDb()
+      .select({ id: t.projects.id, orgId: t.projects.orgId, name: t.projects.name, createdAt: t.projects.createdAt })
+      .from(t.projects)
+    return rows.map((r) => ({ id: r.id, orgId: r.orgId, name: r.name, createdAt: iso(r.createdAt) }))
+  },
+  async byId(id: string): Promise<Project | null> {
+    const rows = await requireDb().select().from(t.projects).where(eq(t.projects.id, id)).limit(1)
+    return rows[0] ? toProject(rows[0]) : null
   },
   /** Insert or overwrite a project's full state (header + board + snapshots). */
   async save(p: Project): Promise<void> {

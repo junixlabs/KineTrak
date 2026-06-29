@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import type { Command, Root } from '../src/shared/board'
+import type { Command } from '../src/shared/board'
+import type { Project } from '../src/store/types'
 import { isPgEnabled } from './infra/db'
 import { activityRepo } from './infra/repositories'
 
@@ -88,12 +89,13 @@ export function recordNote(projectId: string, actor: Actor, message: string) {
   push({ id: randomUUID(), projectId, ts: Date.now(), actor, summary: message.slice(0, 280), kind: 'note' })
 }
 
-/** Record a board mutation as a human-readable line. No-op for actor-less calls. */
-export function recordChange(actor: Actor | undefined, cmd: Command, rootAfter: Root) {
+/** Record a board mutation as a human-readable line. No-op for actor-less calls.
+ *  `project` is the affected project's post-state (used to resolve names). */
+export function recordChange(actor: Actor | undefined, cmd: Command, project?: Project) {
   if (!actor) return
   const projectId = projectIdOf(cmd)
   if (!projectId) return
-  const { summary, targetId } = describe(cmd, rootAfter)
+  const { summary, targetId } = describe(cmd, project)
   if (!summary) return
   push({ id: randomUUID(), projectId, ts: Date.now(), actor, summary, targetId, kind: 'change' })
 }
@@ -104,9 +106,8 @@ function projectIdOf(cmd: Command): string | undefined {
   return undefined
 }
 
-function describe(cmd: Command, root: Root): { summary: string; targetId?: string } {
-  const proj = 'projectId' in cmd ? root.projects.find((p) => p.id === (cmd as { projectId: string }).projectId) : undefined
-  const d = proj?.data
+function describe(cmd: Command, project?: Project): { summary: string; targetId?: string } {
+  const d = project?.data
   const moduleName = (id?: string) => d?.modules.find((m) => m.id === id)?.name ?? 'a module'
   const featureName = (id?: string) => d?.features.find((f) => f.id === id)?.name ?? 'a feature'
   const nodeLabel = (id?: string) => d?.swimNodes.find((n) => n.id === id)?.label ?? 'a step'

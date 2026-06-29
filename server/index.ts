@@ -4,7 +4,15 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express, { type Request, type Response, type NextFunction } from 'express'
 import { WebSocketServer, WebSocket } from 'ws'
-import { applyAndBroadcast, getRoot, hydrateState, onChange } from './state'
+import {
+  applyAndBroadcast,
+  getProject,
+  hydrateState,
+  onChange,
+  projectHeader,
+  projectRoot,
+  scopedRootForUser,
+} from './state'
 import { registerMcp } from './mcp'
 import { createKey, hydrateKeys, listKeys, revokeKey } from './keys'
 import {
@@ -19,7 +27,7 @@ import {
   userCount,
   type User,
 } from './auth'
-import { authorizeCommand, scopeRootForUser, userOwnsOrg } from './scope'
+import { authorizeCommand, userOwnsOrg } from './scope'
 import { createShare, hydrateShares, projectIdForToken, revokeShare, shareForProject } from './shares'
 import { hydrateActivity, listActivity, onActivity } from './activity'
 import { isPgEnabled } from './infra/db'
@@ -101,13 +109,13 @@ app.post('/api/auth/logout', async (req, res) => {
 app.get('/api/auth/me', requireUser, (req: AuthedRequest, res) => res.json({ ok: true, user: toPublic(req.user!) }))
 
 // ── Scoped board sync ──────────────────────────────────────────────────────
-app.get('/api/state', requireUser, (req: AuthedRequest, res) => res.json(scopeRootForUser(getRoot(), req.user!.id)))
+app.get('/api/state', requireUser, async (req: AuthedRequest, res) => res.json(await scopedRootForUser(req.user!.id)))
 
 app.post('/api/command', requireUser, async (req: AuthedRequest, res) => {
   try {
-    const cmd = authorizeCommand(getRoot(), req.user!, req.body)
+    const cmd = authorizeCommand(req.user!, req.body)
     await applyAndBroadcast(cmd, { kind: 'human', name: req.user!.name })
-    res.json({ ok: true, root: scopeRootForUser(getRoot(), req.user!.id) })
+    res.json({ ok: true, root: await scopedRootForUser(req.user!.id) })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     res.status(msg.startsWith('forbidden') ? 403 : 400).json({ ok: false, error: msg })
@@ -121,7 +129,7 @@ app.get('/api/keys', requireUser, (req: AuthedRequest, res) => {
 })
 app.post('/api/keys', requireUser, async (req: AuthedRequest, res) => {
   const { orgId, name } = req.body ?? {}
-  if (typeof orgId !== 'string' || !userOwnsOrg(getRoot(), req.user!.id, orgId))
+  if (typeof orgId !== 'string' || !userOwnsOrg(req.user!.id, orgId))
     return res.status(403).json({ ok: false, error: 'Choose one of your own workspaces' })
   res.json({ ok: true, key: await createKey(req.user!.id, orgId, typeof name === 'string' ? name : undefined) })
 })
@@ -131,31 +139,32 @@ app.delete('/api/keys/:id', requireUser, async (req: AuthedRequest, res) => {
 })
 
 // ── Public read-only share links (present-style) ────────────────────────────
-const userProject = (userId: string, projectId: string) => {
-  const p = getRoot().projects.find((x) => x.id === projectId)
-  return p && userOwnsOrg(getRoot(), userId, p.orgId) ? p : undefined
+// Ownership check over the resident catalog (no board payload needed).
+const ownsProject = (userId: string, projectId: string): boolean => {
+  const h = projectHeader(projectId)
+  return !!h && userOwnsOrg(userId, h.orgId)
 }
 
 app.get('/api/projects/:id/share', requireUser, (req: AuthedRequest, res) => {
   const id = req.params.id as string
-  if (!userProject(req.user!.id, id)) return res.status(404).json({ ok: false })
+  if (!ownsProject(req.user!.id, id)) return res.status(404).json({ ok: false })
   res.json({ ok: true, token: shareForProject(id)?.token ?? null })
 })
 app.post('/api/projects/:id/share', requireUser, async (req: AuthedRequest, res) => {
   const id = req.params.id as string
-  if (!userProject(req.user!.id, id)) return res.status(403).json({ ok: false, error: 'Not your project' })
+  if (!ownsProject(req.user!.id, id)) return res.status(403).json({ ok: false, error: 'Not your project' })
   res.json({ ok: true, token: (await createShare(id)).token })
 })
 app.delete('/api/projects/:id/share', requireUser, async (req: AuthedRequest, res) => {
   const id = req.params.id as string
-  if (!userProject(req.user!.id, id)) return res.status(403).json({ ok: false })
+  if (!ownsProject(req.user!.id, id)) return res.status(403).json({ ok: false })
   res.json({ ok: await revokeShare(id) })
 })
 
 // Anonymous, read-only board for a share token.
-app.get('/api/shared/:token', (req, res) => {
-  const pid = projectIdForToken(req.params.token)
-  const p = pid ? getRoot().projects.find((x) => x.id === pid) : undefined
+app.get('/api/shared/:token', async (req, res) => {
+  const pid = projectIdForToken(req.params.token as string)
+  const p = pid ? await getProject(pid) : null
   if (!p) return res.status(404).json({ ok: false, error: 'Link not found or revoked' })
   res.json({ id: p.id, name: p.name, data: p.data })
 })
@@ -163,7 +172,7 @@ app.get('/api/shared/:token', (req, res) => {
 // Activity feed for a project (the human watches what the agent does).
 app.get('/api/projects/:id/activity', requireUser, (req: AuthedRequest, res) => {
   const id = req.params.id as string
-  if (!userProject(req.user!.id, id)) return res.status(404).json({ ok: false })
+  if (!ownsProject(req.user!.id, id)) return res.status(404).json({ ok: false })
   const since = Number(req.query.since) || 0
   res.json({ ok: true, items: listActivity(id, since) })
 })
@@ -192,14 +201,16 @@ interface AuthedSocket extends WebSocket {
   shareProjectId?: string
 }
 const wss = new WebSocketServer({ server, path: '/ws' })
-const sendScoped = (ws: AuthedSocket) => {
+const sendScoped = async (ws: AuthedSocket) => {
   if (ws.readyState !== WebSocket.OPEN) return
-  if (ws.userId) {
-    ws.send(JSON.stringify({ type: 'state', root: scopeRootForUser(getRoot(), ws.userId) }))
-  } else if (ws.shareProjectId) {
-    const p = getRoot().projects.find((x) => x.id === ws.shareProjectId)
-    if (p) ws.send(JSON.stringify({ type: 'state', root: { orgs: [], projects: [p] } }))
-  }
+  // Bridge: still ships the whole scoped root (assembled on demand). Phase 3
+  // replaces this with per-project room subscriptions.
+  const root = ws.userId
+    ? await scopedRootForUser(ws.userId)
+    : ws.shareProjectId
+      ? await projectRoot(ws.shareProjectId)
+      : null
+  if (root && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'state', root }))
 }
 wss.on('connection', (ws: AuthedSocket, req) => {
   const params = new URL(req.url ?? '', 'http://x').searchParams
@@ -214,10 +225,10 @@ wss.on('connection', (ws: AuthedSocket, req) => {
     }
     ws.userId = user.id
   }
-  sendScoped(ws)
+  void sendScoped(ws)
 })
 onChange(() => {
-  wss.clients.forEach((c) => sendScoped(c as AuthedSocket))
+  wss.clients.forEach((c) => void sendScoped(c as AuthedSocket))
 })
 
 // Push each activity entry to clients who can see that project (owner or share viewer).
@@ -226,7 +237,7 @@ onActivity((entry) => {
   wss.clients.forEach((c) => {
     const ws = c as AuthedSocket
     if (ws.readyState !== WebSocket.OPEN) return
-    const canSee = ws.shareProjectId === entry.projectId || (ws.userId && userProject(ws.userId, entry.projectId))
+    const canSee = ws.shareProjectId === entry.projectId || (ws.userId && ownsProject(ws.userId, entry.projectId))
     if (canSee) ws.send(msg)
   })
 })
