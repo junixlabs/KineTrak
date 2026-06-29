@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { applyCommand, type Command, type Root } from '../src/shared/board'
+import { recordChange, type Actor } from './activity'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(HERE, 'data')
@@ -41,10 +42,11 @@ export function getRoot(): Root {
   return root
 }
 
-/** Apply a command, persist, and notify listeners (WS broadcast). */
-export function applyAndBroadcast(cmd: Command): Root {
+/** Apply a command, persist, log the change (when an actor is given), and notify listeners. */
+export function applyAndBroadcast(cmd: Command, actor?: Actor): Root {
   root = applyCommand(root, cmd)
   persist()
+  recordChange(actor, cmd, root)
   listeners.forEach((l) => l(root))
   return root
 }

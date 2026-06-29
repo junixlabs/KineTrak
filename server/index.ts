@@ -20,6 +20,7 @@ import {
 } from './auth'
 import { authorizeCommand, scopeRootForUser, userOwnsOrg } from './scope'
 import { createShare, projectIdForToken, revokeShare, shareForProject } from './shares'
+import { listActivity, onActivity } from './activity'
 import { sampleTemplate } from '../src/store/seed'
 import { makeId } from '../src/store/ids'
 
@@ -102,7 +103,7 @@ app.get('/api/state', requireUser, (req: AuthedRequest, res) => res.json(scopeRo
 app.post('/api/command', requireUser, (req: AuthedRequest, res) => {
   try {
     const cmd = authorizeCommand(getRoot(), req.user!, req.body)
-    applyAndBroadcast(cmd)
+    applyAndBroadcast(cmd, { kind: 'human', name: req.user!.name })
     res.json({ ok: true, root: scopeRootForUser(getRoot(), req.user!.id) })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -151,6 +152,13 @@ app.get('/api/shared/:token', (req, res) => {
   const p = pid ? getRoot().projects.find((x) => x.id === pid) : undefined
   if (!p) return res.status(404).json({ ok: false, error: 'Link not found or revoked' })
   res.json({ id: p.id, name: p.name, data: p.data })
+})
+
+// Activity feed for a project (the human watches what the agent does).
+app.get('/api/projects/:id/activity', requireUser, (req: AuthedRequest, res) => {
+  if (!userProject(req.user!.id, req.params.id)) return res.status(404).json({ ok: false })
+  const since = Number(req.query.since) || 0
+  res.json({ ok: true, items: listActivity(req.params.id, since) })
 })
 
 // MCP (Streamable HTTP) at /mcp.
@@ -203,6 +211,17 @@ wss.on('connection', (ws: AuthedSocket, req) => {
 })
 onChange(() => {
   wss.clients.forEach((c) => sendScoped(c as AuthedSocket))
+})
+
+// Push each activity entry to clients who can see that project (owner or share viewer).
+onActivity((entry) => {
+  const msg = JSON.stringify({ type: 'activity', item: entry })
+  wss.clients.forEach((c) => {
+    const ws = c as AuthedSocket
+    if (ws.readyState !== WebSocket.OPEN) return
+    const canSee = ws.shareProjectId === entry.projectId || (ws.userId && userProject(ws.userId, entry.projectId))
+    if (canSee) ws.send(msg)
+  })
 })
 
 const PORT = Number(process.env.PORT) || 8787

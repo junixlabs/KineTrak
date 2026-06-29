@@ -4,8 +4,9 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
-import { applyAndBroadcast, getRoot } from './state'
-import { bearerFrom, verifyKey } from './keys'
+import { applyAndBroadcast as applyRaw, getRoot } from './state'
+import { bearerFrom, verifyKey, type ApiKey } from './keys'
+import { recordNote, type Actor } from './activity'
 import { findProject, searchBoard } from '../src/shared/board'
 import { makeId, nextNodeCode } from '../src/store/ids'
 
@@ -68,8 +69,12 @@ const featureStatus = z.enum(['must', 'progress', 'done', 'nice'])
 const nodeStatus = z.enum(['todo', 'progress', 'done', 'blocked'])
 const nodeKind = z.enum(['start', 'process', 'decision', 'end'])
 
-function buildMcpServer(orgId: string): McpServer {
+function buildMcpServer(key: ApiKey): McpServer {
   const server = new McpServer({ name: 'kinetrak', version: '1.0.0' })
+  const orgId = key.orgId
+  const actor: Actor = { kind: 'agent', name: key.name }
+  // Every agent mutation is attributed to this key in the activity log.
+  const applyAndBroadcast = (cmd: Parameters<typeof applyRaw>[0]) => applyRaw(cmd, actor)
   // Scope every lookup to the key's org — the agent only ever sees that workspace.
   const orgProjects = () => getRoot().projects.filter((p) => p.orgId === orgId)
   const proj = (id?: string) => {
@@ -299,6 +304,15 @@ function buildMcpServer(orgId: string): McpServer {
     },
   )
   server.registerTool(
+    'log_activity',
+    { description: 'Narrate what you are doing or why, to the human watching the board. Appears in the live activity feed (not attached to any node). Use it to explain intent before/after a batch of edits.', inputSchema: { projectId: z.string().optional(), message: z.string() } },
+    async ({ projectId, message }) => {
+      const p = requireProj(projectId)
+      recordNote(p.id, actor, message)
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
     'append_note',
     { description: 'Append a line of text to a feature or swimlane step description (memory write).', inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string(), text: z.string() } },
     async ({ projectId, target, id, text }) => {
@@ -316,9 +330,9 @@ function buildMcpServer(orgId: string): McpServer {
  * key; the key resolves to a user + org and scopes all tools to that workspace.
  * Returns the key's orgId when authorized, or null after writing a 401.
  */
-function authorize(req: Request, res: Response): string | null {
+function authorize(req: Request, res: Response): ApiKey | null {
   const key = verifyKey(bearerFrom(req.headers as Record<string, unknown>))
-  if (key) return key.orgId
+  if (key) return key
   res.status(401).json({
     jsonrpc: '2.0',
     error: { code: -32001, message: 'Unauthorized — provide a valid KineTrak API key: "Authorization: Bearer <key>". Create one on the Connect page.' },
@@ -332,8 +346,8 @@ export function registerMcp(app: Express) {
   const transports: Record<string, StreamableHTTPServerTransport> = {}
 
   app.post('/mcp', async (req: Request, res: Response) => {
-    const orgId = authorize(req, res)
-    if (!orgId) return
+    const key = authorize(req, res)
+    if (!key) return
     const sid = req.headers['mcp-session-id'] as string | undefined
     let transport = sid ? transports[sid] : undefined
 
@@ -351,8 +365,8 @@ export function registerMcp(app: Express) {
       transport.onclose = () => {
         if (transport!.sessionId) delete transports[transport!.sessionId]
       }
-      // Bind this session's tools to the org the key belongs to.
-      await buildMcpServer(orgId).connect(transport)
+      // Bind this session's tools to the key (org scope + activity attribution).
+      await buildMcpServer(key).connect(transport)
     }
 
     await transport.handleRequest(req, res, req.body)

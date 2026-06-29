@@ -15,6 +15,7 @@ import MindFeatureNode from '@/components/nodes/MindFeatureNode'
 import ZoomControl from '@/components/shell/ZoomControl'
 import ViewHint from '@/components/views/ViewHint'
 import { useWorkspace } from '@/store/useWorkspace'
+import { useActivity } from '@/store/useActivity'
 import { moduleProgress, moduleMatchesRole } from '@/store/selectors'
 import { computeMindmapLayout } from '@/lib/layout'
 import type { Selection } from '@/store/types'
@@ -38,6 +39,13 @@ function MindmapInner() {
   const zoom = useStore((s) => s.transform[2])
   const { zoomIn, zoomOut, fitView } = useReactFlow()
   const showFeatures = zoom >= FEATURE_ZOOM
+
+  const actItems = useActivity((s) => s.items)
+  const actSeen = useActivity((s) => s.lastSeenTs)
+  const recent = useMemo(
+    () => new Set(actItems.filter((i) => i.ts > actSeen && i.targetId).map((i) => i.targetId!)),
+    [actItems, actSeen],
+  )
 
   const focus = hoveredId || (selected && selected.view === 'mindmap' ? selected.id : null)
 
@@ -78,7 +86,7 @@ function MindmapInner() {
         id: m.id,
         type: 'mindModule',
         position: layout.modules[m.id],
-        data: { id: m.id, name: m.name, color: m.color, ...prog, dim: roleDim || focusDim, highlight: focusSet.has(m.id) },
+        data: { id: m.id, name: m.name, color: m.color, ...prog, dim: roleDim || focusDim, highlight: focusSet.has(m.id), recent: recent.has(m.id) },
         draggable: false,
       })
     })
@@ -94,13 +102,13 @@ function MindmapInner() {
           id: f.id,
           type: 'mindFeature',
           position: layout.features[f.id],
-          data: { name: f.name, status: f.status, dim: roleDim || focusDim, selected: isSelected },
+          data: { name: f.name, status: f.status, dim: roleDim || focusDim, selected: isSelected, recent: recent.has(f.id) },
           draggable: false,
         })
       })
     }
     return list
-  }, [data, layout, roleFilter, focus, focusSet, showFeatures, selected])
+  }, [data, layout, roleFilter, focus, focusSet, showFeatures, selected, recent])
 
   const edges: Edge[] = useMemo(() => {
     const list: Edge[] = []

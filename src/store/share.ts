@@ -1,4 +1,5 @@
 import { useWorkspace } from './useWorkspace'
+import { useActivity, type Activity } from './useActivity'
 import { SYNC_URL } from './api'
 import type { WorkspaceData } from './types'
 
@@ -43,6 +44,8 @@ function openShareWs(token: string) {
       const proj = msg?.root?.projects?.[0]
       if (msg?.type === 'state' && proj) {
         useWorkspace.setState((st) => ({ projects: st.projects.map((p) => (p.id === proj.id ? proj : p)) }))
+      } else if (msg?.type === 'activity') {
+        useActivity.getState().addItem(msg.item as Activity)
       }
     } catch {
       /* ignore */

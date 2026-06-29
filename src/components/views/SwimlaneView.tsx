@@ -18,6 +18,7 @@ import DeletableEdge from '@/components/nodes/DeletableEdge'
 import ZoomControl from '@/components/shell/ZoomControl'
 import ViewHint from './ViewHint'
 import { useWorkspace } from '@/store/useWorkspace'
+import { useActivity } from '@/store/useActivity'
 import { reachableFrom } from '@/lib/impact'
 import { laneMatchesRole } from '@/store/selectors'
 
@@ -53,6 +54,13 @@ function SwimlaneInner() {
   const { zoomIn, zoomOut, fitView } = useReactFlow()
   const compact = zoom < COMPACT_ZOOM
   const [laneMenu, setLaneMenu] = useState(false)
+
+  const actItems = useActivity((s) => s.items)
+  const actSeen = useActivity((s) => s.lastSeenTs)
+  const recent = useMemo(
+    () => new Set(actItems.filter((i) => i.ts > actSeen && i.targetId).map((i) => i.targetId!)),
+    [actItems, actSeen],
+  )
 
   const focus = hoveredId || (selected && selected.view === 'swimlane' ? selected.id : null)
   const reach = useMemo(() => reachableFrom(focus, data.swimEdges), [focus, data.swimEdges])
@@ -95,6 +103,7 @@ function SwimlaneInner() {
           status: n.status,
           dim: roleDim || focusDim,
           focused: isSelected || (!!focus && n.id === focus),
+          recent: recent.has(n.id),
           compact,
           width: size.w,
           height: size.h,
@@ -103,7 +112,7 @@ function SwimlaneInner() {
       })
     })
     return list
-  }, [data, roleFilter, focus, reach, laneHit, selected, compact])
+  }, [data, roleFilter, focus, reach, laneHit, selected, compact, recent])
 
   const edges: Edge[] = useMemo(() => {
     const laneIds = new Set(data.lanes.map((l) => l.id))

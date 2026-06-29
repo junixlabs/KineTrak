@@ -112,6 +112,8 @@ Write (each broadcasts live to the browser):
 - features: `add_feature`, `update_feature`, `delete_feature`
 - swimlane: `add_swim_node`, `update_swim_node`, `delete_swim_node`, `add_swim_edge`, `delete_swim_edge`
 - versioning / memory: `create_snapshot`, `append_note` (append a line to a feature/step description)
+- narration: `log_activity({message})` — tell the watching human what you're doing/why; shows live in
+  the Activity feed (attributed to your key), separate from board mutations.
 
 Layout — the agent decides how the board displays, not just its contents:
 - `move_swim_node({id,x,y})` — place a swimlane step anywhere on the canvas.

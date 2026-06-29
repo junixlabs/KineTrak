@@ -1,5 +1,6 @@
 import { Eye, LineChart } from 'lucide-react'
 import ViewTabs from '@/components/shell/ViewTabs'
+import ActivityPanel from '@/components/shell/ActivityPanel'
 import MindmapView from '@/components/views/MindmapView'
 import StoryMapView from '@/components/views/StoryMapView'
 import SwimlaneView from '@/components/views/SwimlaneView'
@@ -30,7 +31,8 @@ export default function ShareViewer() {
         <div className="flex-1" />
         <ViewTabs />
         <div className="flex-1" />
-        <span className="text-[11px] font-semibold text-faint">Shared via KineTrak · live</span>
+        <ActivityPanel />
+        <span className="text-[11px] font-semibold text-faint">Shared · live</span>
       </header>
       <main className="kt-canvas relative flex-1 overflow-hidden">
         {activeView === 'mindmap' && <MindmapView />}

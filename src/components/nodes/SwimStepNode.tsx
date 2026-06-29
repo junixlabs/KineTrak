@@ -10,6 +10,7 @@ export interface SwimStepData {
   status: NodeStatus
   dim: boolean
   focused: boolean
+  recent?: boolean
   compact: boolean
   width: number
   height: number
@@ -25,10 +26,10 @@ export default function SwimStepNode({ data }: { data: SwimStepData }) {
     : '!opacity-0'
 
   const base =
-    'flex items-center gap-2 rounded-xl border px-3 transition-[opacity,box-shadow,border-color] duration-200'
+    'relative flex items-center gap-2 rounded-xl border px-3 transition-[opacity,box-shadow,border-color] duration-200'
   const bg = terminal ? '#14181f' : '#ffffff'
   const textColor = terminal ? '#ffffff' : '#14181f'
-  const borderColor = data.focused ? '#2f6fed' : decision ? '#7c5cff' : terminal ? '#14181f' : '#e5e8ec'
+  const borderColor = data.focused ? '#2f6fed' : data.recent ? '#f59e0b' : decision ? '#7c5cff' : terminal ? '#14181f' : '#e5e8ec'
 
   return (
     <div
@@ -41,10 +42,13 @@ export default function SwimStepNode({ data }: { data: SwimStepData }) {
         opacity: data.dim ? 0.28 : 1,
         boxShadow: data.focused
           ? '0 0 0 3px rgba(47,111,237,.16), 0 8px 20px rgba(47,111,237,.18)'
-          : '0 1px 3px rgba(20,24,31,.10)',
+          : data.recent
+            ? '0 0 0 3px rgba(245,158,11,.20), 0 6px 16px rgba(245,158,11,.18)'
+            : '0 1px 3px rgba(20,24,31,.10)',
         cursor: 'pointer',
       }}
     >
+      {data.recent && <span className="absolute -right-1 -top-1 z-10 h-2.5 w-2.5 rounded-full border-2 border-white bg-amber" />}
       <Handle type="target" position={Position.Left} className={handleCls} isConnectable={editable} />
 
       <span

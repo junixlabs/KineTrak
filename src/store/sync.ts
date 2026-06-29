@@ -1,6 +1,28 @@
 import { useWorkspace, setCommandPusher } from './useWorkspace'
+import { useActivity, type Activity } from './useActivity'
+import { useToast } from './useToast'
 import { SYNC_URL, authFetch, getToken } from './api'
 import type { Command, Root } from '@/shared/board'
+
+/** Pull the activity history for the active project (newest 200). */
+export async function refreshActivity() {
+  const pid = useWorkspace.getState().activeProjectId
+  if (!pid) return
+  try {
+    const res = await authFetch(`/api/projects/${pid}/activity`)
+    if (res.ok) useActivity.getState().setItems((await res.json()).items ?? [])
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Apply a live activity frame: append, and toast when an agent is at work. */
+export function ingestActivity(item: Activity) {
+  if (item.projectId !== useWorkspace.getState().activeProjectId) return
+  const known = useActivity.getState().items.some((i) => i.id === item.id)
+  useActivity.getState().addItem(item)
+  if (!known && item.actor.kind === 'agent') useToast.getState().show(`${item.actor.name} ${item.summary}`)
+}
 
 let ws: WebSocket | null = null
 let running = false
@@ -38,6 +60,7 @@ async function connect() {
     useWorkspace.getState().applyServerRoot(root)
     setCommandPusher(pushToServer)
     useWorkspace.getState().setSyncStatus('live')
+    void refreshActivity()
     openWs()
   } catch {
     // Lost the server — keep optimistic local state, retry shortly.
@@ -60,6 +83,7 @@ function openWs() {
     try {
       const msg = JSON.parse(e.data)
       if (msg?.type === 'state') useWorkspace.getState().applyServerRoot(msg.root as Root)
+      else if (msg?.type === 'activity') ingestActivity(msg.item as Activity)
     } catch {
       /* ignore malformed frames */
     }

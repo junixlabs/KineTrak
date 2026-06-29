@@ -3,6 +3,7 @@ import ViewTabs from './ViewTabs'
 import SnapshotMenu from './SnapshotMenu'
 import RoleFilter from './RoleFilter'
 import AlertsPanel from './AlertsPanel'
+import ActivityPanel from './ActivityPanel'
 import ProjectSwitcher from './ProjectSwitcher'
 import ShareMenu from './ShareMenu'
 import { useWorkspace } from '@/store/useWorkspace'
@@ -50,6 +51,7 @@ export default function Header() {
       <div className="flex-1" />
 
       <RoleFilter />
+      <ActivityPanel />
       <AlertsPanel />
 
       <button

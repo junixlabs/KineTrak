@@ -11,6 +11,7 @@ export interface MindModuleData {
   ratio: number
   dim: boolean
   highlight: boolean
+  recent?: boolean
 }
 
 export default function MindModuleNode({ data }: { data: MindModuleData }) {
@@ -22,11 +23,16 @@ export default function MindModuleNode({ data }: { data: MindModuleData }) {
     <div
       className="group relative flex h-[56px] w-[216px] flex-col justify-center gap-[7px] overflow-hidden rounded-[13px] border bg-white pl-[18px] pr-3.5 transition-[opacity,box-shadow,border-color] duration-200"
       style={{
-        borderColor: data.highlight ? data.color : '#e5e8ec',
-        boxShadow: data.highlight ? '0 6px 18px rgba(20,24,31,.12)' : '0 1px 2px rgba(20,24,31,.07)',
+        borderColor: data.highlight ? data.color : data.recent ? '#f59e0b' : '#e5e8ec',
+        boxShadow: data.recent
+          ? '0 0 0 3px rgba(245,158,11,.20), 0 4px 12px rgba(245,158,11,.18)'
+          : data.highlight
+            ? '0 6px 18px rgba(20,24,31,.12)'
+            : '0 1px 2px rgba(20,24,31,.07)',
         opacity: data.dim ? 0.3 : 1,
       }}
     >
+      {data.recent && <span className="absolute -right-1 -top-1 z-10 h-2.5 w-2.5 rounded-full border-2 border-white bg-amber" />}
       <span className="absolute bottom-0 left-0 top-0 w-1" style={{ background: data.color }} />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[13px] font-bold leading-tight text-ink">{data.name}</span>
