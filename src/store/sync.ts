@@ -1,26 +1,38 @@
 import { useWorkspace, setCommandPusher } from './useWorkspace'
+import { SYNC_URL, authFetch, getToken } from './api'
 import type { Command, Root } from '@/shared/board'
 
-// Dev (Vite on :5173) → talk to the server on :8787.
-// Production (served by the server itself) → same origin.
-export const SYNC_URL =
-  (import.meta.env.VITE_SYNC_URL as string | undefined) ||
-  (import.meta.env.DEV ? 'http://localhost:8787' : window.location.origin)
-
 let ws: WebSocket | null = null
-let started = false
+let running = false
 
-/** Connect the client to the KineTrak server when one is reachable; otherwise stay local. */
-export function initSync() {
-  if (started) return
-  started = true
+/** Start syncing the authenticated user's board with the server. */
+export function startSync() {
+  if (running) return
+  running = true
   void connect()
 }
 
+/** Tear down sync (on logout). */
+export function stopSync() {
+  running = false
+  setCommandPusher(() => {})
+  useWorkspace.getState().setSyncStatus('local')
+  if (ws) {
+    try {
+      ws.close()
+    } catch {
+      /* noop */
+    }
+    ws = null
+  }
+}
+
 async function connect() {
+  if (!running) return
   useWorkspace.getState().setSyncStatus('connecting')
   try {
-    const res = await fetch(`${SYNC_URL}/api/state`)
+    const res = await authFetch('/api/state')
+    if (res.status === 401) return onUnauthorized()
     if (!res.ok) throw new Error('server unavailable')
     const root: Root = await res.json()
     useWorkspace.getState().applyServerRoot(root)
@@ -28,14 +40,21 @@ async function connect() {
     useWorkspace.getState().setSyncStatus('live')
     openWs()
   } catch {
-    // No server → run fully local (localStorage), no command pushing.
+    // Lost the server — keep optimistic local state, retry shortly.
     setCommandPusher(() => {})
-    useWorkspace.getState().setSyncStatus('local')
+    useWorkspace.getState().setSyncStatus('connecting')
+    if (running) setTimeout(() => void connect(), 1500)
   }
 }
 
+function onUnauthorized() {
+  // Session expired/revoked — drop to the login screen.
+  void import('./auth').then((m) => m.handleAuthExpired())
+}
+
 function openWs() {
-  const url = SYNC_URL.replace(/^http/, 'ws') + '/ws'
+  const token = getToken()
+  const url = SYNC_URL.replace(/^http/, 'ws') + '/ws' + (token ? `?token=${encodeURIComponent(token)}` : '')
   ws = new WebSocket(url)
   ws.onmessage = (e) => {
     try {
@@ -45,8 +64,10 @@ function openWs() {
       /* ignore malformed frames */
     }
   }
-  ws.onclose = () => {
+  ws.onclose = (e) => {
     ws = null
+    if (!running) return
+    if (e.code === 4001) return onUnauthorized() // server rejected the token
     useWorkspace.getState().setSyncStatus('connecting')
     setTimeout(() => void connect(), 1500)
   }
@@ -61,11 +82,12 @@ function openWs() {
 
 async function pushToServer(cmd: Command) {
   try {
-    await fetch(`${SYNC_URL}/api/command`, {
+    const res = await authFetch('/api/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cmd),
     })
+    if (res.status === 401) onUnauthorized()
   } catch {
     // Offline — local optimistic state stands; server reconciles on reconnect.
   }

@@ -71,22 +71,33 @@ or in `.mcp.json` / client config:
 }
 ```
 
-## Authentication — accounts & API keys
+## Accounts, scoping & API keys
 
-The board is gated by **Bearer API keys** so only authorized agents can read/edit it.
+When a server is running, KineTrak requires a **user account**. Each user signs in with
+email + password and sees only **their own** workspaces (orgs) and projects. Everything is scoped
+per-account, end to end:
 
-- **Backward-compatible by default**: while no keys exist, `/mcp` is open (zero-config dev). The
-  moment you create the first key, a valid `Authorization: Bearer <key>` is required — requests
-  without one get `401`.
-- **Manage keys** on the Connect page, or via REST: `GET /api/keys`, `POST /api/keys {name}`,
-  `DELETE /api/keys/:id`. Keys also accept the `X-API-Key: <key>` header.
-- **Headless / Docker**: seed a fixed key with the `KINETRAK_API_KEY` env var. It's shown on the
-  Connect page as an `ENV` key and can't be deleted via the API (manage it through the environment).
-- **Storage**: keys live in `server/data/keys.json` (git-ignored) — never in synced board state, so
-  they're never broadcast to browsers. Treat them like passwords.
+- **Web app** — `GET /api/state`, `POST /api/command`, and the `/ws` stream all require a session
+  token (`Authorization: Bearer <session>`); each one is filtered/validated against the signed-in
+  user. A user can't read or mutate another account's data (`403`).
+- **MCP** — every `/mcp` request must carry a valid **API key**. A key belongs to a user and is
+  **scoped to one workspace (org)**; the agent only ever sees that workspace's projects. No key →
+  `401`.
 
-> Scope: keys gate the agent-facing `/mcp` endpoint. The human web-sync API (`/api/state`,
-> `/api/command`, `/ws`) stays open for the local-first browser experience.
+Auth model:
+
+- **Accounts**: `POST /api/auth/register {email,name,password}` (first account becomes `admin`),
+  `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`. Sessions are opaque bearer
+  tokens; the web client stores its token in `localStorage` (no cookies → no cross-origin pain).
+  Passwords are scrypt-hashed (`node:crypto`, no extra deps).
+- **API keys**: managed on the Connect page or via REST (session required): `GET /api/keys?orgId=`,
+  `POST /api/keys {orgId,name}`, `DELETE /api/keys/:id`. Each key carries `userId` + `orgId`; the
+  raw secret is `kt_live_…`. Keys also accept the `X-API-Key` header.
+- **Storage**: `users.json`, `sessions.json`, `keys.json` live under `server/data/` (git-ignored)
+  and are **never** part of the synced board state broadcast to browsers. Treat keys/passwords
+  accordingly.
+
+> Local-only mode (no server reachable) keeps the original offline, account-less browser experience.
 
 ## Tools
 

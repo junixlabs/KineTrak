@@ -4,13 +4,9 @@ import { fileURLToPath } from 'node:url'
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 
 // ── API keys for MCP access ──────────────────────────────────────────────────
-// A lightweight, local-first key store. Keys gate the /mcp endpoint so only
-// authorized agents can read/edit the board. Stored alongside board.json but in
-// a separate file — keys are NEVER part of the synced Root broadcast to browsers.
-//
-// Enforcement model (backward compatible): the /mcp endpoint is open while no
-// keys exist (zero-config dev). The moment one key exists — created via the
-// Connect page or seeded from KINETRAK_API_KEY — a valid Bearer token is required.
+// Each key belongs to a user and is scoped to one org (workspace). An agent using
+// the key acts as that user, limited to that org's projects. Stored server-side
+// only (never in synced board state). Treat keys like passwords.
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(HERE, 'data')
@@ -18,66 +14,46 @@ const FILE = join(DATA_DIR, 'keys.json')
 
 export interface ApiKey {
   id: string
+  userId: string
+  orgId: string
   name: string
-  /** The full secret, e.g. "kt_live_ab12…". Shown in the Connect page (local tool). */
   key: string
   createdAt: string
   lastUsedAt: string | null
-  /** Seeded from the KINETRAK_API_KEY env var — not user-deletable. */
-  env?: boolean
 }
 
 let keys: ApiKey[] = load()
 
 function load(): ApiKey[] {
-  let stored: ApiKey[] = []
   if (existsSync(FILE)) {
     try {
       const parsed = JSON.parse(readFileSync(FILE, 'utf8'))
-      if (Array.isArray(parsed)) stored = parsed.filter((k) => !k.env)
+      if (Array.isArray(parsed)) return parsed
     } catch {
-      /* fall through to empty */
+      /* ignore */
     }
   }
-  // Seed an env-provided key (e.g. for Docker deploys) so it always exists.
-  const envKey = process.env.KINETRAK_API_KEY?.trim()
-  if (envKey) {
-    stored.unshift({
-      id: 'env',
-      name: 'Environment key (KINETRAK_API_KEY)',
-      key: envKey,
-      createdAt: new Date().toISOString(),
-      lastUsedAt: null,
-      env: true,
-    })
-  }
-  return stored
+  return []
 }
-
 function persist() {
   mkdirSync(DATA_DIR, { recursive: true })
-  // Never persist the env-seeded key — it comes from the environment each boot.
-  writeFileSync(FILE, JSON.stringify(keys.filter((k) => !k.env), null, 2))
+  writeFileSync(FILE, JSON.stringify(keys, null, 2))
 }
-
 function newSecret(): string {
   return `kt_live_${randomBytes(24).toString('hex')}`
 }
 
-/** Auth is enforced only once at least one key exists. */
-export function authEnabled(): boolean {
-  return keys.length > 0
+/** Keys owned by a user, optionally filtered to one org. */
+export function listKeys(userId: string, orgId?: string): ApiKey[] {
+  return keys.filter((k) => k.userId === userId && (!orgId || k.orgId === orgId)).map((k) => ({ ...k }))
 }
 
-/** Public view of keys (Connect page reveals the secret — this is a local tool). */
-export function listKeys(): ApiKey[] {
-  return keys.map((k) => ({ ...k }))
-}
-
-export function createKey(name?: string): ApiKey {
+export function createKey(userId: string, orgId: string, name?: string): ApiKey {
   const k: ApiKey = {
     id: randomUUID(),
-    name: (name?.trim() || 'Untitled key').slice(0, 80),
+    userId,
+    orgId,
+    name: (name?.trim() || 'Agent key').slice(0, 80),
     key: newSecret(),
     createdAt: new Date().toISOString(),
     lastUsedAt: null,
@@ -87,30 +63,38 @@ export function createKey(name?: string): ApiKey {
   return k
 }
 
-export function revokeKey(id: string): boolean {
+/** Revoke a key the user owns. Returns false if not found / not theirs. */
+export function revokeKey(userId: string, id: string): boolean {
   const k = keys.find((x) => x.id === id)
-  if (!k || k.env) return false // env key is managed via the environment, not the API
+  if (!k || k.userId !== userId) return false
   keys = keys.filter((x) => x.id !== id)
   persist()
   return true
 }
 
-/** Constant-time check of a raw bearer token; records last-used on a hit. */
-export function verifyKey(raw: string | undefined): boolean {
-  if (!raw) return false
+/** Constant-time match of a raw bearer token; returns the key record on a hit. */
+export function verifyKey(raw: string | undefined): ApiKey | null {
+  if (!raw) return null
   const candidate = Buffer.from(raw)
   for (const k of keys) {
     const known = Buffer.from(k.key)
     if (known.length === candidate.length && timingSafeEqual(known, candidate)) {
       k.lastUsedAt = new Date().toISOString()
-      if (!k.env) persist()
-      return true
+      persist()
+      return k
     }
   }
-  return false
+  return null
 }
 
-/** Pull a bearer token from an Authorization header (also accepts X-API-Key). */
+/** Drop every key for an org (used when an org is deleted). */
+export function revokeOrgKeys(orgId: string) {
+  const before = keys.length
+  keys = keys.filter((k) => k.orgId !== orgId)
+  if (keys.length !== before) persist()
+}
+
+/** Pull a bearer token from an Authorization / X-API-Key header. */
 export function bearerFrom(headers: Record<string, unknown>): string | undefined {
   const auth = headers['authorization']
   if (typeof auth === 'string') {

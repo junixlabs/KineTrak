@@ -2,11 +2,25 @@ import { createServer } from 'node:http'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import express from 'express'
+import express, { type Request, type Response, type NextFunction } from 'express'
 import { WebSocketServer, WebSocket } from 'ws'
 import { applyAndBroadcast, getRoot, onChange } from './state'
 import { registerMcp } from './mcp'
-import { authEnabled, createKey, listKeys, revokeKey } from './keys'
+import { createKey, listKeys, revokeKey } from './keys'
+import {
+  AuthError,
+  bearerFrom,
+  login,
+  logout,
+  register,
+  toPublic,
+  userByToken,
+  userCount,
+  type User,
+} from './auth'
+import { authorizeCommand, scopeRootForUser, userOwnsOrg } from './scope'
+import { sampleTemplate } from '../src/store/seed'
+import { makeId } from '../src/store/ids'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DIST = join(HERE, '..', 'dist')
@@ -17,33 +31,97 @@ app.use(express.json({ limit: '8mb' }))
 // CORS for the Vite dev origin and MCP clients.
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*')
-  res.header('Access-Control-Allow-Headers', 'Content-Type, mcp-session-id, mcp-protocol-version')
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id, mcp-protocol-version')
   res.header('Access-Control-Expose-Headers', 'mcp-session-id')
   res.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
   if (req.method === 'OPTIONS') return res.sendStatus(204)
   next()
 })
 
-// Web client sync API.
-app.get('/api/health', (_req, res) => res.json({ ok: true }))
-app.get('/api/state', (_req, res) => res.json(getRoot()))
-app.post('/api/command', (req, res) => {
+// ── Auth ─────────────────────────────────────────────────────────────────────
+interface AuthedRequest extends Request {
+  user?: User
+}
+const requireUser = (req: AuthedRequest, res: Response, next: NextFunction) => {
+  const user = userByToken(bearerFrom(req.headers as Record<string, unknown>))
+  if (!user) return res.status(401).json({ ok: false, error: 'Not signed in' })
+  req.user = user
+  next()
+}
+
+/** Give a brand-new account a starter workspace + sample project. */
+function seedWorkspace(user: User) {
+  const orgId = makeId('org')
+  applyAndBroadcast({ type: 'createOrg', id: orgId, name: `${user.name}'s workspace`, ownerId: user.id })
+  applyAndBroadcast({
+    type: 'importProject',
+    id: makeId('p'),
+    orgId,
+    name: 'KineTrak Platform',
+    createdAt: new Date().toISOString(),
+    data: sampleTemplate,
+    snapshots: [],
+  })
+}
+
+app.get('/api/health', (_req, res) => res.json({ ok: true, accounts: userCount() }))
+
+app.post('/api/auth/register', (req, res) => {
   try {
-    const root = applyAndBroadcast(req.body)
-    res.json({ ok: true, root })
+    const { email, name, password } = req.body ?? {}
+    const out = register(email, name, password)
+    seedWorkspace(userByToken(out.token)!)
+    res.json({ ok: true, ...out })
   } catch (e) {
-    res.status(400).json({ ok: false, error: String(e) })
+    const status = e instanceof AuthError ? e.status : 400
+    res.status(status).json({ ok: false, error: e instanceof Error ? e.message : String(e) })
   }
 })
 
-// API key management for MCP access (used by the Connect page).
-app.get('/api/keys', (_req, res) => res.json({ authEnabled: authEnabled(), keys: listKeys() }))
-app.post('/api/keys', (req, res) => {
-  const key = createKey(typeof req.body?.name === 'string' ? req.body.name : undefined)
-  res.json({ ok: true, key })
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const { email, password } = req.body ?? {}
+    res.json({ ok: true, ...login(email, password) })
+  } catch (e) {
+    const status = e instanceof AuthError ? e.status : 400
+    res.status(status).json({ ok: false, error: e instanceof Error ? e.message : String(e) })
+  }
 })
-app.delete('/api/keys/:id', (req, res) => {
-  const ok = revokeKey(req.params.id)
+
+app.post('/api/auth/logout', (req, res) => {
+  logout(bearerFrom(req.headers as Record<string, unknown>))
+  res.json({ ok: true })
+})
+
+app.get('/api/auth/me', requireUser, (req: AuthedRequest, res) => res.json({ ok: true, user: toPublic(req.user!) }))
+
+// ── Scoped board sync ──────────────────────────────────────────────────────
+app.get('/api/state', requireUser, (req: AuthedRequest, res) => res.json(scopeRootForUser(getRoot(), req.user!.id)))
+
+app.post('/api/command', requireUser, (req: AuthedRequest, res) => {
+  try {
+    const cmd = authorizeCommand(getRoot(), req.user!, req.body)
+    applyAndBroadcast(cmd)
+    res.json({ ok: true, root: scopeRootForUser(getRoot(), req.user!.id) })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    res.status(msg.startsWith('forbidden') ? 403 : 400).json({ ok: false, error: msg })
+  }
+})
+
+// ── API keys (scoped to the user + a chosen org) ────────────────────────────
+app.get('/api/keys', requireUser, (req: AuthedRequest, res) => {
+  const orgId = typeof req.query.orgId === 'string' ? req.query.orgId : undefined
+  res.json({ keys: listKeys(req.user!.id, orgId) })
+})
+app.post('/api/keys', requireUser, (req: AuthedRequest, res) => {
+  const { orgId, name } = req.body ?? {}
+  if (typeof orgId !== 'string' || !userOwnsOrg(getRoot(), req.user!.id, orgId))
+    return res.status(403).json({ ok: false, error: 'Choose one of your own workspaces' })
+  res.json({ ok: true, key: createKey(req.user!.id, orgId, typeof name === 'string' ? name : undefined) })
+})
+app.delete('/api/keys/:id', requireUser, (req: AuthedRequest, res) => {
+  const ok = revokeKey(req.user!.id, req.params.id)
   res.status(ok ? 200 : 404).json({ ok })
 })
 
@@ -64,16 +142,27 @@ if (hasDist) {
 
 const server = createServer(app)
 
-// Realtime broadcast to browsers.
+// ── Realtime, per-user scoped broadcast ──────────────────────────────────────
+interface AuthedSocket extends WebSocket {
+  userId?: string
+}
 const wss = new WebSocketServer({ server, path: '/ws' })
-wss.on('connection', (ws) => {
-  ws.send(JSON.stringify({ type: 'state', root: getRoot() }))
+const sendScoped = (ws: AuthedSocket) => {
+  if (ws.readyState === WebSocket.OPEN && ws.userId)
+    ws.send(JSON.stringify({ type: 'state', root: scopeRootForUser(getRoot(), ws.userId) }))
+}
+wss.on('connection', (ws: AuthedSocket, req) => {
+  const token = new URL(req.url ?? '', 'http://x').searchParams.get('token') ?? undefined
+  const user = userByToken(token)
+  if (!user) {
+    ws.close(4001, 'unauthorized')
+    return
+  }
+  ws.userId = user.id
+  sendScoped(ws)
 })
-onChange((root) => {
-  const msg = JSON.stringify({ type: 'state', root })
-  wss.clients.forEach((c) => {
-    if (c.readyState === WebSocket.OPEN) c.send(msg)
-  })
+onChange(() => {
+  wss.clients.forEach((c) => sendScoped(c as AuthedSocket))
 })
 
 const PORT = Number(process.env.PORT) || 8787
@@ -81,6 +170,7 @@ server.listen(PORT, () => {
   console.log(`KineTrak server → http://localhost:${PORT}`)
   if (hasDist) console.log(`  • web app  : http://localhost:${PORT}  (serving dist/)`)
   else console.log(`  • web app  : run "npm run dev" (Vite on 5173) or "npm run build" first`)
-  console.log(`  • web sync : GET /api/state · POST /api/command · WS /ws`)
-  console.log(`  • MCP (HTTP): POST /mcp  ${authEnabled() ? '(API key required)' : '(open — create a key on the Connect page to lock down)'}`)
+  console.log(`  • accounts : ${userCount()} registered · POST /api/auth/{register,login,logout} · GET /api/auth/me`)
+  console.log(`  • web sync : GET /api/state · POST /api/command · WS /ws  (session token required)`)
+  console.log(`  • MCP (HTTP): POST /mcp  (per-key user+org scope)`)
 })

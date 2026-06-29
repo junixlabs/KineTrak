@@ -2,24 +2,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { applyCommand, type Command, type Root } from '../src/shared/board'
-import { cloneData, sampleTemplate } from '../src/store/seed'
-import { makeId } from '../src/store/ids'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = join(HERE, 'data')
 const FILE = join(DATA_DIR, 'board.json')
 
+// Accounts own all data, so the board starts empty — each user seeds their own
+// org + sample project on sign-up (see server/index.ts).
 function defaultRoot(): Root {
-  const org = { id: makeId('org'), name: 'KineTrak' }
-  const proj = {
-    id: makeId('p'),
-    orgId: org.id,
-    name: 'KineTrak Platform',
-    createdAt: new Date().toISOString(),
-    data: cloneData(sampleTemplate),
-    snapshots: [],
-  }
-  return { orgs: [org], projects: [proj] }
+  return { orgs: [], projects: [] }
 }
 
 function load(): Root {

@@ -132,6 +132,8 @@ export interface WorkspaceData {
 export interface Org {
   id: string
   name: string
+  /** Owning user (set in server/account mode; absent in local-only mode). */
+  ownerId?: string
 }
 
 export interface Project {
@@ -146,3 +148,11 @@ export interface Project {
 }
 
 export type ProjectTemplate = 'sample' | 'blank'
+
+/** Authenticated account (server mode). Never carries the password hash. */
+export interface User {
+  id: string
+  email: string
+  name: string
+  role: 'admin' | 'user'
+}

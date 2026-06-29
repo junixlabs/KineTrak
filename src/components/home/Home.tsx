@@ -18,9 +18,11 @@ import {
   Bell,
   Upload,
   Plug,
+  LogOut,
 } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { useToast } from '@/store/useToast'
+import { logout } from '@/store/auth'
 import type { ProjectTemplate } from '@/store/types'
 
 const fmtDate = (iso: string) => {
@@ -41,7 +43,9 @@ export default function Home() {
   const importProjectData = useWorkspace((s) => s.importProjectData)
   const goConnect = useWorkspace((s) => s.goConnect)
   const resetAll = useWorkspace((s) => s.resetAll)
+  const currentUser = useWorkspace((s) => s.currentUser)
   const show = useToast((s) => s.show)
+  const initials = (currentUser?.name || currentUser?.email || 'ME').slice(0, 2).toUpperCase()
 
   const [query, setQuery] = useState('')
   const [avatarOpen, setAvatarOpen] = useState(false)
@@ -190,31 +194,40 @@ export default function Home() {
           </button>
           <div className="relative">
             <button onClick={() => setAvatarOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-full bg-grape text-[12px] font-bold text-white hover:opacity-90">
-              ME
+              {initials}
             </button>
             {avatarOpen && (
               <>
                 <div className="fixed inset-0 z-[55]" onClick={() => setAvatarOpen(false)} />
-                <div className="absolute right-0 top-11 z-[60] w-[220px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
+                <div className="absolute right-0 top-11 z-[60] w-[230px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
                   <div className="px-2.5 pb-1.5 pt-2">
-                    <div className="text-[12.5px] font-bold text-ink">Local workspace</div>
-                    <div className="text-[11px] text-faint">Stored in this browser</div>
+                    <div className="truncate text-[12.5px] font-bold text-ink">{currentUser?.name ?? 'Local workspace'}</div>
+                    <div className="truncate text-[11px] text-faint">{currentUser?.email ?? 'Stored in this browser'}</div>
                   </div>
                   <button onClick={() => fileRef.current?.click()} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink hover:bg-[#f4f6f9]">
                     <Upload size={14} className="text-muted" /> Import project…
                   </button>
-                  <button
-                    onClick={() => {
-                      if (confirm('Reset all data? This removes every org and project in this browser.')) {
-                        resetAll()
-                        show('All data reset')
-                      }
-                      setAvatarOpen(false)
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-[#e5484d] hover:bg-[#fdecec]"
-                  >
-                    <Trash2 size={14} /> Reset all data
-                  </button>
+                  {currentUser ? (
+                    <button
+                      onClick={() => { setAvatarOpen(false); void logout() }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink hover:bg-[#f4f6f9]"
+                    >
+                      <LogOut size={14} className="text-muted" /> Sign out
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (confirm('Reset all data? This removes every org and project in this browser.')) {
+                          resetAll()
+                          show('All data reset')
+                        }
+                        setAvatarOpen(false)
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-[#e5484d] hover:bg-[#fdecec]"
+                    >
+                      <Trash2 size={14} /> Reset all data
+                    </button>
+                  )}
                 </div>
               </>
             )}

@@ -60,8 +60,12 @@ Repo **secrets** (Settings → Secrets and variables → Actions):
 Optional repo **variables**: `DEPLOY_PATH` (default `/opt/kinetrak`), `DEPLOY_HEALTH_PORT`
 (default `54440`, the host port the container is published on).
 
-To lock down MCP on the deployed instance, either create a key on the **Connect** page or add
-`KINETRAK_API_KEY` to `environment:` in `/opt/kinetrak/docker-compose.yml`.
+## Accounts
+
+When a server is running, KineTrak requires a **user account** (email + password). Each user sees
+only their own workspaces and projects; the first account to register becomes `admin`. Sessions are
+bearer tokens kept in `localStorage`. With no server reachable, the app falls back to the original
+local-only, account-less browser mode.
 
 ## Connect an AI agent (MCP)
 
@@ -73,9 +77,9 @@ claude mcp add --transport http kinetrak http://localhost:8787/mcp \
 ```
 
 Open the **Connect** page in the app (Home → *Connect agent*, or the *Connect* button in the
-workspace) to create/copy an API key and grab ready-made config snippets. The `/mcp` endpoint is
-open until you create the first key, then a valid Bearer key is required. For headless deploys, seed
-a fixed key with the `KINETRAK_API_KEY` env var.
+workspace) to mint/copy/revoke API keys and grab ready-made config snippets. Each key belongs to your
+account and is **scoped to one workspace** — the agent only sees that workspace's projects. Every
+`/mcp` request requires a valid key.
 
 Tools: `get_board` / `list_projects` / `search` (read + memory recall) and full CRUD on
 modules, features, swimlane nodes & edges, plus `create_snapshot` and `append_note`.

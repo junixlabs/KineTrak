@@ -11,6 +11,7 @@ import type {
   Feature,
   Module,
   SwimNode,
+  User,
   ViewId,
   WorkspaceData,
 } from './types'
@@ -66,6 +67,13 @@ interface WorkspaceState {
   snapMenuOpen: boolean
   syncStatus: SyncStatus
 
+  // Auth (server mode)
+  currentUser: User | null
+  /** A KineTrak server is reachable — accounts are required to use it. */
+  serverPresent: boolean
+  /** Initial auth check (GET /me) has completed. */
+  authChecked: boolean
+
   // Derived
   activeProject: () => Project | undefined
   currentData: () => WorkspaceData
@@ -92,6 +100,12 @@ interface WorkspaceState {
   // Sync (used by the client sync layer)
   setSyncStatus: (s: SyncStatus) => void
   applyServerRoot: (root: Root) => void
+
+  // Auth (used by the auth layer)
+  setCurrentUser: (user: User | null) => void
+  setServerPresent: (v: boolean) => void
+  setAuthChecked: (v: boolean) => void
+  resetForLogout: () => void
 
   // Org / project
   createOrg: (name: string) => string
@@ -152,6 +166,9 @@ export const useWorkspace = create<WorkspaceState>()(
         alertsOpen: false,
         snapMenuOpen: false,
         syncStatus: 'local',
+        currentUser: null,
+        serverPresent: false,
+        authChecked: false,
 
         activeProject: () => get().projects.find((p) => p.id === get().activeProjectId),
         currentData: () => {
@@ -176,6 +193,11 @@ export const useWorkspace = create<WorkspaceState>()(
         toggleSnapMenu: (open) => set((s) => ({ snapMenuOpen: open ?? !s.snapMenuOpen, alertsOpen: false })),
 
         setSyncStatus: (s) => set({ syncStatus: s }),
+        setCurrentUser: (user) => set({ currentUser: user }),
+        setServerPresent: (v) => set({ serverPresent: v }),
+        setAuthChecked: (v) => set({ authChecked: v }),
+        resetForLogout: () =>
+          set({ currentUser: null, orgs: [], projects: [], activeProjectId: null, screen: 'home', present: false, activeSnapshotId: null, selected: null, hoveredId: null }),
         applyServerRoot: (root) =>
           set((s) => {
             const activeProjectId = root.projects.some((p) => p.id === s.activeProjectId)

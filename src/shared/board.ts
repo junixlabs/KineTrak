@@ -25,7 +25,7 @@ export interface Root {
 export const MODULE_PALETTE = ['#2f6fed', '#0d9488', '#7c5cff', '#f59e0b', '#16a34a', '#e5484d', '#6e8bff']
 
 export type Command =
-  | { type: 'createOrg'; id: string; name: string }
+  | { type: 'createOrg'; id: string; name: string; ownerId?: string }
   | { type: 'renameOrg'; id: string; name: string }
   | { type: 'deleteOrg'; id: string }
   | { type: 'createProject'; id: string; orgId: string; name: string; template: ProjectTemplate; createdAt: string }
@@ -61,7 +61,7 @@ const mapProject = (root: Root, projectId: string, fn: (p: Project) => Project):
 export function applyCommand(root: Root, cmd: Command): Root {
   switch (cmd.type) {
     case 'createOrg':
-      return { ...root, orgs: [...root.orgs, { id: cmd.id, name: cmd.name.trim() || 'New org' }] }
+      return { ...root, orgs: [...root.orgs, { id: cmd.id, name: cmd.name.trim() || 'New org', ...(cmd.ownerId ? { ownerId: cmd.ownerId } : {}) }] }
     case 'renameOrg':
       return { ...root, orgs: root.orgs.map((o) => (o.id === cmd.id ? { ...o, name: cmd.name } : o)) }
     case 'deleteOrg':

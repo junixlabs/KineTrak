@@ -10,7 +10,6 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  ShieldAlert,
   Terminal,
   Braces,
   Plug,
@@ -18,15 +17,15 @@ import {
 } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { useToast } from '@/store/useToast'
-import { SYNC_URL } from '@/store/sync'
+import { SYNC_URL, authFetch } from '@/store/api'
 
 interface ApiKey {
   id: string
+  orgId: string
   name: string
   key: string
   createdAt: string
   lastUsedAt: string | null
-  env?: boolean
 }
 
 const MCP_URL = `${SYNC_URL.replace(/\/$/, '')}/mcp`
@@ -36,43 +35,49 @@ const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—
 
 export default function ConnectPage() {
   const goHome = useWorkspace((s) => s.goHome)
+  const orgs = useWorkspace((s) => s.orgs)
+  const activeProject = useWorkspace((s) => s.activeProject())
   const show = useToast((s) => s.show)
 
+  // Keys are scoped to one workspace (org). Default to the active project's org.
+  const [orgId, setOrgId] = useState<string>(activeProject?.orgId ?? orgs[0]?.id ?? '')
+  useEffect(() => {
+    if (!orgId && orgs[0]) setOrgId(orgs[0].id)
+  }, [orgs, orgId])
+
   const [loading, setLoading] = useState(true)
-  const [reachable, setReachable] = useState(true)
-  const [authEnabled, setAuthEnabled] = useState(false)
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
 
   const refresh = useCallback(async () => {
+    if (!orgId) return
     setLoading(true)
     try {
-      const res = await fetch(`${SYNC_URL}/api/keys`)
-      if (!res.ok) throw new Error('unreachable')
+      const res = await authFetch(`/api/keys?orgId=${encodeURIComponent(orgId)}`)
+      if (!res.ok) throw new Error('failed')
       const data = await res.json()
       setKeys(Array.isArray(data.keys) ? data.keys : [])
-      setAuthEnabled(!!data.authEnabled)
-      setReachable(true)
     } catch {
-      setReachable(false)
+      setKeys([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [orgId])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
 
   const createKey = async () => {
+    if (!orgId) return
     setCreating(true)
     try {
-      const res = await fetch(`${SYNC_URL}/api/keys`, {
+      const res = await authFetch('/api/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim() || 'Agent key' }),
+        body: JSON.stringify({ orgId, name: newName.trim() || 'Agent key' }),
       })
       if (!res.ok) throw new Error('failed')
       const data = await res.json()
@@ -81,7 +86,7 @@ export default function ConnectPage() {
       show('API key created — copy it into your agent config')
       await refresh()
     } catch {
-      show('Could not create key — is the server running?')
+      show('Could not create key')
     } finally {
       setCreating(false)
     }
@@ -90,7 +95,7 @@ export default function ConnectPage() {
   const revokeKey = async (id: string) => {
     if (!confirm('Revoke this key? Agents using it will lose access immediately.')) return
     try {
-      const res = await fetch(`${SYNC_URL}/api/keys/${id}`, { method: 'DELETE' })
+      const res = await authFetch(`/api/keys/${id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('failed')
       show('Key revoked')
       await refresh()
@@ -99,21 +104,13 @@ export default function ConnectPage() {
     }
   }
 
-  // The key used in the copy-paste snippets: the newest non-env key, else any, else placeholder.
-  const sampleKey = useMemo(() => keys.find((k) => !k.env)?.key ?? keys[0]?.key ?? '<YOUR_API_KEY>', [keys])
+  const orgName = orgs.find((o) => o.id === orgId)?.name ?? 'this workspace'
+  // The key embedded in the copy-paste snippets: the newest one for this org, else a placeholder.
+  const sampleKey = useMemo(() => keys[0]?.key ?? '<YOUR_API_KEY>', [keys])
 
-  const headerFlag = authEnabled ? ` --header "Authorization: Bearer ${sampleKey}"` : ''
-  const cliSnippet = `claude mcp add --transport http kinetrak ${MCP_URL}${headerFlag}`
+  const cliSnippet = `claude mcp add --transport http kinetrak ${MCP_URL} --header "Authorization: Bearer ${sampleKey}"`
   const jsonSnippet = JSON.stringify(
-    {
-      mcpServers: {
-        kinetrak: {
-          type: 'http',
-          url: MCP_URL,
-          ...(authEnabled ? { headers: { Authorization: `Bearer ${sampleKey}` } } : {}),
-        },
-      },
-    },
+    { mcpServers: { kinetrak: { type: 'http', url: MCP_URL, headers: { Authorization: `Bearer ${sampleKey}` } } } },
     null,
     2,
   )
@@ -159,16 +156,8 @@ export default function ConnectPage() {
             KineTrak exposes its board to AI agents through the{' '}
             <span className="font-semibold text-ink">Model Context Protocol</span> over Streamable HTTP. An agent can read
             the full board as context, edit modules / features / swimlane steps, and append notes — every change appears
-            live in the browser. Authorize the agent with an API key below.
+            live in the browser. Each API key is scoped to one workspace, so an agent only ever sees that workspace.
           </p>
-
-          {!reachable && (
-            <Banner tone="warn" icon={<ShieldAlert size={16} />}>
-              Can’t reach the KineTrak server at <code className="font-mono">{SYNC_URL}</code>. Start it with{' '}
-              <code className="font-mono">npm start</code> (or <code className="font-mono">npm run dev:all</code>) to manage
-              API keys.
-            </Banner>
-          )}
 
           {/* Endpoint */}
           <Section icon={<Plug size={15} />} title="MCP endpoint" sub="Streamable HTTP — point your agent here">
@@ -176,42 +165,45 @@ export default function ConnectPage() {
           </Section>
 
           {/* API keys */}
-          <Section icon={<KeyRound size={15} />} title="API keys" sub="Bearer tokens that authorize agents on this server">
-            {reachable &&
-              (authEnabled ? (
-                <Banner tone="ok" icon={<ShieldCheck size={16} />}>
-                  Auth is <b>on</b>. The <code className="font-mono">/mcp</code> endpoint requires a valid key — requests
-                  without one are rejected.
-                </Banner>
-              ) : (
-                <Banner tone="info" icon={<ShieldAlert size={16} />}>
-                  Auth is <b>off</b> — the endpoint is open to anyone who can reach it. Create a key to lock it down
-                  (existing agents must then send that key).
-                </Banner>
-              ))}
+          <Section icon={<KeyRound size={15} />} title="API keys" sub="Each key authorizes an agent for one workspace">
+            <Banner tone="ok" icon={<ShieldCheck size={16} />}>
+              The <code className="font-mono">/mcp</code> endpoint always requires a valid key. A key acts as your account,
+              limited to the selected workspace’s projects.
+            </Banner>
 
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <select
+                value={orgId}
+                onChange={(e) => setOrgId(e.target.value)}
+                className="h-9 rounded-lg border border-line bg-white px-2.5 text-[13px] outline-none focus:border-brand"
+                title="Workspace this key can access"
+              >
+                {orgs.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
               <input
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !creating && reachable && createKey()}
+                onKeyDown={(e) => e.key === 'Enter' && !creating && orgId && createKey()}
                 placeholder="Key name (e.g. Claude Desktop, CI agent)"
-                disabled={!reachable}
-                className="h-9 flex-1 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-brand disabled:opacity-50"
+                className="h-9 flex-1 rounded-lg border border-line bg-white px-3 text-[13px] outline-none focus:border-brand"
               />
               <button
                 onClick={createKey}
-                disabled={creating || !reachable}
-                className="flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(47,111,237,.30)] hover:bg-brand-dark disabled:opacity-50"
+                disabled={creating || !orgId}
+                className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-brand px-3.5 text-[13px] font-bold text-white shadow-[0_2px_6px_rgba(47,111,237,.30)] hover:bg-brand-dark disabled:opacity-50"
               >
                 <Plus size={15} strokeWidth={2.5} /> New key
               </button>
             </div>
 
             <div className="mt-3 flex flex-col gap-2">
-              {keys.length === 0 && reachable && (
+              {keys.length === 0 && !loading && (
                 <div className="rounded-lg border border-dashed border-line py-8 text-center text-[12.5px] text-faint">
-                  No keys yet. Create one to authorize an agent.
+                  No keys for <b>{orgName}</b> yet. Create one to authorize an agent.
                 </div>
               )}
               {keys.map((k) => (
@@ -220,12 +212,7 @@ export default function ConnectPage() {
                     <KeyRound size={15} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-[13px] font-bold text-ink">{k.name}</span>
-                      {k.env && (
-                        <span className="rounded bg-[#eef1ff] px-1.5 py-0.5 text-[10px] font-bold text-brand">ENV</span>
-                      )}
-                    </div>
+                    <span className="truncate text-[13px] font-bold text-ink">{k.name}</span>
                     <div className="mt-0.5 flex items-center gap-2">
                       <code className="truncate font-mono text-[11.5px] text-muted">
                         {revealed[k.id] ? k.key : mask(k.key)}
@@ -243,22 +230,19 @@ export default function ConnectPage() {
                     {revealed[k.id] ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                   <CopyButton value={k.key} onCopy={() => show('Key copied')} />
-                  {!k.env && (
-                    <button
-                      onClick={() => revokeKey(k.id)}
-                      className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-faint hover:bg-[#fdecec] hover:text-[#e5484d]"
-                      title="Revoke key"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => revokeKey(k.id)}
+                    className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-faint hover:bg-[#fdecec] hover:text-[#e5484d]"
+                    title="Revoke key"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               ))}
             </div>
             <p className="mt-2 text-[11.5px] leading-snug text-faint">
-              Keys are stored on the server (<code className="font-mono">server/data/keys.json</code>), never in the browser
-              or in synced board state. Treat them like passwords. You can also seed a fixed key with the{' '}
-              <code className="font-mono">KINETRAK_API_KEY</code> environment variable (handy for Docker).
+              Keys are stored on the server, never in the browser or in synced board state. Treat them like passwords —
+              revoke any key to cut off its agent immediately.
             </p>
           </Section>
 
@@ -275,9 +259,9 @@ export default function ConnectPage() {
             <CodeBlock value={jsonSnippet} onCopy={() => show('Config copied')} />
           </Section>
 
-          {authEnabled && (
+          {keys.length > 0 && (
             <p className="-mt-2 mb-6 text-[11.5px] text-faint">
-              Snippets embed your newest key. Swap in any key above, or replace it with{' '}
+              Snippets embed your newest key for <b>{orgName}</b>. Swap in any key above, or replace it with{' '}
               <code className="font-mono">&lt;YOUR_API_KEY&gt;</code> when sharing.
             </p>
           )}

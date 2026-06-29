@@ -5,7 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { applyAndBroadcast, getRoot } from './state'
-import { authEnabled, bearerFrom, verifyKey } from './keys'
+import { bearerFrom, verifyKey } from './keys'
 import { findProject, searchBoard } from '../src/shared/board'
 import { makeId, nextNodeCode } from '../src/store/ids'
 
@@ -20,12 +20,17 @@ const featureStatus = z.enum(['must', 'progress', 'done', 'nice'])
 const nodeStatus = z.enum(['todo', 'progress', 'done', 'blocked'])
 const nodeKind = z.enum(['start', 'process', 'decision', 'end'])
 
-function buildMcpServer(): McpServer {
+function buildMcpServer(orgId: string): McpServer {
   const server = new McpServer({ name: 'kinetrak', version: '1.0.0' })
-  const proj = (id?: string) => findProject(getRoot(), id)
+  // Scope every lookup to the key's org — the agent only ever sees that workspace.
+  const orgProjects = () => getRoot().projects.filter((p) => p.orgId === orgId)
+  const proj = (id?: string) => {
+    const p = id ? findProject(getRoot(), id) : orgProjects()[0]
+    return p && p.orgId === orgId ? p : undefined
+  }
   const requireProj = (id?: string) => {
     const p = proj(id)
-    if (!p) throw new Error('project not found')
+    if (!p) throw new Error('project not found in this workspace')
     return p
   }
 
@@ -35,7 +40,7 @@ function buildMcpServer(): McpServer {
     { description: 'List all KineTrak projects with ids, org, and entity counts.' },
     async () =>
       json(
-        getRoot().projects.map((p) => ({
+        orgProjects().map((p) => ({
           id: p.id,
           name: p.name,
           orgId: p.orgId,
@@ -60,7 +65,11 @@ function buildMcpServer(): McpServer {
   server.registerTool(
     'search',
     { description: 'Search the board (memory recall) across module/feature/step names, descriptions and constraints.', inputSchema: { query: z.string(), projectId: z.string().optional() } },
-    async ({ query, projectId }) => json(searchBoard(getRoot(), query, projectId)),
+    async ({ query, projectId }) => {
+      if (projectId && !proj(projectId)) return json({ error: 'project not found in this workspace' })
+      const scoped = { orgs: [], projects: orgProjects() }
+      return json(searchBoard(scoped, query, projectId))
+    },
   )
 
   // ── Modules ─────────────────────────────────────────────────────────────────
@@ -214,19 +223,19 @@ function buildMcpServer(): McpServer {
 }
 
 /**
- * Gate the MCP endpoint with a Bearer API key.
- * Open while no keys exist (zero-config dev); locks down the moment one does.
- * Returns true when the request may proceed.
+ * Gate the MCP endpoint with a Bearer API key. Every request must carry a valid
+ * key; the key resolves to a user + org and scopes all tools to that workspace.
+ * Returns the key's orgId when authorized, or null after writing a 401.
  */
-function authorize(req: Request, res: Response): boolean {
-  if (!authEnabled()) return true
-  if (verifyKey(bearerFrom(req.headers as Record<string, unknown>))) return true
+function authorize(req: Request, res: Response): string | null {
+  const key = verifyKey(bearerFrom(req.headers as Record<string, unknown>))
+  if (key) return key.orgId
   res.status(401).json({
     jsonrpc: '2.0',
     error: { code: -32001, message: 'Unauthorized — provide a valid KineTrak API key: "Authorization: Bearer <key>". Create one on the Connect page.' },
     id: null,
   })
-  return false
+  return null
 }
 
 /** Mount Streamable-HTTP MCP (stateful sessions) at /mcp. */
@@ -234,7 +243,8 @@ export function registerMcp(app: Express) {
   const transports: Record<string, StreamableHTTPServerTransport> = {}
 
   app.post('/mcp', async (req: Request, res: Response) => {
-    if (!authorize(req, res)) return
+    const orgId = authorize(req, res)
+    if (!orgId) return
     const sid = req.headers['mcp-session-id'] as string | undefined
     let transport = sid ? transports[sid] : undefined
 
@@ -252,7 +262,8 @@ export function registerMcp(app: Express) {
       transport.onclose = () => {
         if (transport!.sessionId) delete transports[transport!.sessionId]
       }
-      await buildMcpServer().connect(transport)
+      // Bind this session's tools to the org the key belongs to.
+      await buildMcpServer(orgId).connect(transport)
     }
 
     await transport.handleRequest(req, res, req.body)
