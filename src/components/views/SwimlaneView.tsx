@@ -130,8 +130,19 @@ function SwimlaneInner() {
   }, [data.swimEdges, data.swimNodes, data.lanes, focus, reach])
 
   // React Flow needs node state for drag/connect interactions; re-seed it from the store.
+  // Merge by id so React Flow's measured dimensions survive — replacing the array
+  // wholesale on every hover/focus change drops `measured`, forcing a re-measure that
+  // makes the node blink out/in under the cursor and oscillates mouseenter/leave.
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState<Node>([])
-  useEffect(() => setRfNodes(computedNodes), [computedNodes, setRfNodes])
+  useEffect(() => {
+    setRfNodes((prev) => {
+      const byId = new Map(prev.map((n) => [n.id, n]))
+      return computedNodes.map((cn) => {
+        const old = byId.get(cn.id)
+        return old ? { ...old, ...cn } : cn
+      })
+    })
+  }, [computedNodes, setRfNodes])
 
   // Delete the selected node with the keyboard (ignoring panel inputs).
   useEffect(() => {
