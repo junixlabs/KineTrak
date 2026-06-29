@@ -47,8 +47,14 @@ Board state persists in the `kinetrak-data` volume.
 Streamable-HTTP endpoint: **`http://<host>:8787/mcp`**
 
 ```bash
-claude mcp add --transport http kinetrak http://localhost:8787/mcp
+claude mcp add --transport http kinetrak http://localhost:8787/mcp \
+  --header "Authorization: Bearer <YOUR_API_KEY>"
 ```
+
+Open the **Connect** page in the app (Home → *Connect agent*, or the *Connect* button in the
+workspace) to create/copy an API key and grab ready-made config snippets. The `/mcp` endpoint is
+open until you create the first key, then a valid Bearer key is required. For headless deploys, seed
+a fixed key with the `KINETRAK_API_KEY` env var.
 
 Tools: `get_board` / `list_projects` / `search` (read + memory recall) and full CRUD on
 modules, features, swimlane nodes & edges, plus `create_snapshot` and `append_note`.

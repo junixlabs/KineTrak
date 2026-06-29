@@ -5,6 +5,7 @@ import StoryMapView from '@/components/views/StoryMapView'
 import SwimlaneView from '@/components/views/SwimlaneView'
 import DetailPanel from '@/components/panel/DetailPanel'
 import Home from '@/components/home/Home'
+import ConnectPage from '@/components/connect/ConnectPage'
 import PresentMode from '@/components/present/PresentMode'
 import Toaster from '@/components/ui/Toaster'
 import { useWorkspace } from '@/store/useWorkspace'
@@ -20,6 +21,8 @@ export default function App() {
         <PresentMode />
       ) : screen === 'home' ? (
         <Home />
+      ) : screen === 'connect' ? (
+        <ConnectPage />
       ) : (
         <div className="flex h-full flex-col overflow-hidden">
           <Header />

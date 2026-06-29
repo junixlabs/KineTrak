@@ -5,6 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { applyAndBroadcast, getRoot } from './state'
+import { authEnabled, bearerFrom, verifyKey } from './keys'
 import { findProject, searchBoard } from '../src/shared/board'
 import { makeId, nextNodeCode } from '../src/store/ids'
 
@@ -212,11 +213,28 @@ function buildMcpServer(): McpServer {
   return server
 }
 
+/**
+ * Gate the MCP endpoint with a Bearer API key.
+ * Open while no keys exist (zero-config dev); locks down the moment one does.
+ * Returns true when the request may proceed.
+ */
+function authorize(req: Request, res: Response): boolean {
+  if (!authEnabled()) return true
+  if (verifyKey(bearerFrom(req.headers as Record<string, unknown>))) return true
+  res.status(401).json({
+    jsonrpc: '2.0',
+    error: { code: -32001, message: 'Unauthorized — provide a valid KineTrak API key: "Authorization: Bearer <key>". Create one on the Connect page.' },
+    id: null,
+  })
+  return false
+}
+
 /** Mount Streamable-HTTP MCP (stateful sessions) at /mcp. */
 export function registerMcp(app: Express) {
   const transports: Record<string, StreamableHTTPServerTransport> = {}
 
   app.post('/mcp', async (req: Request, res: Response) => {
+    if (!authorize(req, res)) return
     const sid = req.headers['mcp-session-id'] as string | undefined
     let transport = sid ? transports[sid] : undefined
 
@@ -241,6 +259,7 @@ export function registerMcp(app: Express) {
   })
 
   const bySession = async (req: Request, res: Response) => {
+    if (!authorize(req, res)) return
     const sid = req.headers['mcp-session-id'] as string | undefined
     const transport = sid ? transports[sid] : undefined
     if (!transport) {

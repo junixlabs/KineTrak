@@ -6,6 +6,7 @@ import express from 'express'
 import { WebSocketServer, WebSocket } from 'ws'
 import { applyAndBroadcast, getRoot, onChange } from './state'
 import { registerMcp } from './mcp'
+import { authEnabled, createKey, listKeys, revokeKey } from './keys'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DIST = join(HERE, '..', 'dist')
@@ -33,6 +34,17 @@ app.post('/api/command', (req, res) => {
   } catch (e) {
     res.status(400).json({ ok: false, error: String(e) })
   }
+})
+
+// API key management for MCP access (used by the Connect page).
+app.get('/api/keys', (_req, res) => res.json({ authEnabled: authEnabled(), keys: listKeys() }))
+app.post('/api/keys', (req, res) => {
+  const key = createKey(typeof req.body?.name === 'string' ? req.body.name : undefined)
+  res.json({ ok: true, key })
+})
+app.delete('/api/keys/:id', (req, res) => {
+  const ok = revokeKey(req.params.id)
+  res.status(ok ? 200 : 404).json({ ok })
 })
 
 // MCP (Streamable HTTP) at /mcp.
@@ -70,5 +82,5 @@ server.listen(PORT, () => {
   if (hasDist) console.log(`  • web app  : http://localhost:${PORT}  (serving dist/)`)
   else console.log(`  • web app  : run "npm run dev" (Vite on 5173) or "npm run build" first`)
   console.log(`  • web sync : GET /api/state · POST /api/command · WS /ws`)
-  console.log(`  • MCP (HTTP): POST /mcp`)
+  console.log(`  • MCP (HTTP): POST /mcp  ${authEnabled() ? '(API key required)' : '(open — create a key on the Connect page to lock down)'}`)
 })

@@ -1,4 +1,4 @@
-import { Play, LineChart } from 'lucide-react'
+import { Play, LineChart, Plug } from 'lucide-react'
 import ViewTabs from './ViewTabs'
 import SnapshotMenu from './SnapshotMenu'
 import RoleFilter from './RoleFilter'
@@ -15,6 +15,7 @@ const SYNC_META = {
 
 export default function Header() {
   const goHome = useWorkspace((s) => s.goHome)
+  const goConnect = useWorkspace((s) => s.goConnect)
   const setPresent = useWorkspace((s) => s.setPresent)
   const syncStatus = useWorkspace((s) => s.syncStatus)
   const sync = SYNC_META[syncStatus]
@@ -50,6 +51,15 @@ export default function Header() {
 
       <RoleFilter />
       <AlertsPanel />
+
+      <button
+        onClick={goConnect}
+        title="Connect an AI agent over MCP"
+        className="flex h-[34px] items-center gap-[7px] rounded-[9px] border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]"
+      >
+        <Plug size={14} className="text-brand" />
+        Connect
+      </button>
 
       <button
         onClick={() => setPresent(true)}

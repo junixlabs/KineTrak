@@ -3,7 +3,7 @@ import type { Command, Root } from '@/shared/board'
 
 // Dev (Vite on :5173) → talk to the server on :8787.
 // Production (served by the server itself) → same origin.
-const SYNC_URL =
+export const SYNC_URL =
   (import.meta.env.VITE_SYNC_URL as string | undefined) ||
   (import.meta.env.DEV ? 'http://localhost:8787' : window.location.origin)
 

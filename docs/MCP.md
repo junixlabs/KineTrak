@@ -49,14 +49,44 @@ The header shows **Live · synced** when connected to the server, **Local** when
 
 Streamable HTTP endpoint: **`http://localhost:8787/mcp`**
 
+The fastest path is the in-app **Connect page** — open the app, then *Home → Connect agent* (or the
+*Connect* button in the workspace header). It lets you create/copy/revoke API keys, shows the live
+endpoint, and gives copy-paste config snippets with the key already embedded.
+
 Claude Code:
 ```bash
-claude mcp add --transport http kinetrak http://localhost:8787/mcp
+claude mcp add --transport http kinetrak http://localhost:8787/mcp \
+  --header "Authorization: Bearer <YOUR_API_KEY>"
 ```
 or in `.mcp.json` / client config:
 ```json
-{ "mcpServers": { "kinetrak": { "type": "http", "url": "http://localhost:8787/mcp" } } }
+{
+  "mcpServers": {
+    "kinetrak": {
+      "type": "http",
+      "url": "http://localhost:8787/mcp",
+      "headers": { "Authorization": "Bearer <YOUR_API_KEY>" }
+    }
+  }
+}
 ```
+
+## Authentication — accounts & API keys
+
+The board is gated by **Bearer API keys** so only authorized agents can read/edit it.
+
+- **Backward-compatible by default**: while no keys exist, `/mcp` is open (zero-config dev). The
+  moment you create the first key, a valid `Authorization: Bearer <key>` is required — requests
+  without one get `401`.
+- **Manage keys** on the Connect page, or via REST: `GET /api/keys`, `POST /api/keys {name}`,
+  `DELETE /api/keys/:id`. Keys also accept the `X-API-Key: <key>` header.
+- **Headless / Docker**: seed a fixed key with the `KINETRAK_API_KEY` env var. It's shown on the
+  Connect page as an `ENV` key and can't be deleted via the API (manage it through the environment).
+- **Storage**: keys live in `server/data/keys.json` (git-ignored) — never in synced board state, so
+  they're never broadcast to browsers. Treat them like passwords.
+
+> Scope: keys gate the agent-facing `/mcp` endpoint. The human web-sync API (`/api/state`,
+> `/api/command`, `/ws`) stays open for the local-first browser experience.
 
 ## Tools
 

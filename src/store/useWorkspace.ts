@@ -55,7 +55,7 @@ interface WorkspaceState {
   activeProjectId: string | null
 
   // UI
-  screen: 'home' | 'workspace'
+  screen: 'home' | 'workspace' | 'connect'
   present: boolean
   activeView: ViewId
   activeSnapshotId: string | null
@@ -73,6 +73,7 @@ interface WorkspaceState {
 
   // Navigation
   goHome: () => void
+  goConnect: () => void
   openProject: (id: string) => void
   setPresent: (v: boolean) => void
   setView: (v: ViewId) => void
@@ -163,6 +164,7 @@ export const useWorkspace = create<WorkspaceState>()(
         isReadOnly: () => get().activeSnapshotId !== null,
 
         goHome: () => set({ screen: 'home', present: false, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
+        goConnect: () => set({ screen: 'connect', present: false, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
         openProject: (id) => set({ screen: 'workspace', activeProjectId: id, activeSnapshotId: null, selected: null, hoveredId: null }),
         setPresent: (v) => set({ present: v, alertsOpen: false, snapMenuOpen: false, selected: null }),
         setView: (v) => set({ activeView: v, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),

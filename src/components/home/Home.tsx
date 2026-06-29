@@ -17,6 +17,7 @@ import {
   Gift,
   Bell,
   Upload,
+  Plug,
 } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { useToast } from '@/store/useToast'
@@ -38,6 +39,7 @@ export default function Home() {
   const renameOrg = useWorkspace((s) => s.renameOrg)
   const deleteOrg = useWorkspace((s) => s.deleteOrg)
   const importProjectData = useWorkspace((s) => s.importProjectData)
+  const goConnect = useWorkspace((s) => s.goConnect)
   const resetAll = useWorkspace((s) => s.resetAll)
   const show = useToast((s) => s.show)
 
@@ -168,6 +170,9 @@ export default function Home() {
           <span className="text-[15px] font-extrabold tracking-tight text-ink">Workspace</span>
           <span className="rounded-md bg-[#eef1ff] px-2 py-0.5 text-[11px] font-bold text-brand">Free</span>
           <div className="flex-1" />
+          <button onClick={goConnect} className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]">
+            <Plug size={15} strokeWidth={2} /> Connect agent
+          </button>
           <button onClick={copyLink} className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]">
             <UserPlus size={15} strokeWidth={2} /> Invite members
           </button>
