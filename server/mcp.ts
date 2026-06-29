@@ -6,7 +6,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { applyAndBroadcast as applyRaw, getRoot } from './state'
 import { bearerFrom, verifyKey, type ApiKey } from './keys'
-import { recordNote, type Actor } from './activity'
+import { recordNote, listActivity, type Actor } from './activity'
 import { findProject, searchBoard } from '../src/shared/board'
 import { makeId, nextNodeCode } from '../src/store/ids'
 
@@ -125,6 +125,78 @@ function buildMcpServer(key: ApiKey): McpServer {
     },
   )
 
+  server.registerTool(
+    'get_changes_since',
+    {
+      description:
+        'Incremental recall — what changed on the board since a cursor, instead of re-reading the whole board. Returns activity entries (who/what/when) plus the current value of each changed entity, and a `cursor` to pass back next time. Omit `since` for the latest changes. Cheaper than get_board for staying in sync.',
+      inputSchema: { projectId: z.string().optional(), since: z.number().optional() },
+    },
+    async ({ projectId, since }) => {
+      const p = requireProj(projectId)
+      const items = listActivity(p.id, since ?? 0, since === undefined ? 50 : 200)
+      const d = p.data
+      const entityOf = (id?: string) => {
+        if (!id) return undefined
+        const m = d.modules.find((x) => x.id === id)
+        if (m) return { type: 'module', ...m }
+        const f = d.features.find((x) => x.id === id)
+        if (f) return { type: 'feature', ...f }
+        const n = d.swimNodes.find((x) => x.id === id)
+        if (n) return { type: 'swimnode', ...n }
+        return { type: 'deleted', id }
+      }
+      const cursor = items.at(-1)?.ts ?? since ?? Date.now()
+      return json({
+        cursor,
+        count: items.length,
+        changes: items.map((a) => ({ ts: a.ts, actor: a.actor, kind: a.kind, summary: a.summary, target: entityOf(a.targetId) })),
+      })
+    },
+  )
+
+  server.registerTool(
+    'validate_board',
+    {
+      description:
+        "Self-check the board for structural problems you can't see visually: empty modules, orphan features, swim steps in missing lanes, edges to missing steps, disconnected steps, duplicate names. Returns issues by severity so you can fix them.",
+      inputSchema: { projectId: z.string().optional() },
+    },
+    async ({ projectId }) => {
+      const p = requireProj(projectId)
+      const d = p.data
+      const issues: { severity: 'error' | 'warning'; kind: string; message: string; ids?: string[] }[] = []
+      const moduleIds = new Set(d.modules.map((m) => m.id))
+      const laneIds = new Set(d.lanes.map((l) => l.id))
+      const nodeIds = new Set(d.swimNodes.map((n) => n.id))
+
+      d.modules.forEach((m) => {
+        if (!d.features.some((f) => f.moduleId === m.id))
+          issues.push({ severity: 'warning', kind: 'empty_module', message: `Module “${m.name}” has no features`, ids: [m.id] })
+      })
+      d.features.forEach((f) => {
+        if (!moduleIds.has(f.moduleId)) issues.push({ severity: 'error', kind: 'orphan_feature', message: `Feature “${f.name}” points at a missing module`, ids: [f.id] })
+      })
+      d.swimNodes.forEach((n) => {
+        if (!laneIds.has(n.lane)) issues.push({ severity: 'error', kind: 'node_bad_lane', message: `Step “${n.label}” is in a non-existent lane`, ids: [n.id] })
+        const connected = d.swimEdges.some((e) => e.from === n.id || e.to === n.id)
+        if (!connected && d.swimNodes.length > 1) issues.push({ severity: 'warning', kind: 'disconnected_step', message: `Step “${n.label}” has no connections`, ids: [n.id] })
+      })
+      d.swimEdges.forEach((e) => {
+        if (!nodeIds.has(e.from) || !nodeIds.has(e.to)) issues.push({ severity: 'error', kind: 'dangling_edge', message: `An edge references a missing step`, ids: [e.from, e.to] })
+      })
+      const dupNames = (names: string[]) => {
+        const seen = new Set<string>()
+        const dups = new Set<string>()
+        names.forEach((n) => (seen.has(n.toLowerCase()) ? dups.add(n) : seen.add(n.toLowerCase())))
+        return [...dups]
+      }
+      dupNames(d.modules.map((m) => m.name)).forEach((n) => issues.push({ severity: 'warning', kind: 'duplicate_module_name', message: `Duplicate module name “${n}”` }))
+
+      return json({ ok: issues.every((i) => i.severity !== 'error'), errors: issues.filter((i) => i.severity === 'error').length, warnings: issues.filter((i) => i.severity === 'warning').length, issues })
+    },
+  )
+
   // ── Modules ─────────────────────────────────────────────────────────────────
   server.registerTool(
     'add_module',
@@ -134,6 +206,18 @@ function buildMcpServer(key: ApiKey): McpServer {
       const id = makeId('m')
       applyAndBroadcast({ type: 'addModule', projectId: p.id, id, name, color })
       return json({ id })
+    },
+  )
+  server.registerTool(
+    'find_or_create_module',
+    { description: 'Idempotent add: return the existing module with this name (case-insensitive) or create it. Safe to call when re-running a task. Returns {id, created}.', inputSchema: { projectId: z.string().optional(), name: z.string(), color: z.string().optional() } },
+    async ({ projectId, name, color }) => {
+      const p = requireProj(projectId)
+      const found = p.data.modules.find((m) => m.name.trim().toLowerCase() === name.trim().toLowerCase())
+      if (found) return json({ id: found.id, created: false })
+      const id = makeId('m')
+      applyAndBroadcast({ type: 'addModule', projectId: p.id, id, name, color })
+      return json({ id, created: true })
     },
   )
   server.registerTool(
@@ -175,6 +259,21 @@ function buildMcpServer(key: ApiKey): McpServer {
       const id = makeId('f')
       applyAndBroadcast({ type: 'addFeature', projectId: p.id, id, moduleId, releaseId: rel, name })
       return json({ id })
+    },
+  )
+  server.registerTool(
+    'find_or_create_feature',
+    { description: 'Idempotent add: return the existing feature with this name in the module (case-insensitive) or create it. Returns {id, created}.', inputSchema: { projectId: z.string().optional(), moduleId: z.string(), name: z.string(), releaseId: z.string().optional() } },
+    async ({ projectId, moduleId, name, releaseId }) => {
+      const p = requireProj(projectId)
+      if (!p.data.modules.some((m) => m.id === moduleId)) return json({ error: 'module not found' })
+      const found = p.data.features.find((f) => f.moduleId === moduleId && f.name.trim().toLowerCase() === name.trim().toLowerCase())
+      if (found) return json({ id: found.id, created: false })
+      const rel = releaseId ?? p.data.releases[0]?.id
+      if (!rel) return json({ error: 'no release available' })
+      const id = makeId('f')
+      applyAndBroadcast({ type: 'addFeature', projectId: p.id, id, moduleId, releaseId: rel, name })
+      return json({ id, created: true })
     },
   )
   server.registerTool(

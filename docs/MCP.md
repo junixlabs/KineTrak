@@ -106,10 +106,16 @@ Read / memory:
 - `get_board({projectId?})` — full board as structured context (modules, features, lanes,
   swimlane graph, releases). Use this as the agent's working context.
 - `search({query, projectId?})` — recall across names, descriptions, constraints.
+- `get_changes_since({since?, projectId?})` — incremental recall: what changed since a `cursor`
+  (with each changed entity's current value) instead of re-reading the whole board. Returns a new
+  `cursor` to pass next time. Cheaper than `get_board` for staying in sync.
+- `validate_board({projectId?})` — structural self-check (empty modules, orphan features, steps in
+  missing lanes, dangling edges, disconnected steps, duplicate names). Use it to catch problems you
+  can't see visually, then fix them.
 
 Write (each broadcasts live to the browser):
-- modules: `add_module`, `update_module`, `delete_module`
-- features: `add_feature`, `update_feature`, `delete_feature`
+- modules: `add_module`, `find_or_create_module` (idempotent), `update_module`, `delete_module`
+- features: `add_feature`, `find_or_create_feature` (idempotent), `update_feature`, `delete_feature`
 - swimlane: `add_swim_node`, `update_swim_node`, `delete_swim_node`, `add_swim_edge`, `delete_swim_edge`
 - versioning / memory: `create_snapshot`, `append_note` (append a line to a feature/step description)
 - narration: `log_activity({message})` — tell the watching human what you're doing/why; shows live in
