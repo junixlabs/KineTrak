@@ -44,24 +44,24 @@ Board state persists in the `kinetrak-data` volume.
 
 ### Auto-deploy (CI/CD → VPS)
 
-On every push to `main`, CI builds the image **and** SSHes into your server to roll it out
-(`docker compose pull && up -d`, then a `/api/health` check). One-time setup:
+On every push to `main`, the `docker` job builds & pushes `:latest`, then the `deploy` job SSHes into
+the server and rolls it out: `cd /opt/kinetrak && docker compose pull && docker compose up -d`, prune,
+then an `/api/health` check. It uses the compose file **already on the server** (which binds
+`127.0.0.1:54440` behind a Cloudflare Tunnel + a named data volume) and never overwrites it.
 
-1. On the server: install Docker + Compose, and `docker login ghcr.io` once if the image is private.
-2. Add these GitHub repo **secrets** (Settings → Secrets and variables → Actions):
+Repo **secrets** (Settings → Secrets and variables → Actions):
 
-   | Secret | Required | Notes |
-   |---|---|---|
-   | `DEPLOY_HOST` | ✓ | server IP / hostname |
-   | `DEPLOY_USER` | ✓ | SSH user |
-   | `DEPLOY_SSH_KEY` | ✓ | private key (the matching public key is in the server's `authorized_keys`) |
-   | `DEPLOY_PORT` | — | SSH port (default `22`) |
-   | `DEPLOY_PATH` | — | dir for the compose file (default `~/kinetrak`) |
-   | `GHCR_USERNAME` / `GHCR_TOKEN` | — | only if the GHCR package is **private** (PAT with `read:packages`) |
+| Secret | Required | Notes |
+|---|---|---|
+| `DEPLOY_HOST` | ✓ | server IP / hostname |
+| `DEPLOY_USER` | ✓ | SSH user |
+| `DEPLOY_SSH_KEY` | ✓ | private key of a dedicated deploy key in the server's `authorized_keys` |
 
-The workflow copies `docker-compose.deploy.yml` to `DEPLOY_PATH` each run, so the server always
-matches the repo. To set a fixed MCP key on the server, add `KINETRAK_API_KEY` to that compose file's
-`environment`.
+Optional repo **variables**: `DEPLOY_PATH` (default `/opt/kinetrak`), `DEPLOY_HEALTH_PORT`
+(default `54440`, the host port the container is published on).
+
+To lock down MCP on the deployed instance, either create a key on the **Connect** page or add
+`KINETRAK_API_KEY` to `environment:` in `/opt/kinetrak/docker-compose.yml`.
 
 ## Connect an AI agent (MCP)
 
