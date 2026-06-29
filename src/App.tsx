@@ -8,6 +8,7 @@ import Home from '@/components/home/Home'
 import ConnectPage from '@/components/connect/ConnectPage'
 import PresentMode from '@/components/present/PresentMode'
 import AuthScreen from '@/components/auth/AuthScreen'
+import ShareViewer from '@/components/share/ShareViewer'
 import Toaster from '@/components/ui/Toaster'
 import { useWorkspace } from '@/store/useWorkspace'
 
@@ -18,6 +19,17 @@ export default function App() {
   const serverPresent = useWorkspace((s) => s.serverPresent)
   const currentUser = useWorkspace((s) => s.currentUser)
   const authChecked = useWorkspace((s) => s.authChecked)
+  const shareMode = useWorkspace((s) => s.shareMode)
+
+  // Anonymous read-only share link — no login, present-style viewer.
+  if (shareMode) {
+    return (
+      <>
+        <ShareViewer />
+        <Toaster />
+      </>
+    )
+  }
 
   // When a server is present, accounts are required — gate the app behind login.
   // (No server → local-only mode, no accounts.)

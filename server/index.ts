@@ -19,6 +19,7 @@ import {
   type User,
 } from './auth'
 import { authorizeCommand, scopeRootForUser, userOwnsOrg } from './scope'
+import { createShare, projectIdForToken, revokeShare, shareForProject } from './shares'
 import { sampleTemplate } from '../src/store/seed'
 import { makeId } from '../src/store/ids'
 
@@ -125,6 +126,33 @@ app.delete('/api/keys/:id', requireUser, (req: AuthedRequest, res) => {
   res.status(ok ? 200 : 404).json({ ok })
 })
 
+// ── Public read-only share links (present-style) ────────────────────────────
+const userProject = (userId: string, projectId: string) => {
+  const p = getRoot().projects.find((x) => x.id === projectId)
+  return p && userOwnsOrg(getRoot(), userId, p.orgId) ? p : undefined
+}
+
+app.get('/api/projects/:id/share', requireUser, (req: AuthedRequest, res) => {
+  if (!userProject(req.user!.id, req.params.id)) return res.status(404).json({ ok: false })
+  res.json({ ok: true, token: shareForProject(req.params.id)?.token ?? null })
+})
+app.post('/api/projects/:id/share', requireUser, (req: AuthedRequest, res) => {
+  if (!userProject(req.user!.id, req.params.id)) return res.status(403).json({ ok: false, error: 'Not your project' })
+  res.json({ ok: true, token: createShare(req.params.id).token })
+})
+app.delete('/api/projects/:id/share', requireUser, (req: AuthedRequest, res) => {
+  if (!userProject(req.user!.id, req.params.id)) return res.status(403).json({ ok: false })
+  res.json({ ok: revokeShare(req.params.id) })
+})
+
+// Anonymous, read-only board for a share token.
+app.get('/api/shared/:token', (req, res) => {
+  const pid = projectIdForToken(req.params.token)
+  const p = pid ? getRoot().projects.find((x) => x.id === pid) : undefined
+  if (!p) return res.status(404).json({ ok: false, error: 'Link not found or revoked' })
+  res.json({ id: p.id, name: p.name, data: p.data })
+})
+
 // MCP (Streamable HTTP) at /mcp.
 registerMcp(app)
 
@@ -145,20 +173,32 @@ const server = createServer(app)
 // ── Realtime, per-user scoped broadcast ──────────────────────────────────────
 interface AuthedSocket extends WebSocket {
   userId?: string
+  /** Read-only share viewer bound to one project. */
+  shareProjectId?: string
 }
 const wss = new WebSocketServer({ server, path: '/ws' })
 const sendScoped = (ws: AuthedSocket) => {
-  if (ws.readyState === WebSocket.OPEN && ws.userId)
+  if (ws.readyState !== WebSocket.OPEN) return
+  if (ws.userId) {
     ws.send(JSON.stringify({ type: 'state', root: scopeRootForUser(getRoot(), ws.userId) }))
+  } else if (ws.shareProjectId) {
+    const p = getRoot().projects.find((x) => x.id === ws.shareProjectId)
+    if (p) ws.send(JSON.stringify({ type: 'state', root: { orgs: [], projects: [p] } }))
+  }
 }
 wss.on('connection', (ws: AuthedSocket, req) => {
-  const token = new URL(req.url ?? '', 'http://x').searchParams.get('token') ?? undefined
-  const user = userByToken(token)
-  if (!user) {
-    ws.close(4001, 'unauthorized')
-    return
+  const params = new URL(req.url ?? '', 'http://x').searchParams
+  const share = projectIdForToken(params.get('share') ?? undefined)
+  if (share) {
+    ws.shareProjectId = share // anonymous read-only viewer
+  } else {
+    const user = userByToken(params.get('token') ?? undefined)
+    if (!user) {
+      ws.close(4001, 'unauthorized')
+      return
+    }
+    ws.userId = user.id
   }
-  ws.userId = user.id
   sendScoped(ws)
 })
 onChange(() => {

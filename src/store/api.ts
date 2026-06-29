@@ -25,3 +25,10 @@ export function authFetch(path: string, init: RequestInit = {}) {
   if (token) headers.set('Authorization', `Bearer ${token}`)
   return fetch(`${SYNC_URL}${path}`, { ...init, headers })
 }
+
+/** A public read-only share token from the URL: /share/<token> or ?share=<token>. */
+export function getShareToken(): string | null {
+  const m = /^\/share\/([^/?#]+)/.exec(window.location.pathname)
+  if (m) return decodeURIComponent(m[1])
+  return new URLSearchParams(window.location.search).get('share')
+}

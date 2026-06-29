@@ -1,23 +1,68 @@
-import { useRef, useState } from 'react'
-import { Link2, Download, Upload } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Link2, Download, Upload, Copy, Check, Trash2, Loader2 } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { useToast } from '@/store/useToast'
+import { authFetch } from '@/store/api'
 
 export default function ShareMenu() {
   const project = useWorkspace((s) => s.activeProject())
   const importProjectData = useWorkspace((s) => s.importProjectData)
   const show = useToast((s) => s.show)
   const [open, setOpen] = useState(false)
+  const [token, setToken] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const copyLink = async () => {
+  const shareUrl = token ? `${window.location.origin}/share/${token}` : null
+
+  // Load the project's current share token when the menu opens.
+  useEffect(() => {
+    if (!open || !project) return
+    void authFetch(`/api/projects/${project.id}/share`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setToken(d?.token ?? null))
+      .catch(() => setToken(null))
+  }, [open, project])
+
+  const createLink = async () => {
+    if (!project) return
+    setBusy(true)
     try {
-      await navigator.clipboard.writeText(window.location.href)
-      show('Link copied to clipboard')
+      const r = await authFetch(`/api/projects/${project.id}/share`, { method: 'POST' })
+      const d = await r.json()
+      if (!r.ok) throw new Error()
+      setToken(d.token)
+      await navigator.clipboard.writeText(`${window.location.origin}/share/${d.token}`).catch(() => {})
+      show('Read-only link created & copied')
     } catch {
-      show('Could not copy link')
+      show('Could not create link')
+    } finally {
+      setBusy(false)
     }
-    setOpen(false)
+  }
+
+  const copyLink = async () => {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1400)
+      show('Link copied')
+    } catch {
+      show('Could not copy')
+    }
+  }
+
+  const revokeLink = async () => {
+    if (!project || !confirm('Revoke this link? Anyone holding it loses access.')) return
+    try {
+      await authFetch(`/api/projects/${project.id}/share`, { method: 'DELETE' })
+      setToken(null)
+      show('Link revoked')
+    } catch {
+      show('Could not revoke')
+    }
   }
 
   const exportJson = () => {
@@ -37,8 +82,7 @@ export default function ShareMenu() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    const text = await file.text()
-    const id = importProjectData(text)
+    const id = importProjectData(await file.text())
     show(id ? 'Project imported' : 'Invalid project file')
     setOpen(false)
   }
@@ -55,14 +99,36 @@ export default function ShareMenu() {
       {open && (
         <>
           <div className="fixed inset-0 z-[55]" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-11 z-[60] w-[280px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
-            <div className="px-2.5 pb-1.5 pt-2 text-[10.5px] font-bold tracking-wide text-faint">SHARE · EXPORT</div>
-            <Item icon={<Link2 size={15} />} title="Copy link" sub="Open this workspace in your browser" onClick={copyLink} />
-            <Item icon={<Download size={15} />} title="Export project (JSON)" sub="Download a portable copy" onClick={exportJson} />
-            <Item icon={<Upload size={15} />} title="Import project (JSON)" sub="Create a project from a file" onClick={() => fileRef.current?.click()} />
-            <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onFile} />
-            <div className="mt-1 border-t border-[#eef0f3] px-2.5 pb-1.5 pt-2 text-[11px] leading-snug text-faint">
-              Data is stored locally in this browser. Export to share with teammates.
+          <div className="absolute right-0 top-11 z-[60] w-[320px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
+            <div className="px-2.5 pb-1 pt-2 text-[10.5px] font-bold tracking-wide text-faint">READ-ONLY SHARE LINK</div>
+
+            {shareUrl ? (
+              <div className="px-2 pb-1.5">
+                <div className="flex items-center gap-1.5 rounded-lg border border-line bg-[#fbfcfd] px-2.5 py-1.5">
+                  <Link2 size={14} className="flex-none text-brand" />
+                  <span className="flex-1 truncate font-mono text-[11px] text-muted">{shareUrl}</span>
+                  <button onClick={copyLink} title="Copy" className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-faint hover:bg-[#eef1ff] hover:text-brand">
+                    {copied ? <Check size={14} className="text-[#16a34a]" /> : <Copy size={14} />}
+                  </button>
+                  <button onClick={revokeLink} title="Revoke" className="flex h-7 w-7 flex-none items-center justify-center rounded-md text-faint hover:bg-[#fdecec] hover:text-[#e5484d]">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                <p className="px-0.5 pt-1.5 text-[11px] leading-snug text-faint">Anyone with this link sees a live, read-only view — no account needed.</p>
+              </div>
+            ) : (
+              <Item
+                icon={busy ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />}
+                title="Create read-only link"
+                sub="Live present view — no login required"
+                onClick={createLink}
+              />
+            )}
+
+            <div className="mt-1 border-t border-[#eef0f3] pt-1">
+              <Item icon={<Download size={15} />} title="Export project (JSON)" sub="Download a portable copy" onClick={exportJson} />
+              <Item icon={<Upload size={15} />} title="Import project (JSON)" sub="Create a project from a file" onClick={() => fileRef.current?.click()} />
+              <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onFile} />
             </div>
           </div>
         </>

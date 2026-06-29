@@ -73,6 +73,8 @@ interface WorkspaceState {
   serverPresent: boolean
   /** Initial auth check (GET /me) has completed. */
   authChecked: boolean
+  /** Anonymous read-only viewer opened via a public share link. */
+  shareMode: boolean
 
   // Derived
   activeProject: () => Project | undefined
@@ -106,6 +108,7 @@ interface WorkspaceState {
   setServerPresent: (v: boolean) => void
   setAuthChecked: (v: boolean) => void
   resetForLogout: () => void
+  setShareMode: (v: boolean) => void
 
   // Org / project
   createOrg: (name: string) => string
@@ -169,6 +172,7 @@ export const useWorkspace = create<WorkspaceState>()(
         currentUser: null,
         serverPresent: false,
         authChecked: false,
+        shareMode: false,
 
         activeProject: () => get().projects.find((p) => p.id === get().activeProjectId),
         currentData: () => {
@@ -178,7 +182,7 @@ export const useWorkspace = create<WorkspaceState>()(
           if (sid) return p.snapshots.find((s) => s.id === sid)?.data ?? p.data
           return p.data
         },
-        isReadOnly: () => get().activeSnapshotId !== null,
+        isReadOnly: () => get().activeSnapshotId !== null || get().shareMode,
 
         goHome: () => set({ screen: 'home', present: false, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
         goConnect: () => set({ screen: 'connect', present: false, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
@@ -196,6 +200,7 @@ export const useWorkspace = create<WorkspaceState>()(
         setCurrentUser: (user) => set({ currentUser: user }),
         setServerPresent: (v) => set({ serverPresent: v }),
         setAuthChecked: (v) => set({ authChecked: v }),
+        setShareMode: (v) => set({ shareMode: v }),
         resetForLogout: () =>
           set({ currentUser: null, orgs: [], projects: [], activeProjectId: null, screen: 'home', present: false, activeSnapshotId: null, selected: null, hoveredId: null }),
         applyServerRoot: (root) =>
