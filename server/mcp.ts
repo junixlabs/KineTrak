@@ -204,7 +204,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     async ({ projectId, name, color }) => {
       const p = requireProj(projectId)
       const id = makeId('m')
-      applyAndBroadcast({ type: 'addModule', projectId: p.id, id, name, color })
+      await applyAndBroadcast({ type: 'addModule', projectId: p.id, id, name, color })
       return json({ id })
     },
   )
@@ -216,7 +216,7 @@ function buildMcpServer(key: ApiKey): McpServer {
       const found = p.data.modules.find((m) => m.name.trim().toLowerCase() === name.trim().toLowerCase())
       if (found) return json({ id: found.id, created: false })
       const id = makeId('m')
-      applyAndBroadcast({ type: 'addModule', projectId: p.id, id, name, color })
+      await applyAndBroadcast({ type: 'addModule', projectId: p.id, id, name, color })
       return json({ id, created: true })
     },
   )
@@ -234,7 +234,7 @@ function buildMcpServer(key: ApiKey): McpServer {
       if (side !== undefined) patch.side = side === 'auto' ? undefined : side
       if (backboneName !== undefined || backboneSub !== undefined)
         patch.backbone = { name: backboneName ?? cur.backbone.name, sub: backboneSub ?? cur.backbone.sub }
-      applyAndBroadcast({ type: 'updateModule', projectId: p.id, id, patch })
+      await applyAndBroadcast({ type: 'updateModule', projectId: p.id, id, patch })
       return json({ ok: true })
     },
   )
@@ -243,7 +243,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'Delete a module and its features.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = requireProj(projectId)
-      applyAndBroadcast({ type: 'deleteModule', projectId: p.id, id })
+      await applyAndBroadcast({ type: 'deleteModule', projectId: p.id, id })
       return json({ ok: true })
     },
   )
@@ -257,7 +257,7 @@ function buildMcpServer(key: ApiKey): McpServer {
       const rel = releaseId ?? p.data.releases[0]?.id
       if (!rel) return json({ error: 'no release available' })
       const id = makeId('f')
-      applyAndBroadcast({ type: 'addFeature', projectId: p.id, id, moduleId, releaseId: rel, name })
+      await applyAndBroadcast({ type: 'addFeature', projectId: p.id, id, moduleId, releaseId: rel, name })
       return json({ id })
     },
   )
@@ -272,7 +272,7 @@ function buildMcpServer(key: ApiKey): McpServer {
       const rel = releaseId ?? p.data.releases[0]?.id
       if (!rel) return json({ error: 'no release available' })
       const id = makeId('f')
-      applyAndBroadcast({ type: 'addFeature', projectId: p.id, id, moduleId, releaseId: rel, name })
+      await applyAndBroadcast({ type: 'addFeature', projectId: p.id, id, moduleId, releaseId: rel, name })
       return json({ id, created: true })
     },
   )
@@ -282,7 +282,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     async ({ projectId, id, ...rest }) => {
       const p = requireProj(projectId)
       const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
-      applyAndBroadcast({ type: 'updateFeature', projectId: p.id, id, patch })
+      await applyAndBroadcast({ type: 'updateFeature', projectId: p.id, id, patch })
       return json({ ok: true })
     },
   )
@@ -291,7 +291,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'Delete a feature.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = requireProj(projectId)
-      applyAndBroadcast({ type: 'deleteFeature', projectId: p.id, id })
+      await applyAndBroadcast({ type: 'deleteFeature', projectId: p.id, id })
       return json({ ok: true })
     },
   )
@@ -302,7 +302,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'Set the display order of modules (Mindmap branches / Story Map columns). Pass module ids in the desired order; any omitted keep their relative order at the end.', inputSchema: { projectId: z.string().optional(), orderedIds: z.array(z.string()) } },
     async ({ projectId, orderedIds }) => {
       const p = requireProj(projectId)
-      applyAndBroadcast({ type: 'reorderModules', projectId: p.id, orderedIds })
+      await applyAndBroadcast({ type: 'reorderModules', projectId: p.id, orderedIds })
       return json({ ok: true })
     },
   )
@@ -311,7 +311,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'Set the display order of features (top→bottom within their module on Mindmap / Story Map). Pass feature ids in the desired order; omitted ones keep their relative order at the end.', inputSchema: { projectId: z.string().optional(), orderedIds: z.array(z.string()) } },
     async ({ projectId, orderedIds }) => {
       const p = requireProj(projectId)
-      applyAndBroadcast({ type: 'reorderFeatures', projectId: p.id, orderedIds })
+      await applyAndBroadcast({ type: 'reorderFeatures', projectId: p.id, orderedIds })
       return json({ ok: true })
     },
   )
@@ -329,7 +329,7 @@ function buildMcpServer(key: ApiKey): McpServer {
       const x = 220 + count * 210
       const y = laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80
       const id = makeId('n')
-      applyAndBroadcast({ type: 'addSwimNode', projectId: p.id, id, code, lane, x, y, label, kind })
+      await applyAndBroadcast({ type: 'addSwimNode', projectId: p.id, id, code, lane, x, y, label, kind })
       return json({ id, code })
     },
   )
@@ -339,7 +339,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     async ({ projectId, id, ...rest }) => {
       const p = requireProj(projectId)
       const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
-      applyAndBroadcast({ type: 'updateSwimNode', projectId: p.id, id, patch })
+      await applyAndBroadcast({ type: 'updateSwimNode', projectId: p.id, id, patch })
       return json({ ok: true })
     },
   )
@@ -349,7 +349,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     async ({ projectId, id, x, y }) => {
       const p = requireProj(projectId)
       if (!p.data.swimNodes.some((n) => n.id === id)) return json({ error: 'swim node not found' })
-      applyAndBroadcast({ type: 'updateSwimNodePos', projectId: p.id, id, x: Math.round(x), y: Math.round(y) })
+      await applyAndBroadcast({ type: 'updateSwimNodePos', projectId: p.id, id, x: Math.round(x), y: Math.round(y) })
       return json({ ok: true })
     },
   )
@@ -359,7 +359,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     async ({ projectId }) => {
       const p = requireProj(projectId)
       const placed = arrangeSwimlane(p.data)
-      placed.forEach((n) => applyAndBroadcast({ type: 'updateSwimNodePos', projectId: p.id, id: n.id, x: n.x, y: n.y }))
+      for (const n of placed) await applyAndBroadcast({ type: 'updateSwimNodePos', projectId: p.id, id: n.id, x: n.x, y: n.y })
       return json({ ok: true, moved: placed.length })
     },
   )
@@ -368,7 +368,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'Delete a swimlane step and its connected edges.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = requireProj(projectId)
-      applyAndBroadcast({ type: 'deleteSwimNode', projectId: p.id, id })
+      await applyAndBroadcast({ type: 'deleteSwimNode', projectId: p.id, id })
       return json({ ok: true })
     },
   )
@@ -377,7 +377,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'Connect two swimlane steps with an arrow (ids from get_board).', inputSchema: { projectId: z.string().optional(), from: z.string(), to: z.string(), branch: z.string().optional() } },
     async ({ projectId, from, to, branch }) => {
       const p = requireProj(projectId)
-      applyAndBroadcast({ type: 'addSwimEdge', projectId: p.id, from, to, branch })
+      await applyAndBroadcast({ type: 'addSwimEdge', projectId: p.id, from, to, branch })
       return json({ ok: true })
     },
   )
@@ -386,7 +386,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'Remove an arrow between two swimlane steps.', inputSchema: { projectId: z.string().optional(), from: z.string(), to: z.string() } },
     async ({ projectId, from, to }) => {
       const p = requireProj(projectId)
-      applyAndBroadcast({ type: 'deleteSwimEdge', projectId: p.id, from, to })
+      await applyAndBroadcast({ type: 'deleteSwimEdge', projectId: p.id, from, to })
       return json({ ok: true })
     },
   )
@@ -398,7 +398,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     async ({ projectId, name }) => {
       const p = requireProj(projectId)
       const id = makeId('snap')
-      applyAndBroadcast({ type: 'createSnapshot', projectId: p.id, id, name, date: dateLabel() })
+      await applyAndBroadcast({ type: 'createSnapshot', projectId: p.id, id, name, date: dateLabel() })
       return json({ id })
     },
   )
@@ -416,7 +416,7 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'Append a line of text to a feature or swimlane step description (memory write).', inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string(), text: z.string() } },
     async ({ projectId, target, id, text }) => {
       const p = requireProj(projectId)
-      applyAndBroadcast({ type: 'appendNote', projectId: p.id, target, id, text })
+      await applyAndBroadcast({ type: 'appendNote', projectId: p.id, target, id, text })
       return json({ ok: true })
     },
   )

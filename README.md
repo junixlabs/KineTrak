@@ -27,6 +27,26 @@ npm start            # build + serve web + API + WS + MCP on http://localhost:87
 # Docker (1 command): docker compose up --build
 ```
 
+## Storage: Postgres or file-JSON
+
+KineTrak persists to **Postgres** when `DATABASE_URL` is set, and falls back to the original
+**file-JSON** store (`server/data/*.json`) when it isn't — so local-first still works with zero setup.
+
+```bash
+# Postgres mode (durable, ACID, hashed API keys, FK-cascade cleanup)
+export DATABASE_URL=postgres://kinetrak:kinetrak@localhost:5432/kinetrak
+npm run db:migrate     # apply schema migrations (also run automatically on server boot)
+npm run db:import      # one-time: import an existing server/data/*.json store into Postgres
+npm start
+```
+
+`docker compose up` brings up Postgres + the app together (the compose files set `DATABASE_URL`).
+Schema lives in `server/infra/schema.ts`; migrations in `server/infra/migrations`
+(`npm run db:generate` after a schema change). See [`docs/DB_MIGRATION_PLAN.md`](docs/DB_MIGRATION_PLAN.md).
+
+> **API keys** are hashed at rest in Postgres mode — the secret is shown **once** on creation and
+> cannot be recovered (only the prefix is stored). Re-mint a key if you lose it.
+
 ## Deploy (pull the prebuilt image — no source needed)
 
 CI (GitHub Actions) builds and pushes the image to **GHCR** on every push to `main`.
@@ -86,5 +106,6 @@ modules, features, swimlane nodes & edges, plus `create_snapshot` and `append_no
 
 ## Stack
 
-React + Vite + TypeScript · React Flow · Zustand · Tailwind · Node (express + ws) · MCP SDK.
+React + Vite + TypeScript · React Flow · Zustand · Tailwind · Node (express + ws) · MCP SDK ·
+Postgres + Drizzle (optional; file-JSON fallback).
 More: [`docs/PRODUCT.md`](docs/PRODUCT.md) (full spec), [`docs/MCP.md`](docs/MCP.md) (agent / MCP).

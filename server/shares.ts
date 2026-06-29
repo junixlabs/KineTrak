@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes } from 'node:crypto'
+import { isPgEnabled } from './infra/db'
+import { shareRepo } from './infra/repositories'
 
 // ── Public read-only share links ─────────────────────────────────────────────
 // A share token maps to one project and grants anonymous, read-only access to
@@ -17,7 +19,7 @@ export interface Share {
   createdAt: string
 }
 
-let shares: Share[] = load()
+let shares: Share[] = isPgEnabled() ? [] : load()
 
 function load(): Share[] {
   if (existsSync(FILE)) {
@@ -30,9 +32,15 @@ function load(): Share[] {
   }
   return []
 }
-function persist() {
+function persistFile() {
   mkdirSync(DATA_DIR, { recursive: true })
   writeFileSync(FILE, JSON.stringify(shares, null, 2))
+}
+
+/** Warm the in-RAM cache from Postgres (Pg mode only). Called once at boot. */
+export async function hydrateShares(): Promise<void> {
+  if (!isPgEnabled()) return
+  shares = await shareRepo.all()
 }
 
 export function shareForProject(projectId: string): Share | undefined {
@@ -40,20 +48,22 @@ export function shareForProject(projectId: string): Share | undefined {
 }
 
 /** Find-or-create a stable token for a project. */
-export function createShare(projectId: string): Share {
+export async function createShare(projectId: string): Promise<Share> {
   const existing = shareForProject(projectId)
   if (existing) return existing
   const share: Share = { token: `kts_${randomBytes(18).toString('hex')}`, projectId, createdAt: new Date().toISOString() }
   shares.push(share)
-  persist()
+  if (isPgEnabled()) await shareRepo.insert(share)
+  else persistFile()
   return share
 }
 
-export function revokeShare(projectId: string): boolean {
+export async function revokeShare(projectId: string): Promise<boolean> {
   const before = shares.length
   shares = shares.filter((s) => s.projectId !== projectId)
   if (shares.length === before) return false
-  persist()
+  if (isPgEnabled()) await shareRepo.deleteByProject(projectId)
+  else persistFile()
   return true
 }
 
@@ -62,9 +72,10 @@ export function projectIdForToken(token: string | undefined): string | undefined
   return shares.find((s) => s.token === token)?.projectId
 }
 
-/** Drop shares for deleted projects (housekeeping). */
+/** Drop shares for deleted projects (housekeeping). In Pg mode the FK cascade
+ *  already removed the rows; this only keeps the RAM cache in sync. */
 export function pruneShares(liveProjectIds: Set<string>) {
   const before = shares.length
   shares = shares.filter((s) => liveProjectIds.has(s.projectId))
-  if (shares.length !== before) persist()
+  if (shares.length !== before && !isPgEnabled()) persistFile()
 }

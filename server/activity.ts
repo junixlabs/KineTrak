@@ -3,6 +3,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import type { Command, Root } from '../src/shared/board'
+import { isPgEnabled } from './infra/db'
+import { activityRepo } from './infra/repositories'
 
 // ── Activity log ─────────────────────────────────────────────────────────────
 // A narrative of who changed what, when — so the human can watch/catch-up on an
@@ -29,7 +31,7 @@ export interface Activity {
   kind: 'change' | 'note'
 }
 
-let log: Activity[] = load()
+let log: Activity[] = isPgEnabled() ? [] : load()
 const listeners = new Set<(a: Activity) => void>()
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -44,7 +46,19 @@ function load(): Activity[] {
   }
   return []
 }
-function persist() {
+
+/** Warm the in-RAM ring from Postgres (Pg mode only). Called once at boot. */
+export async function hydrateActivity(): Promise<void> {
+  if (!isPgEnabled()) return
+  log = await activityRepo.recent(CAP)
+}
+
+function persist(entry: Activity) {
+  if (isPgEnabled()) {
+    // Narration is non-critical — write-behind, never block the broadcast.
+    activityRepo.insert(entry).catch((e) => console.error('activity insert failed:', e))
+    return
+  }
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     mkdirSync(DATA_DIR, { recursive: true })
@@ -60,7 +74,7 @@ export function onActivity(fn: (a: Activity) => void): () => void {
 function push(entry: Activity) {
   log.push(entry)
   if (log.length > CAP) log = log.slice(-CAP)
-  persist()
+  persist(entry)
   listeners.forEach((l) => l(entry))
 }
 

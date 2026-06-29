@@ -7,9 +7,30 @@ services:
       - "8787:8787"
     environment:
       - PORT=8787
+      - DATABASE_URL=postgres://kinetrak:kinetrak@db:5432/kinetrak
     volumes:
       - kinetrak-data:/app/server/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: kinetrak-db
+    environment:
+      - POSTGRES_USER=kinetrak
+      - POSTGRES_PASSWORD=kinetrak
+      - POSTGRES_DB=kinetrak
+    volumes:
+      - kinetrak-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kinetrak -d kinetrak"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
 volumes:
   kinetrak-data:
+  kinetrak-pgdata:

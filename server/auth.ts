@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
+import { isPgEnabled } from './infra/db'
+import { sessionRepo, userRepo } from './infra/repositories'
 
 // ── User accounts + sessions ─────────────────────────────────────────────────
 // Self-contained email/password auth. Passwords hashed with scrypt (node:crypto,
@@ -37,8 +39,16 @@ interface Session {
   expiresAt: number
 }
 
-let users: User[] = readJson(USERS_FILE, [])
-let sessions: Session[] = readJson(SESS_FILE, [])
+let users: User[] = isPgEnabled() ? [] : readJson(USERS_FILE, [])
+let sessions: Session[] = isPgEnabled() ? [] : readJson(SESS_FILE, [])
+
+/** Warm the in-RAM caches from Postgres (Pg mode only). Called once at boot. */
+export async function hydrateAuth(): Promise<void> {
+  if (!isPgEnabled()) return
+  users = await userRepo.all()
+  const rows = await sessionRepo.all()
+  sessions = rows.map((r) => ({ token: r.token, userId: r.userId, expiresAt: r.expiresAt }))
+}
 
 function readJson<T>(file: string, fallback: T): T {
   if (existsSync(file)) {
@@ -80,7 +90,7 @@ export class AuthError extends Error {
 
 const normEmail = (e: string) => e.trim().toLowerCase()
 
-export function register(email: string, name: string, password: string): { token: string; user: PublicUser } {
+export async function register(email: string, name: string, password: string): Promise<{ token: string; user: PublicUser }> {
   const e = normEmail(email || '')
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new AuthError('Enter a valid email')
   if (!password || password.length < 6) throw new AuthError('Password must be at least 6 characters')
@@ -96,29 +106,39 @@ export function register(email: string, name: string, password: string): { token
     createdAt: new Date().toISOString(),
   }
   users.push(user)
-  writeJson(USERS_FILE, users)
-  return { token: createSession(user.id), user: toPublic(user) }
+  if (isPgEnabled()) await userRepo.insert(user)
+  else writeJson(USERS_FILE, users)
+  return { token: await createSession(user.id), user: toPublic(user) }
 }
 
-export function login(email: string, password: string): { token: string; user: PublicUser } {
+export async function login(email: string, password: string): Promise<{ token: string; user: PublicUser }> {
   const u = users.find((x) => x.email === normEmail(email || ''))
   if (!u || !verifyPassword(password || '', u)) throw new AuthError('Wrong email or password', 401)
-  return { token: createSession(u.id), user: toPublic(u) }
+  return { token: await createSession(u.id), user: toPublic(u) }
 }
 
-function createSession(userId: string): string {
+async function createSession(userId: string): Promise<string> {
   const token = randomBytes(32).toString('hex')
+  const expired = sessions.filter((s) => s.expiresAt <= Date.now()).map((s) => s.token)
   sessions = sessions.filter((s) => s.expiresAt > Date.now()) // prune expired
-  sessions.push({ token, userId, expiresAt: Date.now() + SESSION_TTL_MS })
-  writeJson(SESS_FILE, sessions)
+  const session: Session = { token, userId, expiresAt: Date.now() + SESSION_TTL_MS }
+  sessions.push(session)
+  if (isPgEnabled()) {
+    if (expired.length) await sessionRepo.deleteMany(expired)
+    await sessionRepo.insert(session)
+  } else {
+    writeJson(SESS_FILE, sessions)
+  }
   return token
 }
 
-export function logout(token: string | undefined) {
+export async function logout(token: string | undefined) {
   if (!token) return
   const before = sessions.length
   sessions = sessions.filter((s) => s.token !== token)
-  if (sessions.length !== before) writeJson(SESS_FILE, sessions)
+  if (sessions.length === before) return
+  if (isPgEnabled()) await sessionRepo.delete(token)
+  else writeJson(SESS_FILE, sessions)
 }
 
 /** Resolve a bearer session token to its user (null if missing/expired). */

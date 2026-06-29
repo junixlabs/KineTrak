@@ -23,7 +23,9 @@ interface ApiKey {
   id: string
   orgId: string
   name: string
-  key: string
+  /** Non-secret label, e.g. "kt_live_ab12…". The full secret is only ever
+   *  returned once, at creation (see `secrets` below). */
+  keyPrefix: string
   createdAt: string
   lastUsedAt: string | null
 }
@@ -50,6 +52,9 @@ export default function ConnectPage() {
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
+  // Full secrets are only known for keys minted in this session (returned once on
+  // create). Listed keys carry only a prefix — the secret is hashed server-side.
+  const [secrets, setSecrets] = useState<Record<string, string>>({})
 
   const refresh = useCallback(async () => {
     if (!orgId) return
@@ -82,8 +87,11 @@ export default function ConnectPage() {
       if (!res.ok) throw new Error('failed')
       const data = await res.json()
       setNewName('')
-      if (data?.key?.id) setRevealed((r) => ({ ...r, [data.key.id]: true }))
-      show('API key created — copy it into your agent config')
+      if (data?.key?.id && data?.key?.secret) {
+        setSecrets((s) => ({ ...s, [data.key.id]: data.key.secret }))
+        setRevealed((r) => ({ ...r, [data.key.id]: true }))
+      }
+      show('API key created — copy it now; it is shown only once')
       await refresh()
     } catch {
       show('Could not create key')
@@ -105,8 +113,12 @@ export default function ConnectPage() {
   }
 
   const orgName = orgs.find((o) => o.id === orgId)?.name ?? 'this workspace'
-  // The key embedded in the copy-paste snippets: the newest one for this org, else a placeholder.
-  const sampleKey = useMemo(() => keys[0]?.key ?? '<YOUR_API_KEY>', [keys])
+  // The key embedded in the copy-paste snippets: a secret minted this session
+  // (full key), else a placeholder — old secrets are unrecoverable by design.
+  const sampleKey = useMemo(() => {
+    const known = keys.find((k) => secrets[k.id])
+    return (known && secrets[known.id]) || '<YOUR_API_KEY>'
+  }, [keys, secrets])
 
   const cliSnippet = `claude mcp add --transport http kinetrak ${MCP_URL} --header "Authorization: Bearer ${sampleKey}"`
   const jsonSnippet = JSON.stringify(
@@ -206,7 +218,9 @@ export default function ConnectPage() {
                   No keys for <b>{orgName}</b> yet. Create one to authorize an agent.
                 </div>
               )}
-              {keys.map((k) => (
+              {keys.map((k) => {
+                const secret = secrets[k.id]
+                return (
                 <div key={k.id} className="flex items-center gap-3 rounded-lg border border-line bg-white px-3 py-2.5">
                   <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-[#eef1ff] text-brand">
                     <KeyRound size={15} />
@@ -215,21 +229,23 @@ export default function ConnectPage() {
                     <span className="truncate text-[13px] font-bold text-ink">{k.name}</span>
                     <div className="mt-0.5 flex items-center gap-2">
                       <code className="truncate font-mono text-[11.5px] text-muted">
-                        {revealed[k.id] ? k.key : mask(k.key)}
+                        {secret ? (revealed[k.id] ? secret : mask(secret)) : `${k.keyPrefix}${'•'.repeat(12)}`}
                       </code>
                     </div>
                     <div className="mt-0.5 font-mono text-[10px] text-faint">
                       created {fmt(k.createdAt)} · last used {fmt(k.lastUsedAt)}
+                      {!secret && ' · secret shown only at creation'}
                     </div>
                   </div>
                   <button
                     onClick={() => setRevealed((r) => ({ ...r, [k.id]: !r[k.id] }))}
-                    className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-faint hover:bg-[#f4f6f9] hover:text-ink"
-                    title={revealed[k.id] ? 'Hide' : 'Reveal'}
+                    disabled={!secret}
+                    className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-faint hover:bg-[#f4f6f9] hover:text-ink disabled:opacity-30"
+                    title={!secret ? 'Secret not available' : revealed[k.id] ? 'Hide' : 'Reveal'}
                   >
                     {revealed[k.id] ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
-                  <CopyButton value={k.key} onCopy={() => show('Key copied')} />
+                  <CopyButton value={secret ?? ''} onCopy={() => show('Key copied')} />
                   <button
                     onClick={() => revokeKey(k.id)}
                     className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-faint hover:bg-[#fdecec] hover:text-[#e5484d]"
@@ -238,7 +254,8 @@ export default function ConnectPage() {
                     <Trash2 size={15} />
                   </button>
                 </div>
-              ))}
+                )
+              })}
             </div>
             <p className="mt-2 text-[11.5px] leading-snug text-faint">
               Keys are stored on the server, never in the browser or in synced board state. Treat them like passwords —

@@ -4,12 +4,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express, { type Request, type Response, type NextFunction } from 'express'
 import { WebSocketServer, WebSocket } from 'ws'
-import { applyAndBroadcast, getRoot, onChange } from './state'
+import { applyAndBroadcast, getRoot, hydrateState, onChange } from './state'
 import { registerMcp } from './mcp'
-import { createKey, listKeys, revokeKey } from './keys'
+import { createKey, hydrateKeys, listKeys, revokeKey } from './keys'
 import {
   AuthError,
   bearerFrom,
+  hydrateAuth,
   login,
   logout,
   register,
@@ -19,8 +20,10 @@ import {
   type User,
 } from './auth'
 import { authorizeCommand, scopeRootForUser, userOwnsOrg } from './scope'
-import { createShare, projectIdForToken, revokeShare, shareForProject } from './shares'
-import { listActivity, onActivity } from './activity'
+import { createShare, hydrateShares, projectIdForToken, revokeShare, shareForProject } from './shares'
+import { hydrateActivity, listActivity, onActivity } from './activity'
+import { isPgEnabled } from './infra/db'
+import { runMigrations } from './infra/migrate'
 import { sampleTemplate } from '../src/store/seed'
 import { makeId } from '../src/store/ids'
 
@@ -52,10 +55,10 @@ const requireUser = (req: AuthedRequest, res: Response, next: NextFunction) => {
 }
 
 /** Give a brand-new account a starter workspace + sample project. */
-function seedWorkspace(user: User) {
+async function seedWorkspace(user: User) {
   const orgId = makeId('org')
-  applyAndBroadcast({ type: 'createOrg', id: orgId, name: `${user.name}'s workspace`, ownerId: user.id })
-  applyAndBroadcast({
+  await applyAndBroadcast({ type: 'createOrg', id: orgId, name: `${user.name}'s workspace`, ownerId: user.id })
+  await applyAndBroadcast({
     type: 'importProject',
     id: makeId('p'),
     orgId,
@@ -68,11 +71,11 @@ function seedWorkspace(user: User) {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, accounts: userCount() }))
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, name, password } = req.body ?? {}
-    const out = register(email, name, password)
-    seedWorkspace(userByToken(out.token)!)
+    const out = await register(email, name, password)
+    await seedWorkspace(userByToken(out.token)!)
     res.json({ ok: true, ...out })
   } catch (e) {
     const status = e instanceof AuthError ? e.status : 400
@@ -80,18 +83,18 @@ app.post('/api/auth/register', (req, res) => {
   }
 })
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body ?? {}
-    res.json({ ok: true, ...login(email, password) })
+    res.json({ ok: true, ...(await login(email, password)) })
   } catch (e) {
     const status = e instanceof AuthError ? e.status : 400
     res.status(status).json({ ok: false, error: e instanceof Error ? e.message : String(e) })
   }
 })
 
-app.post('/api/auth/logout', (req, res) => {
-  logout(bearerFrom(req.headers as Record<string, unknown>))
+app.post('/api/auth/logout', async (req, res) => {
+  await logout(bearerFrom(req.headers as Record<string, unknown>))
   res.json({ ok: true })
 })
 
@@ -100,10 +103,10 @@ app.get('/api/auth/me', requireUser, (req: AuthedRequest, res) => res.json({ ok:
 // ── Scoped board sync ──────────────────────────────────────────────────────
 app.get('/api/state', requireUser, (req: AuthedRequest, res) => res.json(scopeRootForUser(getRoot(), req.user!.id)))
 
-app.post('/api/command', requireUser, (req: AuthedRequest, res) => {
+app.post('/api/command', requireUser, async (req: AuthedRequest, res) => {
   try {
     const cmd = authorizeCommand(getRoot(), req.user!, req.body)
-    applyAndBroadcast(cmd, { kind: 'human', name: req.user!.name })
+    await applyAndBroadcast(cmd, { kind: 'human', name: req.user!.name })
     res.json({ ok: true, root: scopeRootForUser(getRoot(), req.user!.id) })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -116,14 +119,14 @@ app.get('/api/keys', requireUser, (req: AuthedRequest, res) => {
   const orgId = typeof req.query.orgId === 'string' ? req.query.orgId : undefined
   res.json({ keys: listKeys(req.user!.id, orgId) })
 })
-app.post('/api/keys', requireUser, (req: AuthedRequest, res) => {
+app.post('/api/keys', requireUser, async (req: AuthedRequest, res) => {
   const { orgId, name } = req.body ?? {}
   if (typeof orgId !== 'string' || !userOwnsOrg(getRoot(), req.user!.id, orgId))
     return res.status(403).json({ ok: false, error: 'Choose one of your own workspaces' })
-  res.json({ ok: true, key: createKey(req.user!.id, orgId, typeof name === 'string' ? name : undefined) })
+  res.json({ ok: true, key: await createKey(req.user!.id, orgId, typeof name === 'string' ? name : undefined) })
 })
-app.delete('/api/keys/:id', requireUser, (req: AuthedRequest, res) => {
-  const ok = revokeKey(req.user!.id, req.params.id)
+app.delete('/api/keys/:id', requireUser, async (req: AuthedRequest, res) => {
+  const ok = await revokeKey(req.user!.id, req.params.id as string)
   res.status(ok ? 200 : 404).json({ ok })
 })
 
@@ -134,16 +137,19 @@ const userProject = (userId: string, projectId: string) => {
 }
 
 app.get('/api/projects/:id/share', requireUser, (req: AuthedRequest, res) => {
-  if (!userProject(req.user!.id, req.params.id)) return res.status(404).json({ ok: false })
-  res.json({ ok: true, token: shareForProject(req.params.id)?.token ?? null })
+  const id = req.params.id as string
+  if (!userProject(req.user!.id, id)) return res.status(404).json({ ok: false })
+  res.json({ ok: true, token: shareForProject(id)?.token ?? null })
 })
-app.post('/api/projects/:id/share', requireUser, (req: AuthedRequest, res) => {
-  if (!userProject(req.user!.id, req.params.id)) return res.status(403).json({ ok: false, error: 'Not your project' })
-  res.json({ ok: true, token: createShare(req.params.id).token })
+app.post('/api/projects/:id/share', requireUser, async (req: AuthedRequest, res) => {
+  const id = req.params.id as string
+  if (!userProject(req.user!.id, id)) return res.status(403).json({ ok: false, error: 'Not your project' })
+  res.json({ ok: true, token: (await createShare(id)).token })
 })
-app.delete('/api/projects/:id/share', requireUser, (req: AuthedRequest, res) => {
-  if (!userProject(req.user!.id, req.params.id)) return res.status(403).json({ ok: false })
-  res.json({ ok: revokeShare(req.params.id) })
+app.delete('/api/projects/:id/share', requireUser, async (req: AuthedRequest, res) => {
+  const id = req.params.id as string
+  if (!userProject(req.user!.id, id)) return res.status(403).json({ ok: false })
+  res.json({ ok: await revokeShare(id) })
 })
 
 // Anonymous, read-only board for a share token.
@@ -156,9 +162,10 @@ app.get('/api/shared/:token', (req, res) => {
 
 // Activity feed for a project (the human watches what the agent does).
 app.get('/api/projects/:id/activity', requireUser, (req: AuthedRequest, res) => {
-  if (!userProject(req.user!.id, req.params.id)) return res.status(404).json({ ok: false })
+  const id = req.params.id as string
+  if (!userProject(req.user!.id, id)) return res.status(404).json({ ok: false })
   const since = Number(req.query.since) || 0
-  res.json({ ok: true, items: listActivity(req.params.id, since) })
+  res.json({ ok: true, items: listActivity(id, since) })
 })
 
 // MCP (Streamable HTTP) at /mcp.
@@ -225,11 +232,25 @@ onActivity((entry) => {
 })
 
 const PORT = Number(process.env.PORT) || 8787
-server.listen(PORT, () => {
-  console.log(`KineTrak server → http://localhost:${PORT}`)
-  if (hasDist) console.log(`  • web app  : http://localhost:${PORT}  (serving dist/)`)
-  else console.log(`  • web app  : run "npm run dev" (Vite on 5173) or "npm run build" first`)
-  console.log(`  • accounts : ${userCount()} registered · POST /api/auth/{register,login,logout} · GET /api/auth/me`)
-  console.log(`  • web sync : GET /api/state · POST /api/command · WS /ws  (session token required)`)
-  console.log(`  • MCP (HTTP): POST /mcp  (per-key user+org scope)`)
+
+/** Migrate + hydrate the in-RAM caches (Pg mode), then start listening. */
+async function bootstrap() {
+  if (isPgEnabled()) {
+    await runMigrations()
+    await Promise.all([hydrateAuth(), hydrateKeys(), hydrateShares(), hydrateState(), hydrateActivity()])
+  }
+  server.listen(PORT, () => {
+    console.log(`KineTrak server → http://localhost:${PORT}`)
+    console.log(`  • storage  : ${isPgEnabled() ? 'Postgres (DATABASE_URL)' : 'file-JSON (server/data)'}`)
+    if (hasDist) console.log(`  • web app  : http://localhost:${PORT}  (serving dist/)`)
+    else console.log(`  • web app  : run "npm run dev" (Vite on 5173) or "npm run build" first`)
+    console.log(`  • accounts : ${userCount()} registered · POST /api/auth/{register,login,logout} · GET /api/auth/me`)
+    console.log(`  • web sync : GET /api/state · POST /api/command · WS /ws  (session token required)`)
+    console.log(`  • MCP (HTTP): POST /mcp  (per-key user+org scope)`)
+  })
+}
+
+bootstrap().catch((e) => {
+  console.error('KineTrak failed to start:', e)
+  process.exit(1)
 })
