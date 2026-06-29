@@ -15,6 +15,8 @@ export interface Module {
   /** Backbone column label + sub used by the Story Map (same id as module). */
   backbone: { name: string; sub: string }
   owners: Role[]
+  /** Pin the Mindmap branch to one side of the root; unset = auto-balanced. */
+  side?: 'left' | 'right'
 }
 
 export interface CrossLink {

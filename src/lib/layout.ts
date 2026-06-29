@@ -46,19 +46,23 @@ export function computeMindmapLayout(modules: Module[], features: Feature[]): Mi
   const featuresOf = (id: string) => features.filter((f) => f.moduleId === id)
   const span = (m: Module) => Math.max(featuresOf(m.id).length, 1)
 
-  // Split into two contiguous groups where the cumulative feature-rows cross half.
-  const total = modules.reduce((a, m) => a + span(m), 0)
-  let acc = 0
-  let splitIdx = modules.length
-  for (let i = 0; i < modules.length; i++) {
-    acc += span(modules[i])
-    if (acc * 2 >= total) {
-      splitIdx = i + 1
-      break
-    }
-  }
-  const rightMods = modules.slice(0, splitIdx)
-  const leftMods = modules.slice(splitIdx)
+  // Decide each module's side: honor a pinned `side`, then auto-balance the rest
+  // by sending each to whichever side currently has fewer feature-rows. Original
+  // order is preserved within each side (stacking happens in module order below).
+  const sideOf: Record<string, Side> = {}
+  let rowsL = 0
+  let rowsR = 0
+  modules.forEach((m) => {
+    if (m.side === 'left') { sideOf[m.id] = 'left'; rowsL += span(m) }
+    else if (m.side === 'right') { sideOf[m.id] = 'right'; rowsR += span(m) }
+  })
+  modules.forEach((m) => {
+    if (sideOf[m.id]) return
+    if (rowsR <= rowsL) { sideOf[m.id] = 'right'; rowsR += span(m) }
+    else { sideOf[m.id] = 'left'; rowsL += span(m) }
+  })
+  const rightMods = modules.filter((m) => sideOf[m.id] === 'right')
+  const leftMods = modules.filter((m) => sideOf[m.id] === 'left')
 
   const featureCenter: Record<string, number> = {}
   const moduleCenter: Record<string, number> = {}

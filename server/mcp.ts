@@ -16,6 +16,54 @@ const dateLabel = () => {
   return `${d.getFullYear()} · ${p(d.getMonth() + 1)} · ${p(d.getDate())}`
 }
 
+// Node footprints (must match SwimlaneView's NODE_SIZE) for vertical centering.
+const SWIM_NODE_H: Record<string, number> = { start: 46, end: 46, decision: 66, process: 58 }
+const ARRANGE_BASE_X = 220
+const ARRANGE_STEP_X = 210
+
+/**
+ * Tidy a swimlane: x by flow depth (longest path along edges), y centered in the
+ * node's lane. Collisions in the same lane+depth bump to the next free column.
+ * Returns the new positions; the caller dispatches the moves.
+ */
+function arrangeSwimlane(data: import('../src/shared/board').Root['projects'][number]['data']) {
+  const { swimNodes, swimEdges, lanes } = data
+  const ids = new Set(swimNodes.map((n) => n.id))
+  const adj = new Map<string, string[]>()
+  const indeg = new Map<string, number>()
+  swimNodes.forEach((n) => { adj.set(n.id, []); indeg.set(n.id, 0) })
+  swimEdges.forEach((e) => {
+    if (!ids.has(e.from) || !ids.has(e.to) || e.from === e.to) return
+    adj.get(e.from)!.push(e.to)
+    indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1)
+  })
+  // Longest-path depth via Kahn topological order (cycles fall back to depth 0).
+  const depth = new Map<string, number>(swimNodes.map((n) => [n.id, 0]))
+  const queue = swimNodes.filter((n) => (indeg.get(n.id) ?? 0) === 0).map((n) => n.id)
+  const deg = new Map(indeg)
+  while (queue.length) {
+    const u = queue.shift()!
+    for (const v of adj.get(u) ?? []) {
+      depth.set(v, Math.max(depth.get(v)!, depth.get(u)! + 1))
+      deg.set(v, deg.get(v)! - 1)
+      if (deg.get(v) === 0) queue.push(v)
+    }
+  }
+  const used = new Set<string>()
+  return swimNodes
+    .slice()
+    .sort((a, b) => depth.get(a.id)! - depth.get(b.id)!)
+    .map((n) => {
+      const lane = lanes.find((l) => l.id === n.lane)
+      let d = depth.get(n.id)!
+      while (used.has(`${n.lane}:${d}`)) d += 1
+      used.add(`${n.lane}:${d}`)
+      const h = SWIM_NODE_H[n.kind] ?? 58
+      const y = lane ? Math.round(lane.y + (lane.h - h) / 2) : 80
+      return { id: n.id, x: ARRANGE_BASE_X + d * ARRANGE_STEP_X, y }
+    })
+}
+
 const featureStatus = z.enum(['must', 'progress', 'done', 'nice'])
 const nodeStatus = z.enum(['todo', 'progress', 'done', 'blocked'])
 const nodeKind = z.enum(['start', 'process', 'decision', 'end'])
@@ -85,8 +133,8 @@ function buildMcpServer(orgId: string): McpServer {
   )
   server.registerTool(
     'update_module',
-    { description: 'Update a module (name, color, owners, backbone column labels).', inputSchema: { projectId: z.string().optional(), id: z.string(), name: z.string().optional(), color: z.string().optional(), owners: z.array(z.string()).optional(), backboneName: z.string().optional(), backboneSub: z.string().optional() } },
-    async ({ projectId, id, name, color, owners, backboneName, backboneSub }) => {
+    { description: 'Update a module (name, color, owners, backbone column labels, Mindmap side). side pins the Mindmap branch to "left"/"right" of the root; omit/null to auto-balance.', inputSchema: { projectId: z.string().optional(), id: z.string(), name: z.string().optional(), color: z.string().optional(), owners: z.array(z.string()).optional(), backboneName: z.string().optional(), backboneSub: z.string().optional(), side: z.enum(['left', 'right', 'auto']).optional() } },
+    async ({ projectId, id, name, color, owners, backboneName, backboneSub, side }) => {
       const p = requireProj(projectId)
       const cur = p.data.modules.find((m) => m.id === id)
       if (!cur) return json({ error: 'module not found' })
@@ -94,6 +142,7 @@ function buildMcpServer(orgId: string): McpServer {
       if (name !== undefined) patch.name = name
       if (color !== undefined) patch.color = color
       if (owners !== undefined) patch.owners = owners
+      if (side !== undefined) patch.side = side === 'auto' ? undefined : side
       if (backboneName !== undefined || backboneSub !== undefined)
         patch.backbone = { name: backboneName ?? cur.backbone.name, sub: backboneSub ?? cur.backbone.sub }
       applyAndBroadcast({ type: 'updateModule', projectId: p.id, id, patch })
@@ -143,6 +192,26 @@ function buildMcpServer(orgId: string): McpServer {
     },
   )
 
+  // ── Ordering (controls Mindmap / Story Map display order) ────────────────────
+  server.registerTool(
+    'reorder_modules',
+    { description: 'Set the display order of modules (Mindmap branches / Story Map columns). Pass module ids in the desired order; any omitted keep their relative order at the end.', inputSchema: { projectId: z.string().optional(), orderedIds: z.array(z.string()) } },
+    async ({ projectId, orderedIds }) => {
+      const p = requireProj(projectId)
+      applyAndBroadcast({ type: 'reorderModules', projectId: p.id, orderedIds })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'reorder_features',
+    { description: 'Set the display order of features (top→bottom within their module on Mindmap / Story Map). Pass feature ids in the desired order; omitted ones keep their relative order at the end.', inputSchema: { projectId: z.string().optional(), orderedIds: z.array(z.string()) } },
+    async ({ projectId, orderedIds }) => {
+      const p = requireProj(projectId)
+      applyAndBroadcast({ type: 'reorderFeatures', projectId: p.id, orderedIds })
+      return json({ ok: true })
+    },
+  )
+
   // ── Swimlane nodes & edges ───────────────────────────────────────────────────
   server.registerTool(
     'add_swim_node',
@@ -168,6 +237,26 @@ function buildMcpServer(orgId: string): McpServer {
       const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
       applyAndBroadcast({ type: 'updateSwimNode', projectId: p.id, id, patch })
       return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'move_swim_node',
+    { description: 'Set a swimlane step\'s canvas position (x,y in px). Use to arrange the flow layout yourself.', inputSchema: { projectId: z.string().optional(), id: z.string(), x: z.number(), y: z.number() } },
+    async ({ projectId, id, x, y }) => {
+      const p = requireProj(projectId)
+      if (!p.data.swimNodes.some((n) => n.id === id)) return json({ error: 'swim node not found' })
+      applyAndBroadcast({ type: 'updateSwimNodePos', projectId: p.id, id, x: Math.round(x), y: Math.round(y) })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'arrange_swimlane',
+    { description: 'Auto-tidy the swimlane: lay every step left→right by its flow depth (longest path along arrows) and vertically centered in its lane. One call cleans up the whole diagram.', inputSchema: { projectId: z.string().optional() } },
+    async ({ projectId }) => {
+      const p = requireProj(projectId)
+      const placed = arrangeSwimlane(p.data)
+      placed.forEach((n) => applyAndBroadcast({ type: 'updateSwimNodePos', projectId: p.id, id: n.id, x: n.x, y: n.y }))
+      return json({ ok: true, moved: placed.length })
     },
   )
   server.registerTool(

@@ -113,6 +113,16 @@ Write (each broadcasts live to the browser):
 - swimlane: `add_swim_node`, `update_swim_node`, `delete_swim_node`, `add_swim_edge`, `delete_swim_edge`
 - versioning / memory: `create_snapshot`, `append_note` (append a line to a feature/step description)
 
+Layout — the agent decides how the board displays, not just its contents:
+- `move_swim_node({id,x,y})` — place a swimlane step anywhere on the canvas.
+- `arrange_swimlane()` — auto-tidy the whole flow: x by flow depth (longest path along
+  arrows), y centered in each lane. One call cleans up the diagram.
+- `reorder_modules({orderedIds})` / `reorder_features({orderedIds})` — set display order on the
+  Mindmap (branches / rows) and Story Map (columns / rows). Omitted ids keep their order at the end.
+- `update_module({id, side})` — pin a module's Mindmap branch to `"left"`/`"right"` of the root
+  (`"auto"` to release it back to the auto-balanced split). Also sets `backboneName`/`backboneSub`
+  for Story Map column headers.
+
 All write tools take an optional `projectId` (defaults to the first project). Ids are returned so
 the agent can chain calls (e.g. `add_module` → `add_feature({moduleId})`).
 

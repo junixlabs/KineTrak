@@ -44,6 +44,8 @@ export type Command =
   | { type: 'deleteSwimNode'; projectId: string; id: string }
   | { type: 'addSwimEdge'; projectId: string; from: string; to: string; branch?: string }
   | { type: 'deleteSwimEdge'; projectId: string; from: string; to: string }
+  | { type: 'reorderModules'; projectId: string; orderedIds: string[] }
+  | { type: 'reorderFeatures'; projectId: string; orderedIds: string[] }
   | { type: 'createSnapshot'; projectId: string; id: string; name: string; date: string }
   | { type: 'deleteSnapshot'; projectId: string; id: string }
   | { type: 'appendNote'; projectId: string; target: 'feature' | 'swimnode'; id: string; text: string }
@@ -152,6 +154,18 @@ export function applyCommand(root: Root, cmd: Command): Root {
     case 'deleteSwimEdge':
       return mapData(root, cmd.projectId, (d) => ({ ...d, swimEdges: d.swimEdges.filter((e) => !(e.from === cmd.from && e.to === cmd.to)) }))
 
+    case 'reorderModules':
+      return mapData(root, cmd.projectId, (d) => {
+        const set = new Set(cmd.orderedIds)
+        const listed = cmd.orderedIds.map((id) => d.modules.find((m) => m.id === id)).filter(Boolean) as Module[]
+        return { ...d, modules: [...listed, ...d.modules.filter((m) => !set.has(m.id))] }
+      })
+    case 'reorderFeatures':
+      return mapData(root, cmd.projectId, (d) => {
+        const set = new Set(cmd.orderedIds)
+        const listed = cmd.orderedIds.map((id) => d.features.find((f) => f.id === id)).filter(Boolean) as Feature[]
+        return { ...d, features: [...listed, ...d.features.filter((f) => !set.has(f.id))] }
+      })
     case 'createSnapshot':
       return mapProject(root, cmd.projectId, (p) => {
         const snap: Snapshot = {
