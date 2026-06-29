@@ -30,7 +30,8 @@ export default function MindFeatureNode({ data }: { data: MindFeatureData }) {
       >
         {meta.label}
       </span>
-      <Handle type="target" position={Position.Left} className="!opacity-0" isConnectable={false} />
+      <Handle id="in-left" type="target" position={Position.Left} className="!opacity-0" isConnectable={false} />
+      <Handle id="in-right" type="target" position={Position.Right} className="!opacity-0" isConnectable={false} />
     </div>
   )
 }

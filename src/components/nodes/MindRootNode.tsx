@@ -18,7 +18,8 @@ export default function MindRootNode({ data }: { data: MindRootData }) {
           {data.moduleCount} modules · {data.featureCount} features
         </span>
       </div>
-      <Handle type="source" position={Position.Right} className="!opacity-0" isConnectable={false} />
+      <Handle id="right" type="source" position={Position.Right} className="!opacity-0" isConnectable={false} />
+      <Handle id="left" type="source" position={Position.Left} className="!opacity-0" isConnectable={false} />
     </div>
   )
 }

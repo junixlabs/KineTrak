@@ -51,8 +51,10 @@ export default function MindModuleNode({ data }: { data: MindModuleData }) {
         </button>
       )}
 
-      <Handle type="target" position={Position.Left} className="!opacity-0" isConnectable={false} />
-      <Handle type="source" position={Position.Right} className="!opacity-0" isConnectable={false} />
+      <Handle id="in-left" type="target" position={Position.Left} className="!opacity-0" isConnectable={false} />
+      <Handle id="in-right" type="target" position={Position.Right} className="!opacity-0" isConnectable={false} />
+      <Handle id="out-right" type="source" position={Position.Right} className="!opacity-0" isConnectable={false} />
+      <Handle id="out-left" type="source" position={Position.Left} className="!opacity-0" isConnectable={false} />
     </div>
   )
 }

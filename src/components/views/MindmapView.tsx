@@ -106,18 +106,34 @@ function MindmapInner() {
     const list: Edge[] = []
     data.modules.forEach((m) => {
       const on = focusSet.has(m.id)
-      list.push({ id: `root-${m.id}`, source: 'root', target: m.id, style: { stroke: on ? '#2f6fed' : '#c7cdd6', strokeWidth: on ? 2.4 : 1.6 } })
+      const left = layout.side[m.id] === 'left'
+      list.push({
+        id: `root-${m.id}`,
+        source: 'root',
+        target: m.id,
+        sourceHandle: left ? 'left' : 'right',
+        targetHandle: left ? 'in-right' : 'in-left',
+        style: { stroke: on ? '#2f6fed' : '#c7cdd6', strokeWidth: on ? 2.4 : 1.6 },
+      })
     })
     if (showFeatures) {
       const moduleIds = new Set(data.modules.map((m) => m.id))
       data.features.forEach((f) => {
         if (!moduleIds.has(f.moduleId)) return // orphan feature — no edge to a missing module
         const on = focusSet.has(f.id)
-        list.push({ id: `${f.moduleId}-${f.id}`, source: f.moduleId, target: f.id, style: { stroke: on ? '#2f6fed' : '#d6dbe2', strokeWidth: on ? 2.2 : 1.4 } })
+        const left = layout.side[f.moduleId] === 'left'
+        list.push({
+          id: `${f.moduleId}-${f.id}`,
+          source: f.moduleId,
+          target: f.id,
+          sourceHandle: left ? 'out-left' : 'out-right',
+          targetHandle: left ? 'in-right' : 'in-left',
+          style: { stroke: on ? '#2f6fed' : '#d6dbe2', strokeWidth: on ? 2.2 : 1.4 },
+        })
       })
     }
     return list
-  }, [data, focusSet, showFeatures])
+  }, [data, layout, focusSet, showFeatures])
 
   const onEnter: NodeMouseHandler = (_, node) => {
     if (node.id !== 'root') setHovered(node.id)
