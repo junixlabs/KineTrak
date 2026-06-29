@@ -1,57 +1,59 @@
 # KineTrak
 
-Visual Operating Interface — điều hành dự án qua 3 sơ đồ sống (Mindmap · Story Map · Swimlane)
-đồng bộ trên một nguồn sự thật duy nhất (SSOT).
+A **visual operating interface** for product teams: run the whole project lifecycle through
+**three synchronized living diagrams** — Mindmap, Story Map, Swimlane — over a **single source of
+truth**. KineTrak is built to be **operated by an AI agent over MCP** while humans watch every
+change live; the board doubles as the agent's **memory / context store**.
 
-## Chạy dự án
+## Business logic (in short)
+
+- **Kill long text docs** — 80% of the information lives in the diagram, 20% hidden inside card
+  detail (description, constraints, validation, cross-links).
+- **One data model, three views, instant cross-view sync (SSOT)** — change a status in one view and
+  every other view updates immediately.
+- **Structure**: Orgs → Projects; each project has Modules → Features, a Story Map (journey ×
+  release), and a Swimlane workflow. Per-project **snapshots** (version history), **role filter**,
+  **semantic zoom**.
+- **Agent + human, same board** — both edit through one command reducer; the server is authoritative
+  and broadcasts every change over WebSocket, so humans see agent actions in real time.
+- **Local-first fallback** — runs standalone (localStorage) when no server is present.
+
+## Quick setup
 
 ```bash
 npm install
-
-# Một lệnh — web + API + WS + MCP chung 1 port:
-npm start        # build web rồi phục vụ tất cả ở http://localhost:8787
-
-# Dev (hot reload, 1 lệnh chạy cả hai):
-npm run dev:all  # Vite (5173) + server (8787)
-
-# Lẻ:
-npm run dev      # chỉ web (5173)
-npm run server   # chỉ server/MCP (8787)
-npm run build    # type-check + build vào dist/
+npm start            # build + serve web + API + WS + MCP on http://localhost:8787
+# dev (hot reload):  npm run dev:all       (web :5173 + server :8787)
+# Docker (1 command): docker compose up --build
 ```
 
-Kết nối agent qua MCP: xem [`docs/MCP.md`](docs/MCP.md) (endpoint `http://localhost:8787/mcp`).
+## Deploy (pull the prebuilt image — no source needed)
 
-### Docker (1 lệnh)
+CI (GitHub Actions) builds and pushes the image to **GHCR** on every push to `main`.
+On the server, just pull and run:
 
 ```bash
-# Docker Compose (build + run + volume lưu board):
-docker compose up --build          # → http://localhost:8787
-
-# hoặc docker thuần:
-docker build -t kinetrak .
-docker run -p 8787:8787 -v kinetrak-data:/app/server/data kinetrak
+docker login ghcr.io                                  # PAT with read:packages
+docker run -d -p 8787:8787 \
+  -v kinetrak-data:/app/server/data \
+  ghcr.io/junixlabs/kinetrak:latest
 ```
 
-Board lưu ở volume `kinetrak-data` (mount `/app/server/data`) nên giữ qua các lần restart.
-Web + API + WS + MCP đều ở `http://localhost:8787` (MCP: `/mcp`).
+Or copy `docker-compose.deploy.yml` to the server and run `docker compose -f docker-compose.deploy.yml up -d`.
+Board state persists in the `kinetrak-data` volume.
 
-## Cấu trúc
+## Connect an AI agent (MCP)
 
-```
-src/
-  store/      types · seed (dữ liệu mẫu) · useWorkspace (Zustand SSOT + persist) · selectors
-  lib/        impact.ts — BFS vùng tác động
-  components/
-    shell/    Header, ViewTabs, SnapshotMenu/Banner, RoleFilter, AlertsPanel, ZoomControl
-    views/    MindmapView, StoryMapView, SwimlaneView
-    nodes/    node tuỳ biến React Flow (mindmap + swimlane)
-    panel/    DetailPanel (Context-in-Card)
-docs/         PRODUCT.md (spec) · concept gốc (blueprint, strategy)
+Streamable-HTTP endpoint: **`http://<host>:8787/mcp`**
+
+```bash
+claude mcp add --transport http kinetrak http://localhost:8787/mcp
 ```
 
-## Tech stack
+Tools: `get_board` / `list_projects` / `search` (read + memory recall) and full CRUD on
+modules, features, swimlane nodes & edges, plus `create_snapshot` and `append_note`.
 
-React 18 · TypeScript · Vite · React Flow (`@xyflow/react`) · `@dnd-kit/core` · Zustand · Tailwind.
+## Stack
 
-Chi tiết sản phẩm & lộ trình: [`docs/PRODUCT.md`](docs/PRODUCT.md).
+React + Vite + TypeScript · React Flow · Zustand · Tailwind · Node (express + ws) · MCP SDK.
+More: [`docs/PRODUCT.md`](docs/PRODUCT.md) (full spec), [`docs/MCP.md`](docs/MCP.md) (agent / MCP).

@@ -1,0 +1,17 @@
+# Deploy with the prebuilt image (no source/clone needed).
+#   docker login ghcr.io                # PAT with read:packages
+#   docker compose -f docker-compose.deploy.yml up -d
+services:
+  kinetrak:
+    image: ghcr.io/junixlabs/kinetrak:latest
+    container_name: kinetrak
+    ports:
+      - "8787:8787"
+    environment:
+      - PORT=8787
+    volumes:
+      - kinetrak-data:/app/server/data
+    restart: unless-stopped
+
+volumes:
+  kinetrak-data:
