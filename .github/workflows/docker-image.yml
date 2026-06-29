@@ -1,4 +1,4 @@
-name: Build & push Docker image
+name: Build, push & deploy
 
 on:
   push:
@@ -48,3 +48,56 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ── Auto-deploy: SSH into the VPS and roll the new :latest image ────────────
+  # Runs only for main pushes (the tag the `latest` image points at). Requires:
+  #   DEPLOY_HOST · DEPLOY_USER · DEPLOY_SSH_KEY   (required)
+  #   DEPLOY_PORT · DEPLOY_PATH                    (optional, default 22 · ~/kinetrak)
+  #   GHCR_USERNAME · GHCR_TOKEN                   (optional, only if the image is private)
+  deploy:
+    needs: docker
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy deploy compose to the server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          source: docker-compose.deploy.yml
+          target: ${{ secrets.DEPLOY_PATH || '~/kinetrak' }}
+
+      - name: Pull image & restart
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '~/kinetrak' }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          envs: DEPLOY_PATH,GHCR_USERNAME,GHCR_TOKEN
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            # Authenticate to GHCR only when a token is provided (private image).
+            if [ -n "${GHCR_TOKEN:-}" ]; then
+              echo "$GHCR_TOKEN" | docker login ghcr.io -u "${GHCR_USERNAME:-$USER}" --password-stdin
+            fi
+            docker compose -f docker-compose.deploy.yml pull
+            docker compose -f docker-compose.deploy.yml up -d
+            docker image prune -f
+            # Best-effort health check against the running container.
+            for i in $(seq 1 10); do
+              if curl -sf http://localhost:8787/api/health >/dev/null; then
+                echo "✓ KineTrak healthy"; exit 0
+              fi
+              sleep 2
+            done
+            echo "✗ Health check did not pass — check 'docker compose logs'"; exit 1

@@ -42,6 +42,27 @@ docker run -d -p 8787:8787 \
 Or copy `docker-compose.deploy.yml` to the server and run `docker compose -f docker-compose.deploy.yml up -d`.
 Board state persists in the `kinetrak-data` volume.
 
+### Auto-deploy (CI/CD → VPS)
+
+On every push to `main`, CI builds the image **and** SSHes into your server to roll it out
+(`docker compose pull && up -d`, then a `/api/health` check). One-time setup:
+
+1. On the server: install Docker + Compose, and `docker login ghcr.io` once if the image is private.
+2. Add these GitHub repo **secrets** (Settings → Secrets and variables → Actions):
+
+   | Secret | Required | Notes |
+   |---|---|---|
+   | `DEPLOY_HOST` | ✓ | server IP / hostname |
+   | `DEPLOY_USER` | ✓ | SSH user |
+   | `DEPLOY_SSH_KEY` | ✓ | private key (the matching public key is in the server's `authorized_keys`) |
+   | `DEPLOY_PORT` | — | SSH port (default `22`) |
+   | `DEPLOY_PATH` | — | dir for the compose file (default `~/kinetrak`) |
+   | `GHCR_USERNAME` / `GHCR_TOKEN` | — | only if the GHCR package is **private** (PAT with `read:packages`) |
+
+The workflow copies `docker-compose.deploy.yml` to `DEPLOY_PATH` each run, so the server always
+matches the repo. To set a fixed MCP key on the server, add `KINETRAK_API_KEY` to that compose file's
+`environment`.
+
 ## Connect an AI agent (MCP)
 
 Streamable-HTTP endpoint: **`http://<host>:8787/mcp`**
