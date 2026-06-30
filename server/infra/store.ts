@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Root } from '../../src/shared/board'
+import { searchBoard, type Root, type SearchHit } from '../../src/shared/board'
 import type { Org, Project, ProjectHeader } from '../../src/store/types'
 import { isPgEnabled } from './db'
-import { orgRepo, projectRepo } from './repositories'
+import { orgRepo, projectRepo, searchRepo } from './repositories'
 
 // ── Storage port (Ports & Adapters) ──────────────────────────────────────────
 // The orchestrator (server/state.ts) talks only to this interface. Two adapters:
@@ -26,6 +26,8 @@ export interface Store {
   deleteOrg(id: string): Promise<void>
   renameProject(id: string, name: string): Promise<void>
   deleteProject(id: string): Promise<void>
+  /** Memory recall across an org's boards (Pg: projection; File: in-RAM scan). */
+  search(orgId: string, query: string, projectId?: string): Promise<SearchHit[]>
 }
 
 // ── Postgres adapter ─────────────────────────────────────────────────────────
@@ -35,12 +37,17 @@ const pgStore: Store = {
     return { orgs, headers }
   },
   loadProject: (id) => projectRepo.byId(id),
-  saveProject: (p) => projectRepo.save(p),
+  async saveProject(p) {
+    await projectRepo.save(p)
+    // Read projection — kept eventually-consistent; failures are non-fatal.
+    await searchRepo.reindex(p).catch((e) => console.error('search reindex failed:', e))
+  },
   insertOrg: (o) => orgRepo.insert(o),
   renameOrg: (id, name) => orgRepo.rename(id, name),
   deleteOrg: (id) => orgRepo.delete(id),
   renameProject: (id, name) => projectRepo.rename(id, name),
   deleteProject: (id) => projectRepo.delete(id),
+  search: (orgId, query, projectId) => searchRepo.search(orgId, query, projectId),
 }
 
 // ── File adapter (whole board.json blob held in RAM) ─────────────────────────
@@ -106,6 +113,10 @@ function makeFileStore(): Store {
     async deleteProject(id) {
       root.projects = root.projects.filter((p) => p.id !== id)
       persist()
+    },
+    async search(orgId, query, projectId) {
+      const projects = root.projects.filter((p) => p.orgId === orgId)
+      return searchBoard({ orgs: [], projects }, query, projectId)
     },
   }
 }

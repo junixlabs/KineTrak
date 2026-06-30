@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { after, test } from 'node:test'
 import { closeDb, isPgEnabled } from './db'
-import { activityRepo, keyRepo, orgRepo, projectRepo, sessionRepo, shareRepo, userRepo } from './repositories'
+import { activityRepo, keyRepo, orgRepo, projectRepo, searchRepo, sessionRepo, shareRepo, userRepo } from './repositories'
 import { templateData } from '../../src/store/seed'
 
 // Round-trip smoke test against a live Postgres. Skips entirely when
@@ -57,6 +57,15 @@ run('keys / shares / activity attach to project', async () => {
   const since = await activityRepo.since(pid, 0)
   assert.equal(since.length, 1, 'activity cursor read works')
   assert.equal(since[0].summary, 'added module')
+})
+
+run('search projection: reindex + org-scoped query', async () => {
+  const p = (await projectRepo.all()).find((x) => x.id === pid)!
+  await searchRepo.reindex(p) // p has module 'm1' labelled 'M1' from the save test
+  const hits = await searchRepo.search(oid, 'M1')
+  assert.ok(hits.some((h) => h.kind === 'module' && h.label === 'M1'), 'module found via projection')
+  assert.equal((await searchRepo.search(oid, 'zzz-no-such-thing')).length, 0, 'no false positives')
+  assert.equal((await searchRepo.search('other-org', 'M1')).length, 0, 'scoped to the org')
 })
 
 run('session insert + delete', async () => {

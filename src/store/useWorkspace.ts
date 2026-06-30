@@ -102,6 +102,7 @@ interface WorkspaceState {
   // Sync (used by the client sync layer)
   setSyncStatus: (s: SyncStatus) => void
   applyServerRoot: (root: Root) => void
+  applyServerProject: (project: Project) => void
 
   // Auth (used by the auth layer)
   setCurrentUser: (user: User | null) => void
@@ -210,6 +211,14 @@ export const useWorkspace = create<WorkspaceState>()(
               : root.projects[0]?.id ?? null
             return { orgs: root.orgs, projects: root.projects, activeProjectId }
           }),
+
+        // Merge a single project pushed by the server (per-project live delta).
+        applyServerProject: (project) =>
+          set((s) => ({
+            projects: s.projects.some((p) => p.id === project.id)
+              ? s.projects.map((p) => (p.id === project.id ? project : p))
+              : [...s.projects, project],
+          })),
 
         // ── Org / project ──────────────────────────────────────────────────
         createOrg: (name) => {

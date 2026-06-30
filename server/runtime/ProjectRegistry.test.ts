@@ -29,6 +29,9 @@ function fakeStore(projects: Project[]): { store: Store; loads: () => number } {
     async deleteOrg() {},
     async renameProject() {},
     async deleteProject() {},
+    async search() {
+      return []
+    },
   }
   return { store, loads: () => loadCount }
 }

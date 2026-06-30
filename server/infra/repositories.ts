@@ -1,6 +1,7 @@
-import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, gt, ilike, inArray, or, sql } from 'drizzle-orm'
 import { requireDb } from './db'
 import * as t from './schema'
+import type { SearchHit } from '../../src/shared/board'
 import type { Org, Project, ProjectHeader } from '../../src/store/types'
 import type { User } from '../auth'
 import type { ApiKey } from '../keys'
@@ -215,6 +216,53 @@ export const activityRepo = {
       .orderBy(asc(t.activity.id))
       .limit(limit)
     return rows.map(rowToActivity)
+  },
+}
+
+// ── Search projection (read model) ───────────────────────────────────────────
+const clip = (s: string, n = 160) => (s.length > n ? s.slice(0, n) : s)
+const join = (...parts: (string | undefined)[]) => parts.filter(Boolean).join(' ')
+
+/** Flatten a project's board into searchable rows (mirrors searchBoard's text). */
+export function searchRows(p: Project): { projectId: string; kind: 'module' | 'feature' | 'swimnode'; itemId: string; label: string; text: string }[] {
+  const d = p.data
+  const rows: { projectId: string; kind: 'module' | 'feature' | 'swimnode'; itemId: string; label: string; text: string }[] = []
+  for (const m of d.modules) rows.push({ projectId: p.id, kind: 'module', itemId: m.id, label: m.name, text: join(m.name, m.backbone.name, m.backbone.sub) })
+  for (const f of d.features) rows.push({ projectId: p.id, kind: 'feature', itemId: f.id, label: f.name, text: join(f.name, f.desc, ...(f.constraints ?? []), ...(f.validations ?? [])) })
+  for (const n of d.swimNodes) rows.push({ projectId: p.id, kind: 'swimnode', itemId: n.id, label: n.label, text: join(n.label, n.desc, n.owner, ...(n.constraints ?? [])) })
+  return rows
+}
+
+export const searchRepo = {
+  /** Total projection rows — 0 means it needs a one-time backfill. */
+  async count(): Promise<number> {
+    const r = await requireDb().select({ n: sql<number>`count(*)::int` }).from(t.searchItems)
+    return r[0]?.n ?? 0
+  },
+  /** Rebuild the search rows for one project (delete + insert). */
+  async reindex(p: Project): Promise<void> {
+    const db = requireDb()
+    await db.delete(t.searchItems).where(eq(t.searchItems.projectId, p.id))
+    const rows = searchRows(p)
+    if (rows.length) await db.insert(t.searchItems).values(rows)
+  },
+  /** Search an org's projects via the projection (no board loaded). */
+  async search(orgId: string, query: string, projectId?: string): Promise<SearchHit[]> {
+    const q = query.trim()
+    if (!q) return []
+    const like = `%${q}%`
+    const where = and(
+      eq(t.projects.orgId, orgId),
+      projectId ? eq(t.searchItems.projectId, projectId) : undefined,
+      or(ilike(t.searchItems.label, like), ilike(t.searchItems.text, like)),
+    )
+    const rows = await requireDb()
+      .select({ projectId: t.searchItems.projectId, kind: t.searchItems.kind, itemId: t.searchItems.itemId, label: t.searchItems.label, text: t.searchItems.text })
+      .from(t.searchItems)
+      .innerJoin(t.projects, eq(t.searchItems.projectId, t.projects.id))
+      .where(where)
+      .limit(100)
+    return rows.map((r) => ({ projectId: r.projectId, kind: r.kind, id: r.itemId, label: r.label, snippet: clip(r.text) }))
   },
 }
 

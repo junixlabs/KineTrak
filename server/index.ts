@@ -6,6 +6,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { WebSocketServer, WebSocket } from 'ws'
 import {
   applyAndBroadcast,
+  backfillSearchIfEmpty,
   getProject,
   hydrateState,
   onChange,
@@ -32,6 +33,7 @@ import { createShare, hydrateShares, projectIdForToken, revokeShare, shareForPro
 import { hydrateActivity, listActivity, onActivity } from './activity'
 import { isPgEnabled } from './infra/db'
 import { runMigrations } from './infra/migrate'
+import type { Project } from '../src/store/types'
 import { sampleTemplate } from '../src/store/seed'
 import { makeId } from '../src/store/ids'
 
@@ -227,8 +229,25 @@ wss.on('connection', (ws: AuthedSocket, req) => {
   }
   void sendScoped(ws)
 })
-onChange(() => {
-  wss.clients.forEach((c) => void sendScoped(c as AuthedSocket))
+// A single project changed → push just that project to clients who can see it
+// (the main per-project "room" delta). Share viewers keep the {type:'state'} shape.
+function sendProjectFrame(project: Project) {
+  const delta = JSON.stringify({ type: 'project', project })
+  const shareFrame = JSON.stringify({ type: 'state', root: { orgs: [], projects: [project] } })
+  wss.clients.forEach((c) => {
+    const ws = c as AuthedSocket
+    if (ws.readyState !== WebSocket.OPEN) return
+    if (ws.shareProjectId === project.id) ws.send(shareFrame)
+    else if (ws.userId && ownsProject(ws.userId, project.id)) ws.send(delta)
+  })
+}
+
+onChange((e) => {
+  // Catalog lifecycle (rare) → resync the whole scoped root; a board mutation
+  // (frequent) → ship only the changed project. No more whole-root re-broadcast
+  // on every edit.
+  if (e.kind === 'catalog') wss.clients.forEach((c) => void sendScoped(c as AuthedSocket))
+  else sendProjectFrame(e.project)
 })
 
 // Push each activity entry to clients who can see that project (owner or share viewer).
@@ -249,6 +268,7 @@ async function bootstrap() {
   if (isPgEnabled()) {
     await runMigrations()
     await Promise.all([hydrateAuth(), hydrateKeys(), hydrateShares(), hydrateState(), hydrateActivity()])
+    await backfillSearchIfEmpty()
   }
   server.listen(PORT, () => {
     console.log(`KineTrak server → http://localhost:${PORT}`)

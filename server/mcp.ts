@@ -4,10 +4,9 @@ import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
-import { applyAndBroadcast as applyRaw, getCatalog, getProject } from './state'
+import { applyAndBroadcast as applyRaw, getCatalog, getProject, searchOrg } from './state'
 import { bearerFrom, verifyKey, type ApiKey } from './keys'
 import { recordNote, listActivity, type Actor } from './activity'
-import { searchBoard } from '../src/shared/board'
 import type { Project } from '../src/store/types'
 import { makeId, nextNodeCode } from '../src/store/ids'
 
@@ -127,8 +126,8 @@ function buildMcpServer(key: ApiKey): McpServer {
     { description: 'Search the board (memory recall) across module/feature/step names, descriptions and constraints.', inputSchema: { query: z.string(), projectId: z.string().optional() } },
     async ({ query, projectId }) => {
       if (projectId && !(await proj(projectId))) return json({ error: 'project not found in this workspace' })
-      const projects = projectId ? [await proj(projectId)].filter((p): p is Project => !!p) : await orgProjects()
-      return json(searchBoard({ orgs: [], projects }, query, projectId))
+      // Pg: SQL over the search projection; File: in-RAM scan. No board loaded in Pg mode.
+      return json(await searchOrg(orgId, query, projectId))
     },
   )
 

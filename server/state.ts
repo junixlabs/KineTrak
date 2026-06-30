@@ -1,7 +1,9 @@
 import { applyCommand, type Command, type Root } from '../src/shared/board'
 import type { Org, Project, ProjectHeader } from '../src/store/types'
 import { recordChange, type Actor } from './activity'
+import { isPgEnabled } from './infra/db'
 import { getStore, type Catalog } from './infra/store'
+import { searchRepo } from './infra/repositories'
 import { ProjectRegistry } from './runtime/ProjectRegistry'
 import { revokeOrgKeys } from './keys'
 import { pruneShares } from './shares'
@@ -16,13 +18,28 @@ const store = getStore()
 const registry = new ProjectRegistry(store)
 
 let catalog: Catalog = { orgs: [], headers: [] }
-const listeners = new Set<() => void>()
+
+/** What changed, so the broadcast layer can scope frames: one project's board,
+ *  or the catalog (org/project lifecycle → clients resync their list). */
+export type ChangeEvent = { kind: 'project'; project: Project } | { kind: 'catalog' }
+const listeners = new Set<(e: ChangeEvent) => void>()
 
 const header = (p: Project): ProjectHeader => ({ id: p.id, orgId: p.orgId, name: p.name, createdAt: p.createdAt })
 
 /** Load the resident catalog from the store. Called once at boot (both modes). */
 export async function hydrateState(): Promise<void> {
   catalog = await store.loadCatalog()
+}
+
+/** One-time backfill of the search projection for pre-existing projects (Pg only,
+ *  runs only when the projection is empty — e.g. right after the migration). */
+export async function backfillSearchIfEmpty(): Promise<void> {
+  if (!isPgEnabled()) return
+  if ((await searchRepo.count()) > 0) return
+  for (const h of catalog.headers) {
+    const p = await store.loadProject(h.id)
+    if (p) await searchRepo.reindex(p)
+  }
 }
 
 export function getCatalog(): Catalog {
@@ -45,6 +62,11 @@ export function projectOrgId(id: string): string | undefined {
 
 export function residentProjectCount(): number {
   return registry.residentCount()
+}
+
+/** Memory recall across one org's boards (no board loaded in Pg mode). */
+export function searchOrg(orgId: string, query: string, projectId?: string) {
+  return store.search(orgId, query, projectId)
 }
 
 // ── Scoped views ──────────────────────────────────────────────────────────────
@@ -92,7 +114,8 @@ export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<vo
   }
 
   recordChange(actor, cmd, affected)
-  listeners.forEach((l) => l())
+  const event: ChangeEvent = CATALOG_CMDS.has(cmd.type) || !affected ? { kind: 'catalog' } : { kind: 'project', project: affected }
+  listeners.forEach((l) => l(event))
 }
 
 async function applyCatalog(cmd: Command): Promise<Project | undefined> {
@@ -147,7 +170,7 @@ async function applyCatalog(cmd: Command): Promise<Project | undefined> {
   }
 }
 
-export function onChange(fn: () => void): () => void {
+export function onChange(fn: (e: ChangeEvent) => void): () => void {
   listeners.add(fn)
   return () => listeners.delete(fn)
 }

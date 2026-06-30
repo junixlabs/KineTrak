@@ -1,4 +1,4 @@
-import { bigserial, index, integer, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { bigserial, index, integer, jsonb, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core'
 import type { Snapshot, WorkspaceData } from '../../src/store/types'
 import type { Actor } from '../activity'
 
@@ -110,4 +110,21 @@ export const activity = pgTable(
   },
   // Cursor scan for get_changes_since: WHERE project_id=$ AND id > $cursor.
   (t) => [index('activity_project_id_idx').on(t.projectId, t.id)],
+)
+
+// Read projection (CQRS) — one searchable row per module/feature/swimnode.
+// Rebuilt on each project save so `search` runs over the org's rows without
+// loading any board into memory. `text` is the concatenated searchable blob.
+export const searchItems = pgTable(
+  'search_items',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['module', 'feature', 'swimnode'] }).notNull(),
+    itemId: text('item_id').notNull(),
+    label: text('label').notNull(),
+    text: text('text').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.kind, t.itemId] }), index('search_items_project_idx').on(t.projectId)],
 )
