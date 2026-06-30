@@ -2,14 +2,19 @@
 
 > Direction **(B)**: PostgreSQL as the durable store + **on-demand per-project loading**
 > (no longer hold the whole `Root` in RAM). Designed with proper layering / DDD patterns.
-> Status: **Phase 0 + 1 complete & cut over to prod Postgres (2026-06-30).** **Phase 2 complete**
-> (on a branch, not yet deployed): on-demand per-project loading via Store port + `LoadedProject`
-> aggregate + `ProjectRegistry` (identity map + TTL eviction). The resident catalog (orgs + project
-> headers) stays in RAM; project boards load on demand and evict when idle. Both Postgres and
-> file-JSON modes run through the same orchestrator. A WS/`/api/state` **bridge** still ships the
-> whole scoped root (assembled on demand) — Phase 3 replaces it with per-project rooms.
-> Verified: 10 unit/repo tests, PG + file e2e, durability across restart, web build.
-> Phases 3–5 (realtime rooms + frontend, search projection, cleanup) pending.
+> Status: **Phases 0–4 COMPLETE and deployed to prod (2026-06-30).**
+> - **0–1**: Postgres store behind `DATABASE_URL` + file-JSON fallback; prod cut over to Postgres.
+> - **2**: on-demand per-project loading — Store port + `LoadedProject` aggregate + `ProjectRegistry`
+>   (identity map + TTL eviction). Resident catalog (orgs + headers) only; boards load on demand.
+> - **3**: per-project live delta — board mutations push only the changed project (`{type:'project'}`)
+>   to clients that can see it; catalog lifecycle resyncs the scoped root. No whole-root re-broadcast.
+>   Verified live in a browser. Explicit subscribe/unsubscribe rooms deferred (YAGNI at current scale).
+> - **4**: `search_items` CQRS read projection — `search` runs SQL over it (no board loaded); backfilled
+>   at boot. Optimistic `version` column bumps on each write (enforcement deferred to multi-process).
+>
+> Phase 5 (remove the file-JSON path) is optional — the fallback is intentionally kept.
+> Verified throughout: 11 unit/repo tests, PG + file e2e, durability across restart, live browser
+> delta + search, prod e2e after each deploy.
 
 ## 0. Core trade-off (read first)
 
