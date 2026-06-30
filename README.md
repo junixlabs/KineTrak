@@ -110,3 +110,18 @@ modules, features, swimlane nodes & edges, plus `create_snapshot` and `append_no
 React + Vite + TypeScript · React Flow · Zustand · Tailwind · Node (express + ws) · MCP SDK ·
 Postgres + Drizzle (required).
 More: [`docs/PRODUCT.md`](docs/PRODUCT.md) (full spec), [`docs/MCP.md`](docs/MCP.md) (agent / MCP).
+
+## Operating constraints (read before scaling)
+
+- **Run exactly one server process.** Auth sessions, API keys, shares and the live activity ring are
+  warmed into RAM at boot and mutated in-process; Postgres is the source of truth, but a second
+  replica would not see new users/keys/sessions created on the first until it restarts. Writes are
+  serialized per-project by an in-process registry, so two processes could also race on the same
+  board. The `version` column on `projects` is the groundwork for safe multi-process writes
+  (optimistic concurrency), but the sticky-routing / cache-invalidation work is **not done** — do not
+  run more than one instance against the same database yet. A single VPS process is the supported
+  topology. Scale **up** (bigger box), not **out**, for now.
+- **Each project board is one JSONB document.** Every edit rewrites the whole `projects.data` blob and
+  reindexes its `search_items` rows. This is fine for normal boards (tens–hundreds of nodes); a single
+  board with many thousands of nodes/edges will see write latency grow with board size. Split very
+  large products into multiple projects rather than one giant board.

@@ -144,22 +144,35 @@ broadcast to room.
 **Catalog command**: `CatalogService` opens a tx, direct SQL (insert/rename/delete + cascade),
 broadcast catalog to owner.
 
-## 8. Directory layout
+## 8. Directory layout (as built)
+
+The shipped code uses a flatter layout than the aspirational DDD sketch this plan opened with — the
+ports/adapters split survives only where it earns its keep (the `Store` port + `ProjectRegistry`),
+not as a full domain/app/http hierarchy. Actual tree:
 
 ```
 server/
-  domain/        board.ts (re-export reducer), catalog.ts
-  app/           CatalogService, BoardService, AuthService, KeyService, ShareService, ActivityService
-                 ports/  (repo interfaces — Ports)
-  infra/         db.ts, schema.ts, migrations/, repositories/* (Adapters), UnitOfWork.ts
-  runtime/       ProjectRegistry.ts, LoadedProject.ts, Hub.ts
-  http/          rest.ts, mcp.ts, ws.ts   (thin controllers → services)
-  index.ts       composition root (DI)
-  migrate-from-json.ts
+  index.ts             composition root: Express app, REST routes, WS, boot/hydrate (HTTP + ws inline)
+  mcp.ts               MCP tools (registerTool) + Streamable-HTTP transport, scoped per API key
+  state.ts             orchestrator — the only place mutations happen (catalog cmds + board cmds)
+  auth.ts keys.ts shares.ts   user/session, API-key, share-link logic (RAM cache warmed at boot)
+  scope.ts             per-user authorization boundary (pure; injectable catalog → unit-tested)
+  activity.ts          activity log: bounded RAM ring + write-behind to Postgres
+  runtime/             ProjectRegistry.ts (identity map + TTL eviction), LoadedProject.ts (aggregate)
+  infra/
+    db.ts              lazy pg pool + drizzle client (requireDb)
+    schema.ts          Drizzle schema (users/sessions/orgs/projects/api_keys/shares/activity/search_items)
+    store.ts           Store port (Ports) + the single Postgres adapter (pgStore)
+    repositories.ts    Drizzle repositories (Adapters): user/session/org/project/key/share/activity/search
+    migrations/        generated SQL + journal
+  migrate-from-json.ts one-time legacy JSON → Postgres importer
 ```
 
-Ports = repo interfaces in `app/ports`; Drizzle implementations = adapters in `infra/repositories`.
-Services depend on the interfaces, injected at the composition root → testable with in-memory fakes.
+`Store` (in `infra/store.ts`) is the one real port — the orchestrator talks only to it, and tests
+inject an in-memory fake (`runtime/ProjectRegistry.test.ts`). The "Services" / `http/` / `domain/`
+folders in the original sketch were never split out; their responsibilities live in the flat modules
+above. There is no separate `UnitOfWork`/`Hub` — per-project write serialization lives in
+`LoadedProject`, and the WS hub is inline in `index.ts`.
 
 ## 9. Migration & cutover
 

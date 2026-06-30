@@ -224,7 +224,9 @@ export const activityRepo = {
       .offset(cap)
     if (cutoff[0]) await requireDb().delete(t.activity).where(and(eq(t.activity.projectId, projectId), lte(t.activity.id, cutoff[0].id)))
   },
-  /** Cursor read for get_changes_since (DB-native; Phase 2+). */
+  /** Cursor read for get_changes_since (DB-native): entries newer than `sinceId`,
+   *  oldest→newest. `id` is the bigserial cursor, so this is monotonic and never
+   *  drops entries the way the bounded RAM ring can under multi-project load. */
   async since(projectId: string, sinceId = 0, limit = 200): Promise<Activity[]> {
     const rows = await requireDb()
       .select()
@@ -233,6 +235,18 @@ export const activityRepo = {
       .orderBy(asc(t.activity.id))
       .limit(limit)
     return rows.map(rowToActivity)
+  },
+  /** The newest `limit` entries for one project (oldest→newest). Used for the
+   *  initial get_changes_since call (no cursor yet) so it returns recent changes
+   *  rather than the start of history. */
+  async latest(projectId: string, limit = 50): Promise<Activity[]> {
+    const rows = await requireDb()
+      .select()
+      .from(t.activity)
+      .where(eq(t.activity.projectId, projectId))
+      .orderBy(desc(t.activity.id))
+      .limit(limit)
+    return rows.map(rowToActivity).reverse()
   },
 }
 

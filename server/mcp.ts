@@ -6,7 +6,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { applyAndBroadcast as applyRaw, getCatalog, getProject, searchOrg } from './state'
 import { bearerFrom, verifyKey, type ApiKey } from './keys'
-import { recordNote, listActivity, type Actor } from './activity'
+import { recordNote, type Actor } from './activity'
+import { activityRepo } from './infra/repositories'
 import type { Project } from '../src/store/types'
 import { makeId, nextNodeCode } from '../src/store/ids'
 
@@ -140,7 +141,11 @@ function buildMcpServer(key: ApiKey): McpServer {
     },
     async ({ projectId, since }) => {
       const p = await requireProj(projectId)
-      const items = listActivity(p.id, since ?? 0, since === undefined ? 50 : 200)
+      // DB-backed cursor read (bigserial id). Unlike the bounded RAM ring, this
+      // never drops a project's entries when other projects are busy. Omit `since`
+      // → newest entries; otherwise everything strictly after the cursor.
+      const items =
+        since === undefined ? await activityRepo.latest(p.id, 50) : await activityRepo.since(p.id, since, 200)
       const d = p.data
       const entityOf = (id?: string) => {
         if (!id) return undefined
@@ -152,7 +157,8 @@ function buildMcpServer(key: ApiKey): McpServer {
         if (n) return { type: 'swimnode', ...n }
         return { type: 'deleted', id }
       }
-      const cursor = items.at(-1)?.ts ?? since ?? Date.now()
+      // Cursor is the last entry's bigserial id; if nothing new, keep the caller's.
+      const cursor = items.length ? Number(items.at(-1)!.id) : (since ?? 0)
       return json({
         cursor,
         count: items.length,
@@ -449,11 +455,25 @@ function authorize(req: Request, res: Response): ApiKey | null {
 /** Mount Streamable-HTTP MCP (stateful sessions) at /mcp. */
 export function registerMcp(app: Express) {
   const transports: Record<string, StreamableHTTPServerTransport> = {}
+  // Each session is bound to the org of the key that opened it. A different key
+  // (even a valid one for another workspace) may not drive someone else's
+  // session, so a guessed/leaked session-id can't cross the workspace boundary.
+  const sessionOrg: Record<string, string> = {}
+
+  /** Reject a request whose key doesn't own the session it targets. */
+  const sessionMismatch = (sid: string | undefined, key: ApiKey, res: Response): boolean => {
+    if (sid && sessionOrg[sid] && sessionOrg[sid] !== key.orgId) {
+      res.status(403).json({ jsonrpc: '2.0', error: { code: -32003, message: 'Forbidden — this session belongs to another workspace.' }, id: null })
+      return true
+    }
+    return false
+  }
 
   app.post('/mcp', async (req: Request, res: Response) => {
     const key = authorize(req, res)
     if (!key) return
     const sid = req.headers['mcp-session-id'] as string | undefined
+    if (sessionMismatch(sid, key, res)) return
     let transport = sid ? transports[sid] : undefined
 
     if (!transport) {
@@ -465,10 +485,14 @@ export function registerMcp(app: Express) {
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
           transports[id] = transport!
+          sessionOrg[id] = key.orgId // bind the session to this key's workspace
         },
       })
       transport.onclose = () => {
-        if (transport!.sessionId) delete transports[transport!.sessionId]
+        if (transport!.sessionId) {
+          delete transports[transport!.sessionId]
+          delete sessionOrg[transport!.sessionId]
+        }
       }
       // Bind this session's tools to the key (org scope + activity attribution).
       await buildMcpServer(key).connect(transport)
@@ -478,8 +502,10 @@ export function registerMcp(app: Express) {
   })
 
   const bySession = async (req: Request, res: Response) => {
-    if (!authorize(req, res)) return
+    const key = authorize(req, res)
+    if (!key) return
     const sid = req.headers['mcp-session-id'] as string | undefined
+    if (sessionMismatch(sid, key, res)) return
     const transport = sid ? transports[sid] : undefined
     if (!transport) {
       res.status(400).send('Missing or unknown mcp-session-id')
