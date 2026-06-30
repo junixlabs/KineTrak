@@ -1,4 +1,4 @@
-import { Play, LineChart, Plug } from 'lucide-react'
+import { Play, LineChart, Plug, BookOpen } from 'lucide-react'
 import ViewTabs from './ViewTabs'
 import SnapshotMenu from './SnapshotMenu'
 import RoleFilter from './RoleFilter'
@@ -17,6 +17,7 @@ const SYNC_META = {
 export default function Header() {
   const goHome = useWorkspace((s) => s.goHome)
   const goConnect = useWorkspace((s) => s.goConnect)
+  const goGuide = useWorkspace((s) => s.goGuide)
   const setPresent = useWorkspace((s) => s.setPresent)
   const syncStatus = useWorkspace((s) => s.syncStatus)
   const sync = SYNC_META[syncStatus]
@@ -53,6 +54,14 @@ export default function Header() {
       <RoleFilter />
       <ActivityPanel />
       <AlertsPanel />
+
+      <button
+        onClick={goGuide}
+        title="Agent guide — how to operate the board"
+        className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-line bg-white text-muted hover:bg-[#f4f6f9] hover:text-ink"
+      >
+        <BookOpen size={15} />
+      </button>
 
       <button
         onClick={goConnect}

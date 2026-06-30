@@ -37,6 +37,7 @@ const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—
 
 export default function ConnectPage() {
   const goHome = useWorkspace((s) => s.goHome)
+  const goGuide = useWorkspace((s) => s.goGuide)
   const orgs = useWorkspace((s) => s.orgs)
   const activeProject = useWorkspace((s) => s.activeProject())
   const show = useToast((s) => s.show)
@@ -286,15 +287,22 @@ export default function ConnectPage() {
           {/* What the agent can do */}
           <Section icon={<ShieldCheck size={15} />} title="What the agent can do" sub="Tools exposed over MCP">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <ToolCard title="Read / recall" items={['list_projects', 'get_board', 'search']} />
-              <ToolCard title="Modules" items={['add_module', 'update_module', 'delete_module']} />
-              <ToolCard title="Features" items={['add_feature', 'update_feature', 'delete_feature']} />
-              <ToolCard
-                title="Swimlane"
-                items={['add_swim_node', 'update_swim_node', 'delete_swim_node', 'add/delete_swim_edge']}
-              />
-              <ToolCard title="Versioning / memory" items={['create_snapshot', 'append_note']} />
+              <ToolCard title="Read / recall" items={['list_projects', 'get_board', 'get_changes_since', 'search', 'validate_board', 'next_action']} />
+              <ToolCard title="Projects" items={['create_project']} />
+              <ToolCard title="Modules" items={['add_module', 'find_or_create_module', 'update_module', 'delete_module']} />
+              <ToolCard title="Features" items={['add_feature', 'find_or_create_feature', 'update_feature', 'delete_feature']} />
+              <ToolCard title="Ordering / layout" items={['reorder_modules', 'reorder_features', 'move_swim_node', 'arrange_swimlane']} />
+              <ToolCard title="Swimlane" items={['add_swim_node', 'update_swim_node', 'delete_swim_node', 'add/delete_swim_edge']} />
+              <ToolCard title="Impact" items={['compute_impact', 'set_impact_threshold']} />
+              <ToolCard title="Versioning / memory" items={['create_snapshot', 'append_note', 'log_activity']} />
             </div>
+            <p className="mt-2 text-[11.5px] text-faint">
+              New to operating the board with an agent? See the{' '}
+              <button onClick={goGuide} className="font-semibold text-brand hover:underline">
+                Agent Guide
+              </button>{' '}
+              for the lifecycle, onboarding flow, and human-in-the-loop tiers.
+            </p>
           </Section>
         </div>
       </main>

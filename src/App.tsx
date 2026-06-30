@@ -6,6 +6,7 @@ import SwimlaneView from '@/components/views/SwimlaneView'
 import DetailPanel from '@/components/panel/DetailPanel'
 import Home from '@/components/home/Home'
 import ConnectPage from '@/components/connect/ConnectPage'
+import GuidePage from '@/components/guide/GuidePage'
 import PresentMode from '@/components/present/PresentMode'
 import AuthScreen from '@/components/auth/AuthScreen'
 import ShareViewer from '@/components/share/ShareViewer'
@@ -51,6 +52,8 @@ export default function App() {
         <Home />
       ) : screen === 'connect' ? (
         <ConnectPage />
+      ) : screen === 'guide' ? (
+        <GuidePage />
       ) : (
         <div className="flex h-full flex-col overflow-hidden">
           <Header />
