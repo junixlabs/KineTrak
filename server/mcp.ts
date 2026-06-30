@@ -70,8 +70,22 @@ const featureStatus = z.enum(['must', 'progress', 'done', 'nice'])
 const nodeStatus = z.enum(['todo', 'progress', 'done', 'blocked'])
 const nodeKind = z.enum(['start', 'process', 'decision', 'end'])
 
+// Sent to every client on initialize — the condensed Layer-A playbook. The full
+// process lives in docs/AGENT_PLAYBOOK.md; keep this in sync with it.
+const SERVER_INSTRUCTIONS = `KineTrak is a live product/dev board you operate as your durable memory — the board is the single source of truth, not this chat. Full process: docs/AGENT_PLAYBOOK.md.
+
+RECALL BEFORE YOU WRITE. Run the read path first every session: get_changes_since (incremental — pass back the cursor you stored last) or, on a cold start, get_board; then read the "Meta / Project Context" feature; then validate_board. Search before creating so you never duplicate (use find_or_create_module / find_or_create_feature). IDs are durable, names drift — resolve IDs fresh, never reuse one from a past session.
+
+PER-FEATURE LIFECYCLE: write the spec (goal, non-goals, acceptance criteria) into the feature description → lay out an ordered swimlane (add_swim_node + add_swim_edge) → implement one step at a time, flipping each step's status and append_note-ing evidence → validate against the acceptance criteria → set the feature status to done and create_snapshot. Narrate non-trivial actions with log_activity so the watching human can follow.
+
+EXISTING CODEBASE not yet on the board? Do NOT restructure. Scan the code with your own tools, draft an ADDITIVE map (find_or_create_module / find_or_create_feature) plus the "Project Context" node, then STOP for the human to confirm it, then create_snapshot("v0: as-is") before changing anything.
+
+STOP AND GET HUMAN APPROVAL before any irreversible or high-blast-radius action: delete_module / delete_feature / delete_swim_node / delete_swim_edge, shipping a feature, restructuring many items at once, or creating/deleting a project. Gates are hard — do not bypass one because you judge it safe.
+
+AT SESSION END, append_note your summary + next step + the latest cursor onto "Project Context", and snapshot if you did significant work.`
+
 function buildMcpServer(key: ApiKey): McpServer {
-  const server = new McpServer({ name: 'kinetrak', version: '1.0.0' })
+  const server = new McpServer({ name: 'kinetrak', version: '1.0.0' }, { instructions: SERVER_INSTRUCTIONS })
   const orgId = key.orgId
   const actor: Actor = { kind: 'agent', name: key.name }
   // Every agent mutation is attributed to this key in the activity log.
@@ -114,7 +128,7 @@ function buildMcpServer(key: ApiKey): McpServer {
 
   server.registerTool(
     'get_board',
-    { description: 'Read a project board as full structured context (modules, features, lanes, swimlane graph, releases). Use as memory/context.', inputSchema: { projectId: z.string().optional() } },
+    { description: 'Cold-start full read of a project board (modules, features, lanes, swimlane graph, releases). Use as memory/context. Once you have a cursor, prefer get_changes_since for cheaper incremental recall.', inputSchema: { projectId: z.string().optional() } },
     async ({ projectId }) => {
       const p = await proj(projectId)
       if (!p) return json({ error: 'project not found' })
@@ -252,7 +266,7 @@ function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'delete_module',
-    { description: 'Delete a module and its features.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
+    { description: 'Delete a module and its features. Tier 4 — irreversible; confirm with the human before calling unless already authorized. Snapshot first.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'deleteModule', projectId: p.id, id })
@@ -290,7 +304,7 @@ function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'update_feature',
-    { description: 'Update a feature (name, status, module, release, description, constraints, validations).', inputSchema: { projectId: z.string().optional(), id: z.string(), name: z.string().optional(), status: featureStatus.optional(), moduleId: z.string().optional(), releaseId: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional(), validations: z.array(z.string()).optional() } },
+    { description: 'Update a feature (name, status, module, release, description, constraints, validations). This is where the SPEC lives — put the goal, non-goals, constraints and acceptance criteria in desc before implementing. Status: must/nice = planned, progress = in progress, done = shipped.', inputSchema: { projectId: z.string().optional(), id: z.string(), name: z.string().optional(), status: featureStatus.optional(), moduleId: z.string().optional(), releaseId: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional(), validations: z.array(z.string()).optional() } },
     async ({ projectId, id, ...rest }) => {
       const p = await requireProj(projectId)
       const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
@@ -300,7 +314,7 @@ function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'delete_feature',
-    { description: 'Delete a feature.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
+    { description: 'Delete a feature. Tier 4 — irreversible; confirm with the human before calling unless already authorized.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'deleteFeature', projectId: p.id, id })
@@ -377,7 +391,7 @@ function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'delete_swim_node',
-    { description: 'Delete a swimlane step and its connected edges.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
+    { description: 'Delete a swimlane step and its connected edges. Tier 4 — irreversible; confirm with the human before calling unless already authorized.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'deleteSwimNode', projectId: p.id, id })
@@ -395,7 +409,7 @@ function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'delete_swim_edge',
-    { description: 'Remove an arrow between two swimlane steps.', inputSchema: { projectId: z.string().optional(), from: z.string(), to: z.string() } },
+    { description: 'Remove an arrow between two swimlane steps. Tier 4 — confirm with the human before calling unless already authorized.', inputSchema: { projectId: z.string().optional(), from: z.string(), to: z.string() } },
     async ({ projectId, from, to }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'deleteSwimEdge', projectId: p.id, from, to })
@@ -406,7 +420,7 @@ function buildMcpServer(key: ApiKey): McpServer {
   // ── Snapshots & memory ───────────────────────────────────────────────────────
   server.registerTool(
     'create_snapshot',
-    { description: 'Freeze the current board as a read-only snapshot.', inputSchema: { projectId: z.string().optional(), name: z.string() } },
+    { description: 'Freeze the current board as a read-only snapshot — your undo point. Take one before any wide or destructive batch, and when shipping. Name it with a version + what changed, e.g. "v3: checkout flow shipped".', inputSchema: { projectId: z.string().optional(), name: z.string() } },
     async ({ projectId, name }) => {
       const p = await requireProj(projectId)
       const id = makeId('snap')
@@ -425,7 +439,7 @@ function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'append_note',
-    { description: 'Append a line of text to a feature or swimlane step description (memory write).', inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string(), text: z.string() } },
+    { description: 'Append a line of text to a feature or swimlane step description (memory write). Use for implementation evidence (the test/command that passed) and dated decisions (lightweight ADRs: what was decided and why).', inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string(), text: z.string() } },
     async ({ projectId, target, id, text }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'appendNote', projectId: p.id, target, id, text })
