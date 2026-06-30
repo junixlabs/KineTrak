@@ -14,6 +14,7 @@ import type {
   Snapshot,
   SwimNode,
   WorkspaceData,
+  WorkspaceSettings,
 } from '../store/types'
 import { templateData, cloneData } from '../store/seed'
 
@@ -49,6 +50,7 @@ export type Command =
   | { type: 'createSnapshot'; projectId: string; id: string; name: string; date: string }
   | { type: 'deleteSnapshot'; projectId: string; id: string }
   | { type: 'appendNote'; projectId: string; target: 'feature' | 'swimnode'; id: string; text: string }
+  | { type: 'updateSettings'; projectId: string; patch: Partial<WorkspaceSettings> }
 
 const mapData = (root: Root, projectId: string, fn: (d: WorkspaceData) => WorkspaceData): Root => ({
   ...root,
@@ -191,6 +193,9 @@ export function applyCommand(root: Root, cmd: Command): Root {
           ? { ...d, features: d.features.map((f) => (f.id === cmd.id ? { ...f, desc: join(f.desc) } : f)) }
           : { ...d, swimNodes: d.swimNodes.map((n) => (n.id === cmd.id ? { ...n, desc: join(n.desc) } : n)) }
       })
+
+    case 'updateSettings':
+      return mapData(root, cmd.projectId, (d) => ({ ...d, settings: { ...d.settings, ...cmd.patch } }))
 
     default:
       return root

@@ -10,6 +10,7 @@ import { recordNote, type Actor } from './activity'
 import { activityRepo } from './infra/repositories'
 import type { Project } from '../src/store/types'
 import { makeId, nextNodeCode } from '../src/store/ids'
+import { computeImpact } from '../src/lib/impact'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -293,6 +294,32 @@ function buildMcpServer(key: ApiKey): McpServer {
         suggestion,
         suggestedSkill,
       })
+    },
+  )
+
+  server.registerTool(
+    'compute_impact',
+    {
+      description:
+        'Compute the cross-view impact zone of a feature or swim step: from its swimlane entry node(s), every downstream step plus the lanes and other features touched. Pass a feature id or a swim-node id as `focusId`.',
+      inputSchema: { projectId: z.string().optional(), focusId: z.string() },
+    },
+    async ({ projectId, focusId }) => {
+      const p = await requireProj(projectId)
+      return json(computeImpact(p.data, focusId))
+    },
+  )
+  server.registerTool(
+    'set_impact_threshold',
+    {
+      description:
+        'Set the per-project impact sensitivity: the minimum downstream-step footprint for a linked feature to raise an impact alert (default 3).',
+      inputSchema: { projectId: z.string().optional(), threshold: z.number().int().min(1) },
+    },
+    async ({ projectId, threshold }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'updateSettings', projectId: p.id, patch: { impactThreshold: threshold } })
+      return json({ ok: true, impactThreshold: threshold })
     },
   )
 

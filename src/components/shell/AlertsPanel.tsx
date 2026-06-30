@@ -1,6 +1,8 @@
+import { useMemo } from 'react'
 import { Triangle, Sparkles, ChevronRight } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import type { AlertKind } from '@/store/types'
+import { deriveImpactAlerts, DEFAULT_IMPACT_THRESHOLD } from '@/lib/impact'
 
 const KIND_META: Record<AlertKind, { c: string; bg: string; label: string }> = {
   impact: { c: '#e5484d', bg: '#fdecec', label: 'IMPACT' },
@@ -15,7 +17,12 @@ export default function AlertsPanel() {
   const setView = useWorkspace((s) => s.setView)
   const select = useWorkspace((s) => s.select)
 
-  const alerts = data.alerts
+  // Impact alerts are computed live from the board; other kinds come from the board's
+  // own alert list. Recomputed whenever the board changes.
+  const alerts = useMemo(() => {
+    const threshold = data.settings?.impactThreshold ?? DEFAULT_IMPACT_THRESHOLD
+    return [...deriveImpactAlerts(data, threshold), ...data.alerts.filter((a) => a.kind !== 'impact')]
+  }, [data])
 
   return (
     <div className="relative">

@@ -122,6 +122,12 @@ export type Selection =
   | { type: 'module'; id: string; view: ViewId }
   | { type: 'swimnode'; id: string; view: ViewId }
 
+/** Per-project tunables (persisted with the board). */
+export interface WorkspaceSettings {
+  /** Min downstream-step footprint for a linked feature to raise an impact alert. */
+  impactThreshold?: number
+}
+
 /** The editable diagram graph owned by a project (and frozen inside each snapshot). */
 export interface WorkspaceData {
   modules: Module[]
@@ -131,6 +137,7 @@ export interface WorkspaceData {
   swimNodes: SwimNode[]
   swimEdges: SwimEdge[]
   alerts: Alert[]
+  settings?: WorkspaceSettings
 }
 
 // ── Multi-project / org ──────────────────────────────────────────────────────

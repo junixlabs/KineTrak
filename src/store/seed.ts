@@ -98,11 +98,13 @@ export const sampleTemplate: WorkspaceData = {
     { from: 'G', to: 'J' },
     { from: 'J', to: 'K' },
   ],
+  // Impact alerts are derived live from the board (see lib/impact.deriveImpactAlerts);
+  // only the non-computed kinds are seeded here.
   alerts: [
-    { id: 'al1', kind: 'impact', title: 'Unapproved impact', detail: '"Real-time sync with workflow" was just set to Must-have — it affects the decision branch and 6 downstream steps in the Swimlane.', tags: ['@BA', '@Dev'], time: '5 min ago', actionLabel: 'View impact zone', action: { view: 'swimlane', selection: { type: 'swimnode', id: 'E', view: 'swimlane' } } },
     { id: 'al2', kind: 'outdated', title: 'Diagram may be outdated', detail: 'Swimlane "Update UI → Done & save" has not been updated for 32 days since PR #142 was merged to Production.', tags: ['@PO'], time: '2 hours ago', actionLabel: 'Open related step', action: { view: 'swimlane', selection: { type: 'swimnode', id: 'J', view: 'swimlane' } } },
     { id: 'al3', kind: 'dod', title: 'Definition of Done', detail: '"Automatic impact calculation" needs BA to confirm the Swimlane matches Production 100% before it can be marked Released.', tags: ['@BA'], time: 'Today', actionLabel: 'Open feature', action: { view: 'mindmap', selection: { type: 'feature', id: 'f6', view: 'mindmap' } } },
   ],
+  settings: { impactThreshold: 3 },
 }
 
 /** Empty project scaffold: standard lanes + releases, no modules/features/nodes yet. */
@@ -115,6 +117,7 @@ export function blankTemplate(): WorkspaceData {
     swimNodes: [],
     swimEdges: [],
     alerts: [],
+    settings: { impactThreshold: 3 },
   })
 }
 
