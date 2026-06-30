@@ -195,7 +195,7 @@ Sort every operation by reversibility and blast radius. Enforce these as process
 
 | Tier | Stance | KineTrak operations |
 |---|---|---|
-| **1 — Read** | Autonomous, no gate | `get_board`, `get_changes_since`, `list_projects`, `search`, `validate_board`, `log_activity`; a single leaf step status flip |
+| **1 — Read** | Autonomous, no gate | `get_board`, `get_changes_since`, `list_projects`, `search`, `validate_board`, `next_action`, `log_activity`; a single leaf step status flip |
 | **2 — Additive** | Autonomous, but narrate via `log_activity` | `append_note`, `add_swim_node`, `add_swim_edge`, `update_swim_node`, `move_swim_node`, `arrange_swimlane` |
 | **3 — New structure** | Proceed, but flag for async review | `add_module`, `add_feature`, `update_module`, `update_feature`, `reorder_modules`, `reorder_features`, routine `create_snapshot` |
 | **4 — Irreversible / high blast radius** | **Stop and get synchronous approval first** | `delete_module`, `delete_feature`, `delete_swim_node`, `delete_swim_edge`; **ship** promotion; restructuring that touches **>3 modules or >10 features** in one pass; creating or deleting a project |
@@ -223,6 +223,9 @@ Never bypass a gate because you judge it safe. The gate is the human's, not your
 4. `search(area)` for the specific area you are about to touch.
 5. `validate_board()` to surface structural problems before you build on top of them.
 6. `log_activity("Starting: <task>. Board state: <one-line summary>.")`
+
+> Shortcut: `next_action(projectId)` returns the latest cursor plus a recommended next step in one
+> call — useful to start step 1, though still read the board/Context for full context.
 
 ### 7.2 During a session
 

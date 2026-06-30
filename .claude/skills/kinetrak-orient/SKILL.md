@@ -9,8 +9,9 @@ description: >-
   KineTrak board and have not loaded it this session. The board is the single source of
   truth — never edit it before orienting.
 allowed-tools: >-
-  mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__get_changes_since,
-  mcp__kinetrak__search, mcp__kinetrak__validate_board, mcp__kinetrak__log_activity
+  mcp__kinetrak__list_projects, mcp__kinetrak__next_action, mcp__kinetrak__get_board,
+  mcp__kinetrak__get_changes_since, mcp__kinetrak__search, mcp__kinetrak__validate_board,
+  mcp__kinetrak__log_activity
 ---
 
 # kinetrak-orient
@@ -28,6 +29,9 @@ session.
 
 1. **Pick the project.** If the project id is unknown, call `list_projects` and choose the one the
    user means (ask if ambiguous).
+
+   *Shortcut:* `next_action(projectId)` returns the latest cursor plus a recommended next step and
+   skill in one call — a fast way to start. Still complete the read steps below for full context.
 
 2. **Incremental recall first.** If you hold a cursor from earlier this session, or you find one on
    the board (step 3), call `get_changes_since(projectId, since=<cursor>)` — it returns only what

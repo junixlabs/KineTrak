@@ -223,6 +223,79 @@ function buildMcpServer(key: ApiKey): McpServer {
     },
   )
 
+  server.registerTool(
+    'next_action',
+    {
+      description:
+        'The "where am I?" primitive — read the board\'s current state and get the recommended next lifecycle step, plus the latest activity `cursor` for incremental recall. Cheap orientation when resuming work; pair with get_changes_since(cursor).',
+      inputSchema: { projectId: z.string().optional() },
+    },
+    async ({ projectId }) => {
+      const p = await proj(projectId)
+      if (!p) return json({ error: 'project not found in this workspace' })
+      const d = p.data
+      const latest = await activityRepo.latest(p.id, 1)
+      const cursor = latest.length ? Number(latest[0].id) : 0
+
+      const norm = (s: string) => s.trim().toLowerCase()
+      const hasContext =
+        d.modules.some((m) => norm(m.name) === 'meta') && d.features.some((f) => norm(f.name) === 'project context')
+      const blocked = d.swimNodes.filter((n) => n.status === 'blocked')
+      const inProgress = d.features.filter((f) => f.status === 'progress')
+      const planned = d.features.filter((f) => f.status === 'must')
+      const moduleIds = new Set(d.modules.map((m) => m.id))
+      const laneIds = new Set(d.lanes.map((l) => l.id))
+      const structuralIssues =
+        d.features.filter((f) => !moduleIds.has(f.moduleId)).length +
+        d.swimNodes.filter((n) => !laneIds.has(n.lane)).length
+      const names = (xs: { name?: string; label?: string }[]) =>
+        xs.slice(0, 3).map((x) => `“${x.name ?? x.label}”`).join(', ')
+
+      let suggestion: string
+      let suggestedSkill: string
+      if (!hasContext) {
+        suggestion = 'No “Meta / Project Context” node — capture the project domain, stack and conventions there (onboard an existing codebase, or seed it for a new one).'
+        suggestedSkill = 'kinetrak-onboard'
+      } else if (structuralIssues > 0) {
+        suggestion = `${structuralIssues} structural issue(s) on the board — run validate_board and fix before starting new work.`
+        suggestedSkill = 'kinetrak-validate'
+      } else if (blocked.length) {
+        suggestion = `${blocked.length} swim step(s) blocked — resolve the blocker(s): ${names(blocked)}.`
+        suggestedSkill = 'kinetrak-implement'
+      } else if (inProgress.length) {
+        suggestion = `Continue in-progress feature(s): ${names(inProgress)}.`
+        suggestedSkill = 'kinetrak-implement'
+      } else if (planned.length) {
+        suggestion = `Start a committed (must) feature: ${names(planned)} — specify, then decompose.`
+        suggestedSkill = 'kinetrak-specify'
+      } else {
+        suggestion = 'No committed work pending — pick the next feature to specify, or ship/close out the session.'
+        suggestedSkill = 'kinetrak-specify'
+      }
+
+      return json({
+        projectId: p.id,
+        cursor,
+        summary: {
+          modules: d.modules.length,
+          features: d.features.length,
+          swimNodes: d.swimNodes.length,
+          featuresByStatus: {
+            must: planned.length,
+            progress: inProgress.length,
+            done: d.features.filter((f) => f.status === 'done').length,
+            nice: d.features.filter((f) => f.status === 'nice').length,
+          },
+          blockedSteps: blocked.length,
+          structuralIssues,
+          hasProjectContext: hasContext,
+        },
+        suggestion,
+        suggestedSkill,
+      })
+    },
+  )
+
   // ── Modules ─────────────────────────────────────────────────────────────────
   server.registerTool(
     'add_module',
@@ -445,6 +518,55 @@ function buildMcpServer(key: ApiKey): McpServer {
       await applyAndBroadcast({ type: 'appendNote', projectId: p.id, target, id, text })
       return json({ ok: true })
     },
+  )
+
+  // ── Prompts (the playbook, for any MCP client) ───────────────────────────────
+  // Standalone restatements of docs/AGENT_PLAYBOOK.md so clients without the
+  // Claude Code SKILL.md files still get the process. Keep in sync with the doc.
+  const promptText = (text: string) => ({ messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }] })
+
+  server.registerPrompt(
+    'orient',
+    { title: 'Orient on the board', description: 'Recall current board state before doing any work — run this first each session.' },
+    () =>
+      promptText(
+        `Orient on the KineTrak board before touching it. The board is your memory and the single source of truth.\n\n` +
+          `1. Pick the project (list_projects if unknown).\n` +
+          `2. If you have a stored cursor, call get_changes_since(projectId, since=cursor) for incremental recall; otherwise call get_board(projectId) once and read the "Meta / Project Context" feature for domain/stack/conventions and the last "Cursor:" line.\n` +
+          `3. search the area you are about to work on.\n` +
+          `4. validate_board(projectId); surface any error-severity issues.\n` +
+          `5. log_activity a one-line note that you are starting.\n\n` +
+          `Then summarise: where things stand, integrity, and the single best next step. Do not write to the board until oriented. Tip: next_action returns a recommended next step + cursor in one call.`,
+      ),
+  )
+
+  server.registerPrompt(
+    'onboard',
+    { title: 'Onboard an existing codebase', description: 'Map an existing codebase onto the board (as-is) before any change — brownfield entry.' },
+    () =>
+      promptText(
+        `Map an EXISTING codebase onto a KineTrak board, as-is, before changing anything. The diagram is the OUTPUT of onboarding, not the tool that performs it. Every board write here is additive.\n\n` +
+          `B0 Scan: read the repo with your own file tools (tree, manifests, entry points, conventions) and build a compact as-is summary.\n` +
+          `B1 Draft map (additive): find_or_create_module per real area; find_or_create_feature per significant capability (put its repo path in the description); create the "Meta / Project Context" feature from the summary. Mirror the code's real structure — do not idealise it. Status reflects reality (working = done, partial = progress).\n` +
+          `B2 Human gate (mandatory): present the map and ask the human to confirm it matches reality; apply corrections; then create_snapshot("v0: as-is").\n` +
+          `B3 Hand off: record a resume note on Project Context, then enter the normal lifecycle (specify → … → ship). After B2, restructuring existing modules/features is Tier 4 — ask first.\n\n` +
+          `Do NOT use for a brand-new project with no code — that is a discovery interview.`,
+      ),
+  )
+
+  server.registerPrompt(
+    'ship',
+    { title: 'Ship a validated feature', description: 'Promote a validated feature to shipped and checkpoint — Tier-4, human-initiated.' },
+    () =>
+      promptText(
+        `Ship a feature that has PASSED validation. This is a Tier-4 action the human owns — only do it on explicit instruction.\n\n` +
+          `Preconditions: the feature's swim steps are all done and a passing validation note exists; you have oriented this session.\n` +
+          `1. validate_board — do not ship over error-severity issues.\n` +
+          `2. update_feature → status: done; move it into the target release column if the project uses releases.\n` +
+          `3. create_snapshot with a named, dated label, e.g. "v3: checkout flow shipped" — the immutable reference for what shipped.\n` +
+          `4. log_activity the shipment.\n\n` +
+          `Then run the session-close routine (note summary + next + cursor on Project Context) or move to the next feature.`,
+      ),
   )
 
   return server
