@@ -128,6 +128,20 @@ function buildMcpServer(key: ApiKey): McpServer {
   )
 
   server.registerTool(
+    'create_project',
+    {
+      description:
+        'Create a new project (board) in THIS workspace and return its id. Use when onboarding a codebase that has no board yet, or starting a new product — no need to open the web UI. template "blank" (default) = empty scaffold (standard lanes + releases); "sample" = demo content.',
+      inputSchema: { name: z.string(), template: z.enum(['blank', 'sample']).optional() },
+    },
+    async ({ name, template }) => {
+      const id = makeId('p')
+      await applyAndBroadcast({ type: 'createProject', id, orgId, name, template: template ?? 'blank', createdAt: new Date().toISOString() })
+      return json({ id, name, orgId })
+    },
+  )
+
+  server.registerTool(
     'get_board',
     { description: 'Cold-start full read of a project board (modules, features, lanes, swimlane graph, releases). Use as memory/context. Once you have a cursor, prefer get_changes_since for cheaper incremental recall.', inputSchema: { projectId: z.string().optional() } },
     async ({ projectId }) => {

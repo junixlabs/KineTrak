@@ -9,10 +9,11 @@ description: >-
   map before anything changes. Do NOT use for a brand-new / greenfield project with no code yet —
   that is a discovery interview, not onboarding.
 allowed-tools: >-
-  Read, Grep, Glob, AskUserQuestion, mcp__kinetrak__list_projects, mcp__kinetrak__get_board,
-  mcp__kinetrak__search, mcp__kinetrak__validate_board, mcp__kinetrak__find_or_create_module,
-  mcp__kinetrak__find_or_create_feature, mcp__kinetrak__update_feature, mcp__kinetrak__update_module,
-  mcp__kinetrak__create_snapshot, mcp__kinetrak__log_activity, mcp__kinetrak__append_note
+  Read, Grep, Glob, AskUserQuestion, mcp__kinetrak__list_projects, mcp__kinetrak__create_project,
+  mcp__kinetrak__get_board, mcp__kinetrak__search, mcp__kinetrak__validate_board,
+  mcp__kinetrak__find_or_create_module, mcp__kinetrak__find_or_create_feature,
+  mcp__kinetrak__update_feature, mcp__kinetrak__update_module, mcp__kinetrak__create_snapshot,
+  mcp__kinetrak__log_activity, mcp__kinetrak__append_note
 ---
 
 # kinetrak-onboard
@@ -45,8 +46,9 @@ Do not over-read. Sample representative files; you are after structure, not a li
 
 ## B1 · Draft the map (additive only)
 
-Pick the target project/org first (`list_projects`; ask the user which workspace if unclear). Then
-translate the scan into board structure using the rules in `references/mindmap-mapping.md`:
+Pick the target project first (`list_projects`). If this workspace has no project for the codebase,
+create one with `create_project` (name it after the repo/product; template `blank`). Then translate
+the scan into board structure using the rules in `references/mindmap-mapping.md`:
 
 1. `find_or_create_module` for each real area of the codebase. Use `update_module` for color/owners
    only if helpful.
