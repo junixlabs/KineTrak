@@ -1,12 +1,13 @@
 import { strict as assert } from 'node:assert'
 import { after, test } from 'node:test'
-import { closeDb, isPgEnabled } from './db'
+import { closeDb } from './db'
 import { activityRepo, keyRepo, orgRepo, projectRepo, searchRepo, sessionRepo, shareRepo, userRepo } from './repositories'
 import { templateData } from '../../src/store/seed'
 
 // Round-trip smoke test against a live Postgres. Skips entirely when
 // DATABASE_URL is unset so CI without a DB stays green.
-const run = isPgEnabled() ? test : test.skip
+const hasDb = !!process.env.DATABASE_URL
+const run = hasDb ? test : test.skip
 
 const uid = `u_test_${Date.now()}`
 const oid = `org_test_${Date.now()}`
@@ -14,7 +15,7 @@ const pid = `p_test_${Date.now()}`
 
 after(async () => {
   // Cascade: deleting the user wipes org → project → key/share/activity.
-  if (isPgEnabled()) {
+  if (hasDb) {
     const { requireDb } = await import('./db')
     const { eq } = await import('drizzle-orm')
     const t = await import('./schema')

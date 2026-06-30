@@ -1,20 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
-import { isPgEnabled } from './infra/db'
 import { sessionRepo, userRepo } from './infra/repositories'
 
 // ── User accounts + sessions ─────────────────────────────────────────────────
 // Self-contained email/password auth. Passwords hashed with scrypt (node:crypto,
-// no extra deps). Sessions are opaque bearer tokens kept server-side; the client
-// stores the token in localStorage and sends it as `Authorization: Bearer`.
-// These files are NEVER part of the synced board Root sent to browsers.
-
-const HERE = dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = join(HERE, 'data')
-const USERS_FILE = join(DATA_DIR, 'users.json')
-const SESS_FILE = join(DATA_DIR, 'sessions.json')
+// no extra deps). Sessions are opaque bearer tokens persisted in Postgres; the
+// client stores the token in localStorage and sends it as `Authorization: Bearer`.
+// An in-RAM cache (warmed at boot) serves the synchronous token lookup.
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30 // 30 days
 
@@ -39,30 +30,14 @@ interface Session {
   expiresAt: number
 }
 
-let users: User[] = isPgEnabled() ? [] : readJson(USERS_FILE, [])
-let sessions: Session[] = isPgEnabled() ? [] : readJson(SESS_FILE, [])
+let users: User[] = []
+let sessions: Session[] = []
 
-/** Warm the in-RAM caches from Postgres (Pg mode only). Called once at boot. */
+/** Warm the in-RAM caches from Postgres. Called once at boot. */
 export async function hydrateAuth(): Promise<void> {
-  if (!isPgEnabled()) return
   users = await userRepo.all()
   const rows = await sessionRepo.all()
   sessions = rows.map((r) => ({ token: r.token, userId: r.userId, expiresAt: r.expiresAt }))
-}
-
-function readJson<T>(file: string, fallback: T): T {
-  if (existsSync(file)) {
-    try {
-      return JSON.parse(readFileSync(file, 'utf8'))
-    } catch {
-      /* ignore */
-    }
-  }
-  return fallback
-}
-function writeJson(file: string, data: unknown) {
-  mkdirSync(DATA_DIR, { recursive: true })
-  writeFileSync(file, JSON.stringify(data, null, 2))
 }
 
 function hashPassword(password: string, salt: string): string {
@@ -106,8 +81,7 @@ export async function register(email: string, name: string, password: string): P
     createdAt: new Date().toISOString(),
   }
   users.push(user)
-  if (isPgEnabled()) await userRepo.insert(user)
-  else writeJson(USERS_FILE, users)
+  await userRepo.insert(user)
   return { token: await createSession(user.id), user: toPublic(user) }
 }
 
@@ -123,12 +97,8 @@ async function createSession(userId: string): Promise<string> {
   sessions = sessions.filter((s) => s.expiresAt > Date.now()) // prune expired
   const session: Session = { token, userId, expiresAt: Date.now() + SESSION_TTL_MS }
   sessions.push(session)
-  if (isPgEnabled()) {
-    if (expired.length) await sessionRepo.deleteMany(expired)
-    await sessionRepo.insert(session)
-  } else {
-    writeJson(SESS_FILE, sessions)
-  }
+  if (expired.length) await sessionRepo.deleteMany(expired)
+  await sessionRepo.insert(session)
   return token
 }
 
@@ -137,8 +107,7 @@ export async function logout(token: string | undefined) {
   const before = sessions.length
   sessions = sessions.filter((s) => s.token !== token)
   if (sessions.length === before) return
-  if (isPgEnabled()) await sessionRepo.delete(token)
-  else writeJson(SESS_FILE, sessions)
+  await sessionRepo.delete(token)
 }
 
 /** Resolve a bearer session token to its user (null if missing/expired). */

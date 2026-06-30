@@ -1,7 +1,6 @@
 import { applyCommand, type Command, type Root } from '../src/shared/board'
 import type { Org, Project, ProjectHeader } from '../src/store/types'
 import { recordChange, type Actor } from './activity'
-import { isPgEnabled } from './infra/db'
 import { getStore, type Catalog } from './infra/store'
 import { searchRepo } from './infra/repositories'
 import { ProjectRegistry } from './runtime/ProjectRegistry'
@@ -31,10 +30,9 @@ export async function hydrateState(): Promise<void> {
   catalog = await store.loadCatalog()
 }
 
-/** One-time backfill of the search projection for pre-existing projects (Pg only,
- *  runs only when the projection is empty — e.g. right after the migration). */
+/** One-time backfill of the search projection for pre-existing projects (runs
+ *  only when the projection is empty — e.g. right after the migration). */
 export async function backfillSearchIfEmpty(): Promise<void> {
-  if (!isPgEnabled()) return
   if ((await searchRepo.count()) > 0) return
   for (const h of catalog.headers) {
     const p = await store.loadProject(h.id)

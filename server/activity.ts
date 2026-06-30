@@ -1,20 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import type { Command } from '../src/shared/board'
 import type { Project } from '../src/store/types'
-import { isPgEnabled } from './infra/db'
 import { activityRepo } from './infra/repositories'
 
 // ── Activity log ─────────────────────────────────────────────────────────────
 // A narrative of who changed what, when — so the human can watch/catch-up on an
 // agent operating the board. Attribution comes from the caller (agent key name
-// vs signed-in user). Capped ring buffer, persisted alongside the board.
+// vs signed-in user). A capped in-RAM ring (warmed from Postgres at boot) serves
+// fast reads; each entry is written through to Postgres (write-behind).
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = join(HERE, 'data')
-const FILE = join(DATA_DIR, 'activity.json')
 const CAP = 1000
 
 export interface Actor {
@@ -32,39 +26,17 @@ export interface Activity {
   kind: 'change' | 'note'
 }
 
-let log: Activity[] = isPgEnabled() ? [] : load()
+let log: Activity[] = []
 const listeners = new Set<(a: Activity) => void>()
-let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-function load(): Activity[] {
-  if (existsSync(FILE)) {
-    try {
-      const parsed = JSON.parse(readFileSync(FILE, 'utf8'))
-      if (Array.isArray(parsed)) return parsed
-    } catch {
-      /* ignore */
-    }
-  }
-  return []
-}
-
-/** Warm the in-RAM ring from Postgres (Pg mode only). Called once at boot. */
+/** Warm the in-RAM ring from Postgres. Called once at boot. */
 export async function hydrateActivity(): Promise<void> {
-  if (!isPgEnabled()) return
   log = await activityRepo.recent(CAP)
 }
 
 function persist(entry: Activity) {
-  if (isPgEnabled()) {
-    // Narration is non-critical — write-behind, never block the broadcast.
-    activityRepo.insert(entry).catch((e) => console.error('activity insert failed:', e))
-    return
-  }
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    mkdirSync(DATA_DIR, { recursive: true })
-    writeFileSync(FILE, JSON.stringify(log, null, 2))
-  }, 200)
+  // Narration is non-critical — write-behind, never block the broadcast.
+  activityRepo.insert(entry).catch((e) => console.error('activity insert failed:', e))
 }
 
 export function onActivity(fn: (a: Activity) => void): () => void {

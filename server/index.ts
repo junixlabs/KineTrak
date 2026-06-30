@@ -31,7 +31,7 @@ import {
 import { authorizeCommand, userOwnsOrg } from './scope'
 import { createShare, hydrateShares, projectIdForToken, revokeShare, shareForProject } from './shares'
 import { hydrateActivity, listActivity, onActivity } from './activity'
-import { isPgEnabled } from './infra/db'
+import { assertDatabaseConfigured } from './infra/db'
 import { runMigrations } from './infra/migrate'
 import type { Project } from '../src/store/types'
 import { sampleTemplate } from '../src/store/seed'
@@ -263,16 +263,15 @@ onActivity((entry) => {
 
 const PORT = Number(process.env.PORT) || 8787
 
-/** Migrate + hydrate the in-RAM caches (Pg mode), then start listening. */
+/** Require Postgres, run migrations, hydrate the in-RAM caches, then listen. */
 async function bootstrap() {
-  if (isPgEnabled()) {
-    await runMigrations()
-    await Promise.all([hydrateAuth(), hydrateKeys(), hydrateShares(), hydrateState(), hydrateActivity()])
-    await backfillSearchIfEmpty()
-  }
+  assertDatabaseConfigured()
+  await runMigrations()
+  await Promise.all([hydrateAuth(), hydrateKeys(), hydrateShares(), hydrateState(), hydrateActivity()])
+  await backfillSearchIfEmpty()
   server.listen(PORT, () => {
     console.log(`KineTrak server → http://localhost:${PORT}`)
-    console.log(`  • storage  : ${isPgEnabled() ? 'Postgres (DATABASE_URL)' : 'file-JSON (server/data)'}`)
+    console.log(`  • storage  : Postgres`)
     if (hasDist) console.log(`  • web app  : http://localhost:${PORT}  (serving dist/)`)
     else console.log(`  • web app  : run "npm run dev" (Vite on 5173) or "npm run build" first`)
     console.log(`  • accounts : ${userCount()} registered · POST /api/auth/{register,login,logout} · GET /api/auth/me`)

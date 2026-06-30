@@ -9,9 +9,8 @@ services:
       - "8787:8787"
     environment:
       - PORT=8787
-      # Postgres durable store. Leave DATABASE_URL unset to keep the legacy
-      # file-JSON store (server/data volume). With it set, the server runs
-      # migrations on boot and uses Postgres.
+      # Postgres is required — the server runs migrations on boot and refuses to
+      # start without DATABASE_URL. Use a strong password in real deployments.
       - DATABASE_URL=postgres://kinetrak:kinetrak@db:5432/kinetrak
     volumes:
       - kinetrak-data:/app/server/data

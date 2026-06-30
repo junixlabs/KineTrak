@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
-import { closeDb, isPgEnabled } from './infra/db'
+import { closeDb } from './infra/db'
 import { runMigrations } from './infra/migrate'
 import { activityRepo, keyRepo, orgRepo, projectRepo, sessionRepo, shareRepo, userRepo } from './infra/repositories'
 import type { Snapshot, WorkspaceData } from '../src/store/types'
@@ -43,7 +43,7 @@ async function step(label: string, items: unknown[], fn: (x: never) => Promise<v
 }
 
 async function main() {
-  if (!isPgEnabled()) {
+  if (!process.env.DATABASE_URL) {
     console.error('Set DATABASE_URL to import into Postgres.')
     process.exit(1)
   }

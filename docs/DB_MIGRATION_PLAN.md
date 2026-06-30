@@ -2,7 +2,11 @@
 
 > Direction **(B)**: PostgreSQL as the durable store + **on-demand per-project loading**
 > (no longer hold the whole `Root` in RAM). Designed with proper layering / DDD patterns.
-> Status: **Phases 0–4 COMPLETE and deployed to prod (2026-06-30).**
+> Status: **Phases 0–5 COMPLETE and deployed to prod (2026-06-30).** Postgres is now the only
+> server store — the file-JSON path was removed and the server fails fast without `DATABASE_URL`.
+> (The browser's own no-server localStorage mode is unaffected.)
+>
+> Earlier phases, for reference:
 > - **0–1**: Postgres store behind `DATABASE_URL` + file-JSON fallback; prod cut over to Postgres.
 > - **2**: on-demand per-project loading — Store port + `LoadedProject` aggregate + `ProjectRegistry`
 >   (identity map + TTL eviction). Resident catalog (orgs + headers) only; boards load on demand.

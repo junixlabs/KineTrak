@@ -1,15 +1,13 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
-import { getDb, isPgEnabled } from './db'
+import { getDb } from './db'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-/** Apply pending SQL migrations. No-op in file-JSON mode. */
+/** Apply pending SQL migrations. */
 export async function runMigrations(): Promise<void> {
-  if (!isPgEnabled()) return
-  const db = getDb()!
-  await migrate(db, { migrationsFolder: join(HERE, 'migrations') })
+  await migrate(getDb(), { migrationsFolder: join(HERE, 'migrations') })
 }
 
 // Allow running standalone: `tsx server/infra/migrate.ts`
