@@ -69,6 +69,24 @@ run('search projection: reindex + org-scoped query', async () => {
   assert.equal((await searchRepo.search('other-org', 'M1')).length, 0, 'scoped to the org')
 })
 
+run('activity recent() returns the NEWEST entries (oldest→newest); trim bounds the table', async () => {
+  for (let i = 1; i <= 5; i++) {
+    await activityRepo.insert({ id: '0', projectId: pid, ts: Date.now() + i, actor: { kind: 'agent', name: 'a' }, summary: `e${i}`, kind: 'change' })
+  }
+  const recent = (await activityRepo.recent(3)).filter((r) => r.projectId === pid)
+  assert.equal(recent.at(-1)?.summary, 'e5', 'most recent entry is last in the warmed ring')
+  assert.ok(!recent.some((r) => r.summary === 'e1'), 'oldest entries are not in the newest-3 window')
+
+  await activityRepo.trim(pid, 2)
+  const left = await activityRepo.since(pid, 0, 100)
+  assert.equal(left.length, 2, 'table bounded to the cap')
+  assert.deepEqual(
+    left.map((r) => r.summary),
+    ['e4', 'e5'],
+    'kept the two newest, ascending',
+  )
+})
+
 run('session insert + delete', async () => {
   await sessionRepo.insert({ token: 'sess_test', userId: uid, expiresAt: Date.now() + 1000 })
   assert.ok((await sessionRepo.all()).find((s) => s.token === 'sess_test'))

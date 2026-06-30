@@ -116,26 +116,30 @@ export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<vo
   listeners.forEach((l) => l(event))
 }
 
+// Invariant: persist to the store FIRST, then update the resident catalog /
+// registry. A failed durable write therefore leaves no orphan header or
+// resident aggregate — the command throws and nothing is observable.
 async function applyCatalog(cmd: Command): Promise<Project | undefined> {
   switch (cmd.type) {
     case 'createOrg': {
       const org = applyCommand({ orgs: [], projects: [] }, cmd).orgs[0] as Org
-      catalog.orgs.push(org)
       await store.insertOrg(org)
+      catalog.orgs.push(org)
       return undefined
     }
     case 'renameOrg': {
+      await store.renameOrg(cmd.id, cmd.name)
       const o = catalog.orgs.find((x) => x.id === cmd.id)
       if (o) o.name = cmd.name
-      await store.renameOrg(cmd.id, cmd.name)
       return undefined
     }
     case 'deleteOrg': {
+      await store.deleteOrg(cmd.id) // FK cascade removes projects/keys/shares/activity
       catalog.orgs = catalog.orgs.filter((o) => o.id !== cmd.id)
-      const gone = catalog.headers.filter((h) => h.orgId === cmd.id)
+      catalog.headers
+        .filter((h) => h.orgId === cmd.id)
+        .forEach((h) => registry.evict(h.id))
       catalog.headers = catalog.headers.filter((h) => h.orgId !== cmd.id)
-      gone.forEach((h) => registry.evict(h.id))
-      await store.deleteOrg(cmd.id) // FK cascade in Pg
       revokeOrgKeys(cmd.id)
       pruneShares(new Set(catalog.headers.map((h) => h.id)))
       return undefined
@@ -143,23 +147,24 @@ async function applyCatalog(cmd: Command): Promise<Project | undefined> {
     case 'createProject':
     case 'importProject': {
       const project = applyCommand({ orgs: [], projects: [] }, cmd).projects[0]
+      await store.saveProject(project)
       catalog.headers.push(header(project))
       registry.put(project)
-      await store.saveProject(project)
       return project
     }
     case 'renameProject': {
+      await store.renameProject(cmd.id, cmd.name)
       const h = catalog.headers.find((x) => x.id === cmd.id)
       if (h) h.name = cmd.name
-      const lp = await registry.acquire(cmd.id)
+      // Keep a resident aggregate's copy in sync; don't force-load just to rename.
+      const lp = registry.peek(cmd.id)
       if (lp) lp.project = { ...lp.project, name: cmd.name }
-      await store.renameProject(cmd.id, cmd.name)
       return undefined
     }
     case 'deleteProject': {
+      await store.deleteProject(cmd.id)
       catalog.headers = catalog.headers.filter((h) => h.id !== cmd.id)
       registry.evict(cmd.id)
-      await store.deleteProject(cmd.id)
       pruneShares(new Set(catalog.headers.map((h) => h.id)))
       return undefined
     }

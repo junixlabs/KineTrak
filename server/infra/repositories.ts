@@ -1,7 +1,7 @@
-import { and, asc, eq, gt, ilike, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, ilike, inArray, lte, or, sql } from 'drizzle-orm'
 import { requireDb } from './db'
 import * as t from './schema'
-import type { SearchHit } from '../../src/shared/board'
+import { searchableItems, type SearchHit } from '../../src/shared/board'
 import type { Org, Project, ProjectHeader } from '../../src/store/types'
 import type { User } from '../auth'
 import type { ApiKey } from '../keys'
@@ -35,6 +35,10 @@ export const userRepo = {
     await requireDb()
       .insert(t.users)
       .values({ id: u.id, email: u.email, name: u.name, salt: u.salt, hash: u.hash, role: u.role, createdAt: new Date(u.createdAt) })
+  },
+  /** Delete a user; FK cascade removes their sessions, orgs, projects, keys… */
+  async delete(id: string): Promise<void> {
+    await requireDb().delete(t.users).where(eq(t.users.id, id))
   },
 }
 
@@ -192,10 +196,12 @@ export const shareRepo = {
 
 // ── Activity (append-only) ───────────────────────────────────────────────────
 export const activityRepo = {
-  /** Most recent entries (any project), newest last — used to warm the RAM ring. */
+  /** The newest `limit` entries (any project), returned oldest→newest to warm
+   *  the RAM ring. Note: ORDER BY id DESC + LIMIT selects the *latest* rows, then
+   *  we reverse so the ring ends with the most recent entry. */
   async recent(limit = 1000): Promise<Activity[]> {
-    const rows = await requireDb().select().from(t.activity).orderBy(asc(t.activity.id)).limit(limit)
-    return rows.map(rowToActivity)
+    const rows = await requireDb().select().from(t.activity).orderBy(desc(t.activity.id)).limit(limit)
+    return rows.map(rowToActivity).reverse()
   },
   async insert(a: Activity): Promise<void> {
     await requireDb().insert(t.activity).values({
@@ -206,6 +212,17 @@ export const activityRepo = {
       targetId: a.targetId,
       kind: a.kind,
     })
+  },
+  /** Bound the table: keep only the newest `cap` rows for a project. */
+  async trim(projectId: string, cap: number): Promise<void> {
+    const cutoff = await requireDb()
+      .select({ id: t.activity.id })
+      .from(t.activity)
+      .where(eq(t.activity.projectId, projectId))
+      .orderBy(desc(t.activity.id))
+      .limit(1)
+      .offset(cap)
+    if (cutoff[0]) await requireDb().delete(t.activity).where(and(eq(t.activity.projectId, projectId), lte(t.activity.id, cutoff[0].id)))
   },
   /** Cursor read for get_changes_since (DB-native; Phase 2+). */
   async since(projectId: string, sinceId = 0, limit = 200): Promise<Activity[]> {
@@ -221,16 +238,11 @@ export const activityRepo = {
 
 // ── Search projection (read model) ───────────────────────────────────────────
 const clip = (s: string, n = 160) => (s.length > n ? s.slice(0, n) : s)
-const join = (...parts: (string | undefined)[]) => parts.filter(Boolean).join(' ')
 
-/** Flatten a project's board into searchable rows (mirrors searchBoard's text). */
+/** Flatten a project's board into searchable rows using the shared extractor
+ *  (src/shared/board.searchableItems) so the projection never drifts from searchBoard. */
 export function searchRows(p: Project): { projectId: string; kind: 'module' | 'feature' | 'swimnode'; itemId: string; label: string; text: string }[] {
-  const d = p.data
-  const rows: { projectId: string; kind: 'module' | 'feature' | 'swimnode'; itemId: string; label: string; text: string }[] = []
-  for (const m of d.modules) rows.push({ projectId: p.id, kind: 'module', itemId: m.id, label: m.name, text: join(m.name, m.backbone.name, m.backbone.sub) })
-  for (const f of d.features) rows.push({ projectId: p.id, kind: 'feature', itemId: f.id, label: f.name, text: join(f.name, f.desc, ...(f.constraints ?? []), ...(f.validations ?? [])) })
-  for (const n of d.swimNodes) rows.push({ projectId: p.id, kind: 'swimnode', itemId: n.id, label: n.label, text: join(n.label, n.desc, n.owner, ...(n.constraints ?? [])) })
-  return rows
+  return searchableItems(p.data).map((it) => ({ projectId: p.id, kind: it.kind, itemId: it.id, label: it.label, text: it.text }))
 }
 
 export const searchRepo = {
@@ -250,7 +262,9 @@ export const searchRepo = {
   async search(orgId: string, query: string, projectId?: string): Promise<SearchHit[]> {
     const q = query.trim()
     if (!q) return []
-    const like = `%${q}%`
+    // Escape LIKE metacharacters so a literal % or _ is matched literally
+    // (backslash is Postgres ILIKE's default escape char).
+    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
     const where = and(
       eq(t.projects.orgId, orgId),
       projectId ? eq(t.searchItems.projectId, projectId) : undefined,

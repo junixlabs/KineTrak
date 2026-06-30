@@ -35,8 +35,12 @@ export async function hydrateActivity(): Promise<void> {
 }
 
 function persist(entry: Activity) {
-  // Narration is non-critical — write-behind, never block the broadcast.
-  activityRepo.insert(entry).catch((e) => console.error('activity insert failed:', e))
+  // Narration is non-critical — write-behind, never block the broadcast. Trim
+  // after insert so the table stays bounded to the newest CAP rows per project.
+  activityRepo
+    .insert(entry)
+    .then(() => activityRepo.trim(entry.projectId, CAP))
+    .catch((e) => console.error('activity persist failed:', e))
 }
 
 export function onActivity(fn: (a: Activity) => void): () => void {

@@ -245,7 +245,7 @@ export default function ConnectPage() {
                   >
                     {revealed[k.id] ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
-                  <CopyButton value={secret ?? ''} onCopy={() => show('Key copied')} />
+                  <CopyButton value={secret ?? ''} disabled={!secret} onCopy={() => show('Key copied')} />
                   <button
                     onClick={() => revokeKey(k.id)}
                     className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-faint hover:bg-[#fdecec] hover:text-[#e5484d]"
@@ -346,9 +346,10 @@ function Banner({ tone, icon, children }: { tone: 'ok' | 'warn' | 'info'; icon: 
   )
 }
 
-function CopyButton({ value, onCopy }: { value: string; onCopy?: () => void }) {
+function CopyButton({ value, onCopy, disabled }: { value: string; onCopy?: () => void; disabled?: boolean }) {
   const [done, setDone] = useState(false)
   const copy = async () => {
+    if (disabled || !value) return // never report success when there's nothing to copy
     try {
       await navigator.clipboard.writeText(value)
       setDone(true)
@@ -361,8 +362,9 @@ function CopyButton({ value, onCopy }: { value: string; onCopy?: () => void }) {
   return (
     <button
       onClick={copy}
-      className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-faint hover:bg-[#eef1ff] hover:text-brand"
-      title="Copy"
+      disabled={disabled || !value}
+      className="flex h-8 w-8 flex-none items-center justify-center rounded-md text-faint hover:bg-[#eef1ff] hover:text-brand disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-faint"
+      title={disabled || !value ? 'Secret available only at creation' : 'Copy'}
     >
       {done ? <Check size={15} className="text-[#16a34a]" /> : <Copy size={15} />}
     </button>

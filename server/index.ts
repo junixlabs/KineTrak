@@ -19,6 +19,7 @@ import { createKey, hydrateKeys, listKeys, revokeKey } from './keys'
 import {
   AuthError,
   bearerFrom,
+  deleteAccount,
   hydrateAuth,
   login,
   logout,
@@ -85,7 +86,14 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, name, password } = req.body ?? {}
     const out = await register(email, name, password)
-    await seedWorkspace(userByToken(out.token)!)
+    try {
+      await seedWorkspace(userByToken(out.token)!)
+    } catch (seedErr) {
+      // Roll the account back so the email stays re-usable and no half-seeded
+      // workspace lingers (cascade clears the org/project if createOrg landed).
+      await deleteAccount(out.user.id).catch(() => {})
+      throw seedErr
+    }
     res.json({ ok: true, ...out })
   } catch (e) {
     const status = e instanceof AuthError ? e.status : 400

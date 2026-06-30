@@ -203,12 +203,38 @@ export function findProject(root: Root, projectId?: string): Project | undefined
   return projectId ? root.projects.find((p) => p.id === projectId) : root.projects[0]
 }
 
+export type SearchKind = 'module' | 'feature' | 'swimnode'
+
 export interface SearchHit {
   projectId: string
-  kind: 'module' | 'feature' | 'swimnode'
+  kind: SearchKind
   id: string
   label: string
   snippet: string
+}
+
+export interface SearchItem {
+  kind: SearchKind
+  id: string
+  label: string
+  /** Concatenated searchable blob (name + description + constraints …). */
+  text: string
+}
+
+const joinText = (...parts: (string | undefined)[]) => parts.filter(Boolean).join(' ')
+
+/**
+ * The single source of truth for what is searchable in a board. Used by both
+ * the in-memory searchBoard (client/tests) and the Postgres search projection
+ * (server/infra/repositories.searchRows), so the two never drift apart.
+ */
+export function searchableItems(data: WorkspaceData): SearchItem[] {
+  const items: SearchItem[] = []
+  for (const m of data.modules) items.push({ kind: 'module', id: m.id, label: m.name, text: joinText(m.name, m.backbone.name, m.backbone.sub) })
+  for (const f of data.features)
+    items.push({ kind: 'feature', id: f.id, label: f.name, text: joinText(f.name, f.desc, ...(f.constraints ?? []), ...(f.validations ?? [])) })
+  for (const n of data.swimNodes) items.push({ kind: 'swimnode', id: n.id, label: n.label, text: joinText(n.label, n.desc, n.owner, ...(n.constraints ?? [])) })
+  return items
 }
 
 export function searchBoard(root: Root, query: string, projectId?: string): SearchHit[] {
@@ -216,20 +242,8 @@ export function searchBoard(root: Root, query: string, projectId?: string): Sear
   if (!q) return []
   const projects = projectId ? root.projects.filter((p) => p.id === projectId) : root.projects
   const hits: SearchHit[] = []
-  const text = (...parts: (string | undefined)[]) => parts.filter(Boolean).join(' ')
-  for (const p of projects) {
-    for (const m of p.data.modules) {
-      const t = text(m.name, m.backbone.name, m.backbone.sub)
-      if (t.toLowerCase().includes(q)) hits.push({ projectId: p.id, kind: 'module', id: m.id, label: m.name, snippet: t })
-    }
-    for (const f of p.data.features) {
-      const t = text(f.name, f.desc, ...(f.constraints ?? []), ...(f.validations ?? []))
-      if (t.toLowerCase().includes(q)) hits.push({ projectId: p.id, kind: 'feature', id: f.id, label: f.name, snippet: f.desc ?? f.name })
-    }
-    for (const n of p.data.swimNodes) {
-      const t = text(n.label, n.desc, n.owner, ...(n.constraints ?? []))
-      if (t.toLowerCase().includes(q)) hits.push({ projectId: p.id, kind: 'swimnode', id: n.id, label: n.label, snippet: n.desc ?? n.label })
-    }
-  }
+  for (const p of projects)
+    for (const it of searchableItems(p.data))
+      if (it.text.toLowerCase().includes(q)) hits.push({ projectId: p.id, kind: it.kind, id: it.id, label: it.label, snippet: it.text })
   return hits
 }

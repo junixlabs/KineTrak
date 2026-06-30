@@ -95,3 +95,42 @@ test('aggregate serializes writes and persists', async () => {
   const reloaded = await store.loadProject('p1')
   assert.equal(reloaded!.data.modules.length, 2, 'persisted to store')
 })
+
+test('apply rolls back the in-RAM board and does NOT poison the queue on save failure', async () => {
+  const map = new Map([['p1', mkProject('p1')]])
+  let failNext = false
+  const store: Store = {
+    async loadCatalog() {
+      return { orgs: [], headers: [] }
+    },
+    async loadProject(id) {
+      return map.get(id) ?? null
+    },
+    async saveProject(p) {
+      if (failNext) {
+        failNext = false
+        throw new Error('transient DB error')
+      }
+      map.set(p.id, p)
+    },
+    async insertOrg() {},
+    async renameOrg() {},
+    async deleteOrg() {},
+    async renameProject() {},
+    async deleteProject() {},
+    async search() {
+      return []
+    },
+  }
+  const reg = new ProjectRegistry(store)
+  const lp = (await reg.acquire('p1'))!
+
+  failNext = true
+  await assert.rejects(() => lp.apply({ type: 'addModule', projectId: 'p1', id: 'bad', name: 'BAD' }), /transient DB error/)
+  assert.equal(lp.project.data.modules.length, 0, 'in-RAM board rolled back to pre-command state')
+
+  // Queue is not poisoned — the very next command still runs and persists.
+  await lp.apply({ type: 'addModule', projectId: 'p1', id: 'ok', name: 'OK' })
+  assert.equal(lp.project.data.modules.length, 1, 'later command applied after the failure')
+  assert.equal((await store.loadProject('p1'))!.data.modules.length, 1, 'and persisted')
+})

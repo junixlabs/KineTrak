@@ -122,6 +122,14 @@ export function userById(id: string): User | null {
   return users.find((u) => u.id === id) ?? null
 }
 
+/** Delete an account and everything it owns (cascade). Used to roll back a
+ *  registration whose workspace seeding failed, so the email stays re-usable. */
+export async function deleteAccount(userId: string): Promise<void> {
+  users = users.filter((u) => u.id !== userId)
+  sessions = sessions.filter((s) => s.userId !== userId)
+  await userRepo.delete(userId)
+}
+
 /** Pull a bearer token from an Authorization header. */
 export function bearerFrom(headers: Record<string, unknown>): string | undefined {
   const auth = headers['authorization']

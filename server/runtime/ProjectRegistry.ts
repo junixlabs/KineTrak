@@ -44,6 +44,11 @@ export class ProjectRegistry {
     return pending
   }
 
+  /** The live aggregate if already resident, without loading it. */
+  peek(id: string): LoadedProject | undefined {
+    return this.live.get(id)
+  }
+
   /** Register a freshly created project as live (skips a reload). */
   put(project: Project): LoadedProject {
     const lp = new LoadedProject(this.store, project)

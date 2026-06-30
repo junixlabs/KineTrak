@@ -11,7 +11,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Gate: types + build + tests must pass before we build/deploy an image ────
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kinetrak
+          POSTGRES_PASSWORD: kinetrak
+          POSTGRES_DB: kinetrak
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kinetrak -d kinetrak"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://kinetrak:kinetrak@localhost:5432/kinetrak
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate
+      - run: npm run typecheck:server
+      - run: npm run build
+      - run: npm test
+
   docker:
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read

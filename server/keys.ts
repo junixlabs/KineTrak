@@ -42,6 +42,12 @@ export async function hydrateKeys(): Promise<void> {
 
 const sha256 = (s: string): string => createHash('sha256').update(s).digest('hex')
 const newSecret = (): string => `kt_live_${randomBytes(24).toString('hex')}`
+
+/** Derive the at-rest representation of a raw key secret (hash + shown-once
+ *  prefix label). Shared with the file→Postgres importer so they never diverge. */
+export function hashSecret(secret: string): { keyHash: string; keyPrefix: string } {
+  return { keyHash: sha256(secret), keyPrefix: secret.slice(0, 14) }
+}
 const toPublic = (k: KeyRecord): ApiKey => ({
   id: k.id,
   userId: k.userId,
@@ -60,15 +66,16 @@ export function listKeys(userId: string, orgId?: string): ApiKey[] {
 /** Create a key. Returns the public record plus the raw `secret` (shown once). */
 export async function createKey(userId: string, orgId: string, name?: string): Promise<ApiKey & { secret: string }> {
   const secret = newSecret()
+  const { keyHash, keyPrefix } = hashSecret(secret)
   const k: KeyRecord = {
     id: randomUUID(),
     userId,
     orgId,
     name: (name?.trim() || 'Agent key').slice(0, 80),
-    keyPrefix: secret.slice(0, 14),
+    keyPrefix,
     createdAt: new Date().toISOString(),
     lastUsedAt: null,
-    hash: sha256(secret),
+    hash: keyHash,
   }
   await keyRepo.insert({
     id: k.id,

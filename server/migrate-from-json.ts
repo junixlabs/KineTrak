@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createHash } from 'node:crypto'
+import { hashSecret } from './keys'
 import { closeDb } from './infra/db'
 import { runMigrations } from './infra/migrate'
 import { activityRepo, keyRepo, orgRepo, projectRepo, sessionRepo, shareRepo, userRepo } from './infra/repositories'
@@ -15,7 +15,6 @@ import type { Actor } from './activity'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DATA = join(HERE, 'data')
-const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
 
 function readJson<T>(file: string, fallback: T): T {
   const p = join(DATA, file)
@@ -91,13 +90,14 @@ async function main() {
   await step('keys', keys, async (k: Record<string, unknown>) => {
     const secret = (k.secret ?? k.key) as string | undefined
     if (!secret) throw new Error('key has no secret to hash')
+    const { keyHash, keyPrefix } = hashSecret(secret)
     await keyRepo.insert({
       id: k.id as string,
       userId: k.userId as string,
       orgId: k.orgId as string,
       name: (k.name as string) ?? 'Agent key',
-      keyHash: sha256(secret),
-      keyPrefix: secret.slice(0, 14),
+      keyHash,
+      keyPrefix,
       createdAt: (k.createdAt as string) ?? new Date().toISOString(),
       lastUsedAt: (k.lastUsedAt as string | null) ?? null,
     })
