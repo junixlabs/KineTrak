@@ -31,10 +31,15 @@ of a cold full reload.
    `"Session <date>: completed <X>. Next: <Y>. Cursor: <value>."`
    Keep it one line — it is a rolling handoff, not a journal.
 
-3. **Snapshot if significant.** If meaningful work shipped or large changes landed this session,
+3. **Compact what you touched.** For features/steps you edited this session, rewrite any rambling
+   `desc` back to the tight contract and prune its `— log —` to ~5 entries (description contract,
+   `docs/AGENT_PLAYBOOK.md` §1.6). `validate_board` flags `bloated_description`; the Overview lists
+   them under "Descriptions to compact" — clear the ones you own.
+
+4. **Snapshot if significant.** If meaningful work shipped or large changes landed this session,
    `create_snapshot` with a named, dated label. Skip for trivial sessions.
 
-4. **Sign off.** `log_activity("Session complete. Next session: <plan>.")`.
+5. **Sign off.** `log_activity("Session complete. Next session: <plan>.")`.
 
 ## Terminal state
 

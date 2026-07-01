@@ -12,6 +12,7 @@ import { activityRepo } from './infra/repositories'
 import type { Project } from '../src/store/types'
 import { makeId, nextNodeCode } from '../src/store/ids'
 import { computeImpact } from '../src/lib/impact'
+import { descStats } from '../src/lib/descriptions'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -234,6 +235,16 @@ export function buildMcpServer(key: ApiKey): McpServer {
         return [...dups]
       }
       dupNames(d.modules.map((m) => m.name)).forEach((n) => issues.push({ severity: 'warning', kind: 'duplicate_module_name', message: `Duplicate module name “${n}”` }))
+
+      // Description-contract budget (see AGENT_PLAYBOOK §1.6): flag rambling descriptions to compact.
+      d.features.forEach((f) => {
+        const s = descStats(f.desc)
+        if (s.overBudget) issues.push({ severity: 'warning', kind: 'bloated_description', message: `Feature “${f.name}” description over budget — ${s.reasons.join('; ')}`, ids: [f.id] })
+      })
+      d.swimNodes.forEach((n) => {
+        const s = descStats(n.desc)
+        if (s.overBudget) issues.push({ severity: 'warning', kind: 'bloated_description', message: `Step “${n.label}” description over budget — ${s.reasons.join('; ')}`, ids: [n.id] })
+      })
 
       return json({ ok: issues.every((i) => i.severity !== 'error'), errors: issues.filter((i) => i.severity === 'error').length, warnings: issues.filter((i) => i.severity === 'warning').length, issues })
     },

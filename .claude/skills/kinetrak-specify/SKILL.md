@@ -10,7 +10,8 @@ description: >-
 allowed-tools: >-
   mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__search,
   mcp__kinetrak__find_or_create_module, mcp__kinetrak__find_or_create_feature,
-  mcp__kinetrak__update_feature, mcp__kinetrak__append_note, mcp__kinetrak__log_activity
+  mcp__kinetrak__update_feature, mcp__kinetrak__set_acceptance, mcp__kinetrak__append_note,
+  mcp__kinetrak__log_activity
 ---
 
 # kinetrak-specify
@@ -29,13 +30,17 @@ board you have not loaded.
    exist, `find_or_create_feature` under the right module (`find_or_create_module` first if the
    module is missing). Resolve IDs fresh — never reuse one from a past session.
 
-2. **Write the spec into the feature description** (`update_feature`, `desc`). Cover, concisely:
-   - **Goal** — the outcome, in product terms.
-   - **Non-goals** — what is explicitly out of scope. On an existing project, state "preserve
-     existing structure unless told otherwise."
-   - **Constraints** — technical or product limits (also usable as the `constraints` array).
-   - **Acceptance criteria** — testable conditions for "done" (also usable as the `validations`
-     array). `kinetrak-validate` checks against these later, so make them concrete.
+2. **Write the spec — follow the description contract (`docs/AGENT_PLAYBOOK.md` §1.6).** The `desc`
+   holds only the tight **current contract**; the other parts go in their own fields:
+   - **`desc`** (`update_feature`) — a 1–2 line **Goal** (outcome, present tense) + a 1-line
+     **Non-goals** only if there's a real boundary risk (on an existing project: "preserve existing
+     structure unless told otherwise"). Keep it ≤ ~700 chars / ~12 lines — a 3-second read. Do **not**
+     restate status/constraints/acceptance/code here, and no legacy/backfill narration.
+   - **Constraints** → the `constraints` array (not prose in `desc`).
+   - **Acceptance criteria** → `set_acceptance` (the `validations` checklist). Make them concrete —
+     `kinetrak-validate` ticks each with `check_acceptance` and unmet ones block ship (DoD alert).
+   - When the spec changes later, **rewrite `desc`**, don't append; history goes below a `— log —`
+     marker as terse dated notes (keep ~5).
 
 3. **Set status to reflect intent** — `must` for committed work, `nice` for optional. (Lifecycle
    mapping: `docs/AGENT_PLAYBOOK.md` §5.)

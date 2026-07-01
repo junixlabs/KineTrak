@@ -84,6 +84,31 @@ That is a rule's full lifecycle with zero new machinery; projects without rules 
 Only if a single project accumulates *so many* rules that constraints become unmanageable should a
 dedicated Rule model be reconsidered — until then this convention is the source of truth for rules.
 
+### 1.6 The description contract (write tight; compact, don't accumulate)
+
+A feature/step `desc` is the **current contract**, not a history log. Left unbounded, an agent will
+ramble, restate other fields, and keep pasting legacy/backfill narration until the card is noise.
+Honor these rules on every write:
+
+- **Rewrite, don't accumulate.** When the truth changes, **rewrite** the contract to the present
+  state. Do not keep appending. On every Specify / Validate / Session-close pass, *compact* it.
+- **Optimize for a 3-second read.** Contract = a 1–2 line **purpose** (what + why, present tense),
+  plus a 1-line **non-goals** only if there is a real boundary risk. That is usually all.
+- **Don't duplicate other fields.** Status, acceptance criteria (`validations`), constraints
+  (`constraints[]`), code location (`codeRefs`), links (`crossLinks`/`dependsOn`) live in their own
+  fields — never restate them in `desc`.
+- **No legacy / process narration in the contract.** "previously…", "backfilled…", "migrated
+  from…", pasted code, or anything describing what git/the diff/snapshots already record. History
+  belongs to git and snapshots, not the spec.
+- **History/decisions go below a `— log —` marker**, as terse dated one-liners via `append_note`
+  (lightweight ADRs). Keep the **last ~5**; compact older ones into a single line or drop them
+  (snapshots hold the full history). The marker keeps the log from diluting the contract.
+
+**Budget (soft, enforced by nudge not truncation):** contract ≤ **~700 chars / ~12 lines**, log ≤
+**~5 entries**. Over budget → `validate_board` raises a `bloated_description` warning and the Overview
+lists it under "Descriptions to compact". Nothing is cut — you are expected to *rewrite it tighter*.
+If the contract can't fit the budget, it is probably **two features** — split it.
+
 ---
 
 ## 2. The lifecycle

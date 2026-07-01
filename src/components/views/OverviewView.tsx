@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Triangle, Clock, CheckCircle2, HelpCircle, FileCode2, GitBranch, Link2, ChevronRight } from 'lucide-react'
+import { Triangle, Clock, CheckCircle2, HelpCircle, FileCode2, GitBranch, Link2, FileText, ChevronRight } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor } from '@/theme/tokens'
 import { deriveOverview, type Gap } from '@/lib/overview'
@@ -143,6 +143,9 @@ export default function OverviewView() {
             </Card>
             <Card title={<span className="flex items-center gap-1.5"><GitBranch size={13} /> Drifted from code (outdated)</span> }>
               <GapList items={ov.fidelity.staleNodes} empty="No node is flagged outdated" />
+            </Card>
+            <Card title={<span className="flex items-center gap-1.5"><FileText size={13} /> Descriptions to compact</span> }>
+              <GapList items={ov.fidelity.bloatedDescriptions} empty="All descriptions are within budget" />
             </Card>
           </div>
         </div>
