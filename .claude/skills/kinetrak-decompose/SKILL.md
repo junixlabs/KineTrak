@@ -9,7 +9,8 @@ description: >-
 allowed-tools: >-
   mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__search,
   mcp__kinetrak__add_swim_node, mcp__kinetrak__add_swim_edge, mcp__kinetrak__arrange_swimlane,
-  mcp__kinetrak__update_swim_node, mcp__kinetrak__append_note, mcp__kinetrak__log_activity
+  mcp__kinetrak__update_swim_node, mcp__kinetrak__link_feature_step, mcp__kinetrak__append_note,
+  mcp__kinetrak__log_activity
 ---
 
 # kinetrak-decompose
@@ -37,8 +38,10 @@ feature's description and acceptance criteria first (`get_board` / `search`).
 
 4. **Tidy the layout.** Call `arrange_swimlane` once to lay the steps out left→right by flow depth.
 
-5. **Link back to the feature.** Note the parent feature on each step (`append_note` or in the step
-   `desc` via `update_swim_node`) for traceability.
+5. **Link each step to its feature.** Call `link_feature_step({featureId, nodeId})` for every step —
+   this is a real bidirectional crossLink, not just a note, and it is the input `compute_impact`
+   walks to resolve a feature to its swimlane entry node. Skip this and impact analysis sees nothing.
+   Add an `append_note` for any extra traceability context.
 
 6. **Leave steps `todo`.** Do not start work here — decomposition only produces the plan.
 

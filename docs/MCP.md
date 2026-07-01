@@ -117,9 +117,39 @@ Write (each broadcasts live to the browser):
 - modules: `add_module`, `find_or_create_module` (idempotent), `update_module`, `delete_module`
 - features: `add_feature`, `find_or_create_feature` (idempotent), `update_feature`, `delete_feature`
 - swimlane: `add_swim_node`, `update_swim_node`, `delete_swim_node`, `add_swim_edge`, `delete_swim_edge`
+- lanes / releases (roadmap authoring): `add_lane`, `update_lane`, `delete_lane`, `add_release`,
+  `update_release`, `delete_release`
 - versioning / memory: `create_snapshot`, `append_note` (append a line to a feature/step description)
 - narration: `log_activity({message})` — tell the watching human what you're doing/why; shows live in
   the Activity feed (attributed to your key), separate from board mutations.
+
+Business logic / impact (what makes the board a source of truth, not just a task list):
+- `compute_impact({focusId})` — the cross-view impact zone of a feature/step: swimlane downstream
+  reachability **plus** the features/modules that transitively depend on it. `set_impact_threshold`.
+- `link_feature_step({featureId, nodeId})` / `unlink_feature_step` — the crossLink the impact engine
+  walks. **Link every swim step to its feature in DECOMPOSE** or `compute_impact` sees nothing.
+- `link_code({target, id, path, symbol?, url?, sha?})` / `unlink_code` — attach code artifacts to a
+  feature/step. Linked code is what a VCS webhook watches; re-linking clears the outdated flag.
+- `add_dependency({featureId, dependsOnId})` / `remove_dependency` — feature→feature dependencies
+  (changing the depended-on feature ripples up through `compute_impact`).
+- `set_acceptance({target, id, items})` / `check_acceptance({target, id, index, done})` — the
+  definition-of-done checklist. Committed features with unmet criteria raise a live DoD alert and
+  can't be shipped. Tick each item in VALIDATE.
+- `resolve_outdated({target, id})` — clear a node's outdated flag once you've reconciled its spec
+  against the changed code.
+- `ask_human({question, nodeId?, options?})` / `answer_question` / `resolve_question` — the two-way
+  human-decision channel (a structured alternative to one-way `log_activity`) for Tier-4 gates.
+
+VCS webhooks (drift detection): point your repo at
+`POST {endpoint-origin}/api/webhook/{github|gitlab}?projectId=<board id>`. A push whose files match a
+node's `codeRefs` flags that node **outdated** (a live alert), so the board never silently drifts from
+the code. Verify with a secret via `KINETRAK_WEBHOOK_SECRET` (or `…_GITHUB` / `…_GITLAB`): GitHub uses
+the HMAC `X-Hub-Signature-256`; GitLab uses the `X-Gitlab-Token`. Add a provider by dropping one
+adaptor into `server/integrations/vcs/`.
+
+MCP resources: `kinetrak://playbook` (the full agent playbook) and `kinetrak://project-context`
+(the live Meta/Project Context node). MCP transports: Streamable HTTP (`/mcp`) and **stdio**
+(`npm run mcp:stdio` with `KINETRAK_MCP_KEY=kt_live_…`) for locally-spawned CLI agents.
 
 Layout — the agent decides how the board displays, not just its contents:
 - `move_swim_node({id,x,y})` — place a swimlane step anywhere on the canvas.

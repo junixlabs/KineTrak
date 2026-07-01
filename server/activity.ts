@@ -111,6 +111,21 @@ function describe(cmd: Command, project?: Project): { summary: string; targetId?
     case 'createSnapshot': return { summary: `created a snapshot` }
     case 'appendNote': return { summary: `appended a note`, targetId: cmd.id }
     case 'createProject': return { summary: `created the project` }
+    case 'linkFeatureStep': return { summary: `${cmd.op === 'unlink' ? 'unlinked' : 'linked'} “${featureName(cmd.featureId)}” ${cmd.op === 'unlink' ? 'from' : 'to'} step “${nodeLabel(cmd.nodeId)}”`, targetId: cmd.featureId }
+    case 'linkCode': return { summary: `${cmd.op === 'unlink' ? 'unlinked code from' : 'linked code'} ${cmd.target} (${cmd.ref.path})`, targetId: cmd.id }
+    case 'setDependency': return { summary: `${cmd.op === 'remove' ? 'removed dependency' : 'added dependency'}: “${featureName(cmd.featureId)}” → “${featureName(cmd.dependsOnId)}”`, targetId: cmd.featureId }
+    case 'setAcceptance': return { summary: `set acceptance criteria on a ${cmd.target}`, targetId: cmd.id }
+    case 'checkAcceptance': return { summary: `${cmd.done ? 'checked' : 'unchecked'} an acceptance criterion`, targetId: cmd.id }
+    case 'markCodeStale': return { summary: `${cmd.stale ? 'flagged' : 'cleared'} ${cmd.targets.length} node(s) as ${cmd.stale ? 'outdated (code changed)' : 'reviewed'}` }
+    case 'addLane': return { summary: `added a lane` }
+    case 'updateLane': return { summary: `updated a lane` }
+    case 'deleteLane': return { summary: `deleted a lane` }
+    case 'addRelease': return { summary: `added a release` }
+    case 'updateRelease': return { summary: `updated a release` }
+    case 'deleteRelease': return { summary: `deleted a release` }
+    case 'askHuman': return { summary: `asked the human: ${cmd.question.slice(0, 120)}`, targetId: cmd.nodeId }
+    case 'answerQuestion': return { summary: `a decision was answered` }
+    case 'resolveQuestion': return { summary: `resolved a pending decision` }
     default: return { summary: '' }
   }
 }

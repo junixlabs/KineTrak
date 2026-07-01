@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Express, Request, Response } from 'express'
 import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -85,7 +88,7 @@ STOP AND GET HUMAN APPROVAL before any irreversible or high-blast-radius action:
 
 AT SESSION END, append_note your summary + next step + the latest cursor onto "Project Context", and snapshot if you did significant work.`
 
-function buildMcpServer(key: ApiKey): McpServer {
+export function buildMcpServer(key: ApiKey): McpServer {
   const server = new McpServer({ name: 'kinetrak', version: '1.0.0' }, { instructions: SERVER_INSTRUCTIONS })
   const orgId = key.orgId
   const actor: Actor = { kind: 'agent', name: key.name }
@@ -334,6 +337,195 @@ function buildMcpServer(key: ApiKey): McpServer {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'updateSettings', projectId: p.id, patch: { impactThreshold: threshold } })
       return json({ ok: true, impactThreshold: threshold })
+    },
+  )
+
+  // ── Business-logic SSOT: links, code refs, dependencies, acceptance ──────────
+  server.registerTool(
+    'link_feature_step',
+    {
+      description:
+        'Link a feature to the swimlane step that implements it (traceability + the input the impact engine walks). Creates a bidirectional crossLink. Call this in DECOMPOSE for every step so compute_impact can resolve a feature to its swimlane entry node.',
+      inputSchema: { projectId: z.string().optional(), featureId: z.string(), nodeId: z.string() },
+    },
+    async ({ projectId, featureId, nodeId }) => {
+      const p = await requireProj(projectId)
+      if (!p.data.features.some((f) => f.id === featureId)) return json({ error: 'feature not found' })
+      if (!p.data.swimNodes.some((n) => n.id === nodeId)) return json({ error: 'swim node not found' })
+      await applyAndBroadcast({ type: 'linkFeatureStep', projectId: p.id, featureId, nodeId, op: 'link' })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'unlink_feature_step',
+    { description: 'Remove the crossLink between a feature and a swimlane step.', inputSchema: { projectId: z.string().optional(), featureId: z.string(), nodeId: z.string() } },
+    async ({ projectId, featureId, nodeId }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'linkFeatureStep', projectId: p.id, featureId, nodeId, op: 'unlink' })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'link_code',
+    {
+      description:
+        'Attach a code reference (repo path, optional symbol/url/sha) to a feature or step. This is what makes the board a source of truth for BUSINESS LOGIC: linked code is what a VCS webhook watches to flag the node outdated when it changes. Re-linking clears any outdated flag (= reconciled).',
+      inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string(), path: z.string(), symbol: z.string().optional(), url: z.string().optional(), sha: z.string().optional() },
+    },
+    async ({ projectId, target, id, path, symbol, url, sha }) => {
+      const p = await requireProj(projectId)
+      const ref = { path, ...(symbol ? { symbol } : {}), ...(url ? { url } : {}), ...(sha ? { sha } : {}) }
+      await applyAndBroadcast({ type: 'linkCode', projectId: p.id, target, id, ref, op: 'link' })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'unlink_code',
+    { description: 'Remove a code reference (matched by path + symbol) from a feature or step.', inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string(), path: z.string(), symbol: z.string().optional() } },
+    async ({ projectId, target, id, path, symbol }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'linkCode', projectId: p.id, target, id, ref: { path, ...(symbol ? { symbol } : {}) }, op: 'unlink' })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'resolve_outdated',
+    { description: 'Clear the "outdated" flag on a feature/step after you have re-checked its spec against the changed code (reconciled). Dismisses the derived outdated alert.', inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string() } },
+    async ({ projectId, target, id }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'markCodeStale', projectId: p.id, targets: [{ target, id }], stale: false })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'add_dependency',
+    { description: 'Declare that a feature depends on another feature. Changing the depended-on feature then ripples up: compute_impact reports this feature as affected. Cycles/self-links are ignored.', inputSchema: { projectId: z.string().optional(), featureId: z.string(), dependsOnId: z.string() } },
+    async ({ projectId, featureId, dependsOnId }) => {
+      const p = await requireProj(projectId)
+      if (!p.data.features.some((f) => f.id === featureId) || !p.data.features.some((f) => f.id === dependsOnId)) return json({ error: 'feature not found' })
+      await applyAndBroadcast({ type: 'setDependency', projectId: p.id, featureId, dependsOnId, op: 'add' })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'remove_dependency',
+    { description: 'Remove a feature→feature dependency.', inputSchema: { projectId: z.string().optional(), featureId: z.string(), dependsOnId: z.string() } },
+    async ({ projectId, featureId, dependsOnId }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'setDependency', projectId: p.id, featureId, dependsOnId, op: 'remove' })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'set_acceptance',
+    { description: 'Set the acceptance-criteria checklist (definition of done) on a feature or step, replacing any existing list. Committed features with unmet criteria raise a live "Definition of Done" alert and cannot be shipped.', inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string(), items: z.array(z.string()) } },
+    async ({ projectId, target, id, items }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'setAcceptance', projectId: p.id, target, id, items })
+      return json({ ok: true, count: items.length })
+    },
+  )
+  server.registerTool(
+    'check_acceptance',
+    { description: 'Check off (or uncheck) one acceptance criterion by its index in the checklist. Use in VALIDATE to tick each criterion you verified — the board tracks done/total structurally, not just as a note.', inputSchema: { projectId: z.string().optional(), target: z.enum(['feature', 'swimnode']), id: z.string(), index: z.number().int().min(0), done: z.boolean() } },
+    async ({ projectId, target, id, index, done }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'checkAcceptance', projectId: p.id, target, id, index, done })
+      return json({ ok: true })
+    },
+  )
+
+  // ── Lanes & releases (roadmap authoring) ─────────────────────────────────────
+  server.registerTool(
+    'add_lane',
+    { description: 'Add a swimlane responsibility band (lane). Returns the new numeric lane id to use with add_swim_node.', inputSchema: { projectId: z.string().optional(), name: z.string().optional() } },
+    async ({ projectId, name }) => {
+      const p = await requireProj(projectId)
+      const id = (p.data.lanes.reduce((m, l) => Math.max(m, l.id), -1) + 1)
+      await applyAndBroadcast({ type: 'addLane', projectId: p.id, id, name })
+      return json({ id })
+    },
+  )
+  server.registerTool(
+    'update_lane',
+    { description: 'Update a lane (name, sub, color).', inputSchema: { projectId: z.string().optional(), id: z.number().int(), name: z.string().optional(), sub: z.string().optional(), color: z.string().optional() } },
+    async ({ projectId, id, ...rest }) => {
+      const p = await requireProj(projectId)
+      const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+      await applyAndBroadcast({ type: 'updateLane', projectId: p.id, id, patch })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'delete_lane',
+    { description: 'Delete a lane; its steps are reassigned to the first remaining lane (never orphaned). Tier 4 — confirm with the human first.', inputSchema: { projectId: z.string().optional(), id: z.number().int() } },
+    async ({ projectId, id }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'deleteLane', projectId: p.id, id })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'add_release',
+    { description: 'Add a release (Story Map row / roadmap milestone). Returns the new release id.', inputSchema: { projectId: z.string().optional(), name: z.string().optional() } },
+    async ({ projectId, name }) => {
+      const p = await requireProj(projectId)
+      const id = makeId('rel')
+      await applyAndBroadcast({ type: 'addRelease', projectId: p.id, id, name })
+      return json({ id })
+    },
+  )
+  server.registerTool(
+    'update_release',
+    { description: 'Update a release (name, tag, colors).', inputSchema: { projectId: z.string().optional(), id: z.string(), name: z.string().optional(), tag: z.string().optional(), color: z.string().optional() } },
+    async ({ projectId, id, ...rest }) => {
+      const p = await requireProj(projectId)
+      const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+      await applyAndBroadcast({ type: 'updateRelease', projectId: p.id, id, patch })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'delete_release',
+    { description: 'Delete a release; its features are reassigned to the first remaining release. Tier 4 — confirm with the human first.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
+    async ({ projectId, id }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'deleteRelease', projectId: p.id, id })
+      return json({ ok: true })
+    },
+  )
+
+  // ── Async human-decision channel ─────────────────────────────────────────────
+  server.registerTool(
+    'ask_human',
+    {
+      description:
+        'Raise a decision the human must make (a structured, two-way alternative to the one-way log_activity). Creates a pending "question" alert on the board; the human answers it in the UI (or via answer_question). Poll get_changes_since / get_board to read the answer before proceeding. Use it at a Tier-4 gate instead of guessing.',
+      inputSchema: { projectId: z.string().optional(), question: z.string(), nodeId: z.string().optional(), view: z.enum(['mindmap', 'story', 'swimlane']).optional(), options: z.array(z.string()).optional() },
+    },
+    async ({ projectId, question, nodeId, view, options }) => {
+      const p = await requireProj(projectId)
+      const id = makeId('q')
+      await applyAndBroadcast({ type: 'askHuman', projectId: p.id, id, question, nodeId, view, options })
+      return json({ id, status: 'pending' })
+    },
+  )
+  server.registerTool(
+    'answer_question',
+    { description: 'Record an answer to a pending "question" alert (the human decision). Usually the human answers in the UI; an agent may relay a captured answer here.', inputSchema: { projectId: z.string().optional(), id: z.string(), answer: z.string() } },
+    async ({ projectId, id, answer }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'answerQuestion', projectId: p.id, id, answer })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'resolve_question',
+    { description: 'Dismiss a "question" alert once its decision has been acted on.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
+    async ({ projectId, id }) => {
+      const p = await requireProj(projectId)
+      await applyAndBroadcast({ type: 'resolveQuestion', projectId: p.id, id })
+      return json({ ok: true })
     },
   )
 
@@ -608,6 +800,36 @@ function buildMcpServer(key: ApiKey): McpServer {
           `4. log_activity the shipment.\n\n` +
           `Then run the session-close routine (note summary + next + cursor on Project Context) or move to the next feature.`,
       ),
+  )
+
+  // ── Resources (pull-able context for MCP clients) ────────────────────────────
+  // The playbook (static doc) + the live Meta/Project Context node, so a client
+  // can fetch the process and the project's durable memory without a tool call.
+  server.registerResource(
+    'agent-playbook',
+    'kinetrak://playbook',
+    { title: 'KineTrak Agent Playbook', description: 'The canonical process for operating a KineTrak board over MCP.', mimeType: 'text/markdown' },
+    () => {
+      let text = SERVER_INSTRUCTIONS
+      try {
+        text = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'AGENT_PLAYBOOK.md'), 'utf8')
+      } catch {
+        /* fall back to the condensed instructions if the doc isn't bundled */
+      }
+      return { contents: [{ uri: 'kinetrak://playbook', mimeType: 'text/markdown', text }] }
+    },
+  )
+  server.registerResource(
+    'project-context',
+    'kinetrak://project-context',
+    { title: 'Project Context', description: "The board's durable memory (Meta / Project Context node): domain, stack, conventions, resume cursor.", mimeType: 'text/markdown' },
+    async () => {
+      const p = await proj()
+      const norm = (s: string) => s.trim().toLowerCase()
+      const ctx = p?.data.features.find((f) => norm(f.name) === 'project context')
+      const text = ctx?.desc ?? 'No "Meta / Project Context" node yet — run the onboard prompt to create one.'
+      return { contents: [{ uri: 'kinetrak://project-context', mimeType: 'text/markdown', text }] }
+    },
   )
 
   return server

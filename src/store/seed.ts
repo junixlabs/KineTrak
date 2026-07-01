@@ -43,6 +43,9 @@ const sampleSwimNodes: SwimNode[] = ([
     desc: 'Reflect the Done status across every view via SSOT and persist it.',
     validations: ['Status must be synced to Mindmap + Story Map before closing.'],
     crossLinks: [{ view: 'mindmap', label: 'Mindmap · Real-time sync with workflow', targetId: 'f8' }],
+    // Demo: a VCS webhook flagged this step's linked code as changed → derives a live "outdated" alert.
+    codeRefs: [{ path: 'src/shared/board.ts' }],
+    codeStale: true,
   },
   { id: 'K', label: 'End', lane: 0, kind: 'end', status: 'done', x: 1670, y: 69 },
 ] as SwimNode[]).map((n) => ({ ...n, code: n.id }))
@@ -66,10 +69,13 @@ export const sampleTemplate: WorkspaceData = {
       id: 'f6', moduleId: 'm2', name: 'Automatic impact calculation', status: 'progress', releaseId: 'r1',
       desc: 'Automatically computes the impact zone when a card/node changes: propagates along Workflow links and highlights affected lanes. This is the core of Impact Highlighting.',
       constraints: ['BFS over workflow_links.', 'Alert threshold configurable per project.'],
+      validations: ['BFS over workflow links', 'Alert threshold configurable per project', 'UI highlights the impact zone'],
+      validationsDone: ['BFS over workflow links'],
       crossLinks: [
         { view: 'swimlane', label: 'Swimlane · E · Link decision', targetId: 'E' },
         { view: 'story', label: 'Story Map · Impact engine' },
       ],
+      codeRefs: [{ path: 'src/lib/impact.ts', symbol: 'computeImpact' }],
     },
     { id: 'f7', moduleId: 'm3', name: 'Dynamic release lanes', status: 'progress', releaseId: 'r1' },
     {
@@ -98,12 +104,11 @@ export const sampleTemplate: WorkspaceData = {
     { from: 'G', to: 'J' },
     { from: 'J', to: 'K' },
   ],
-  // Impact alerts are derived live from the board (see lib/impact.deriveImpactAlerts);
-  // only the non-computed kinds are seeded here.
-  alerts: [
-    { id: 'al2', kind: 'outdated', title: 'Diagram may be outdated', detail: 'Swimlane "Update UI → Done & save" has not been updated for 32 days since PR #142 was merged to Production.', tags: ['@PO'], time: '2 hours ago', actionLabel: 'Open related step', action: { view: 'swimlane', selection: { type: 'swimnode', id: 'J', view: 'swimlane' } } },
-    { id: 'al3', kind: 'dod', title: 'Definition of Done', detail: '"Automatic impact calculation" needs BA to confirm the Swimlane matches Production 100% before it can be marked Released.', tags: ['@BA'], time: 'Today', actionLabel: 'Open feature', action: { view: 'mindmap', selection: { type: 'feature', id: 'f6', view: 'mindmap' } } },
-  ],
+  // All alert kinds are now DERIVED live from the board (see src/lib/impact):
+  // impact ← crossLinks + dependsOn, outdated ← codeStale (VCS webhook), dod ←
+  // unmet acceptance criteria. Only stored 'question' alerts (human decisions)
+  // would live here; the sample seeds none.
+  alerts: [],
   settings: { impactThreshold: 3 },
 }
 

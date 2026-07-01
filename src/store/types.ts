@@ -26,6 +26,19 @@ export interface CrossLink {
   targetId?: string
 }
 
+/** A structured pointer from a board node into the codebase — the neck that lets
+ *  KineTrak be a source of truth for business logic and detect code drift. */
+export interface CodeRef {
+  /** Repo-relative path (file or directory). */
+  path: string
+  /** Optional function/class/symbol within the file. */
+  symbol?: string
+  /** Optional permalink to the PR / commit / line range. */
+  url?: string
+  /** Last commit sha the board node was reconciled against (drift detection). */
+  sha?: string
+}
+
 export interface Feature {
   id: string
   moduleId: string
@@ -38,6 +51,12 @@ export interface Feature {
   /** Subset of `validations` checked off (matched by text) — the tester checklist. */
   validationsDone?: string[]
   crossLinks?: CrossLink[]
+  /** Code artifacts this feature is implemented by (for impact + drift). */
+  codeRefs?: CodeRef[]
+  /** Other feature ids this feature depends on (changing them impacts this one). */
+  dependsOn?: string[]
+  /** Set by a VCS webhook when linked code changed after the node was last updated. */
+  codeStale?: boolean
 }
 
 export interface Release {
@@ -82,6 +101,10 @@ export interface SwimNode {
   /** Subset of `validations` checked off (matched by text) — the tester checklist. */
   validationsDone?: string[]
   crossLinks?: CrossLink[]
+  /** Code artifacts this step is implemented by (for impact + drift). */
+  codeRefs?: CodeRef[]
+  /** Set by a VCS webhook when linked code changed after the node was last updated. */
+  codeStale?: boolean
 }
 
 export interface SwimEdge {
@@ -102,7 +125,7 @@ export interface Snapshot {
   data: WorkspaceData
 }
 
-export type AlertKind = 'impact' | 'outdated' | 'dod'
+export type AlertKind = 'impact' | 'outdated' | 'dod' | 'question'
 
 export interface Alert {
   id: string
@@ -113,6 +136,10 @@ export interface Alert {
   time: string
   actionLabel: string
   action: { view: ViewId; selection: Selection | null }
+  /** For kind 'question' (async human-decision channel). */
+  options?: string[]
+  /** The human's answer to a 'question' alert; unset while pending. */
+  answer?: string
 }
 
 // ── Selection / UI ───────────────────────────────────────────────────────────

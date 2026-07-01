@@ -1,7 +1,8 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { computeImpact, deriveImpactAlerts } from '../src/lib/impact'
+import { computeImpact, deriveImpactAlerts, deriveOutdatedAlerts, deriveDodAlerts, dependentsOf } from '../src/lib/impact'
 import { templateData } from '../src/store/seed'
+import { applyCommand, type Root } from '../src/shared/board'
 
 // The sample board: f6 "Automatic impact calculation" links to swim node E
 // (E→F,E→G,F→H,H→I,I→J,G→J,J→K), f8 links to J (J→K).
@@ -51,4 +52,64 @@ test('deriveImpactAlerts is deterministic (stable order + ids)', () => {
   const b = deriveImpactAlerts(sample, 1).map((x) => x.id)
   assert.deepEqual(a, b)
   assert.deepEqual(a, [...a].sort())
+})
+
+// ── P0: crossLinks are writable end-to-end, so impact works on a built board ──
+test('linkFeatureStep populates crossLinks so compute_impact resolves an agent-built feature', () => {
+  const PID = 'p1'
+  let root: Root = { orgs: [], projects: [{ id: PID, orgId: 'o1', name: 'p', createdAt: 'x', data: templateData('blank'), snapshots: [] }] }
+  // Build a tiny flow: two steps in lane 0, an edge S1→S2, and a feature.
+  root = applyCommand(root, { type: 'addSwimNode', projectId: PID, id: 'S1', code: 'A', lane: 0, x: 0, y: 0 })
+  root = applyCommand(root, { type: 'addSwimNode', projectId: PID, id: 'S2', code: 'B', lane: 0, x: 0, y: 0 })
+  root = applyCommand(root, { type: 'addSwimEdge', projectId: PID, from: 'S1', to: 'S2' })
+  root = applyCommand(root, { type: 'addModule', projectId: PID, id: 'M1' })
+  root = applyCommand(root, { type: 'addFeature', projectId: PID, id: 'F1', moduleId: 'M1', releaseId: 'mvp' })
+
+  const before = computeImpact(root.projects[0].data, 'F1')
+  assert.deepEqual(before.entryNodes, [], 'no link yet → impact engine sees nothing (the old bug)')
+
+  root = applyCommand(root, { type: 'linkFeatureStep', projectId: PID, featureId: 'F1', nodeId: 'S1', op: 'link' })
+  const after = computeImpact(root.projects[0].data, 'F1')
+  assert.deepEqual(after.entryNodes, ['S1'], 'feature now resolves to its swimlane entry node')
+  assert.deepEqual(after.downstream, ['S2'], 'downstream reachability follows the edge')
+
+  // Unlink is idempotent + reversible.
+  root = applyCommand(root, { type: 'linkFeatureStep', projectId: PID, featureId: 'F1', nodeId: 'S1', op: 'unlink' })
+  assert.deepEqual(computeImpact(root.projects[0].data, 'F1').entryNodes, [])
+})
+
+// ── Dependency-aware impact ───────────────────────────────────────────────────
+test('setDependency makes changing a feature ripple to its transitive dependents', () => {
+  const PID = 'p1'
+  let root: Root = { orgs: [], projects: [{ id: PID, orgId: 'o1', name: 'p', createdAt: 'x', data: templateData('blank'), snapshots: [] }] }
+  root = applyCommand(root, { type: 'addModule', projectId: PID, id: 'M1' })
+  for (const id of ['A', 'B', 'C']) root = applyCommand(root, { type: 'addFeature', projectId: PID, id, moduleId: 'M1', releaseId: 'mvp' })
+  // C depends on B, B depends on A ⇒ dependents(A) = {B, C}
+  root = applyCommand(root, { type: 'setDependency', projectId: PID, featureId: 'B', dependsOnId: 'A', op: 'add' })
+  root = applyCommand(root, { type: 'setDependency', projectId: PID, featureId: 'C', dependsOnId: 'B', op: 'add' })
+  const d = root.projects[0].data
+  assert.deepEqual([...dependentsOf(d, 'A')].sort(), ['B', 'C'])
+  const imp = computeImpact(d, 'A')
+  assert.deepEqual(imp.affectedFeatures, ['B', 'C'])
+  assert.deepEqual(imp.affectedModules, ['M1'])
+})
+
+test('deriveOutdatedAlerts fires only for codeStale nodes and clears when re-linked', () => {
+  // Sample seeds node J as codeStale (a webhook flagged src/shared/board.ts).
+  const out = deriveOutdatedAlerts(sample)
+  assert.ok(out.some((a) => a.id === 'outdated:J'), 'stale step raises an outdated alert')
+  // Re-linking code reconciles → clears the flag → no alert.
+  let root: Root = { orgs: [], projects: [{ id: 'p1', orgId: 'o1', name: 'p', createdAt: 'x', data: structuredClone(sample), snapshots: [] }] }
+  root = applyCommand(root, { type: 'linkCode', projectId: 'p1', target: 'swimnode', id: 'J', ref: { path: 'src/shared/board.ts' }, op: 'link' })
+  assert.equal(deriveOutdatedAlerts(root.projects[0].data).some((a) => a.id === 'outdated:J'), false)
+})
+
+test('deriveDodAlerts flags committed features with unmet acceptance criteria', () => {
+  // f6 (progress) has 3 criteria, 1 done ⇒ a DoD alert.
+  const dod = deriveDodAlerts(sample)
+  assert.ok(dod.some((a) => a.id === 'dod:f6'), 'unmet acceptance criteria block done')
+  // Checking them all off clears it.
+  let root: Root = { orgs: [], projects: [{ id: 'p1', orgId: 'o1', name: 'p', createdAt: 'x', data: structuredClone(sample), snapshots: [] }] }
+  for (let i = 0; i < 3; i++) root = applyCommand(root, { type: 'checkAcceptance', projectId: 'p1', target: 'feature', id: 'f6', index: i, done: true })
+  assert.equal(deriveDodAlerts(root.projects[0].data).some((a) => a.id === 'dod:f6'), false)
 })

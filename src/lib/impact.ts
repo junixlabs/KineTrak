@@ -37,8 +37,24 @@ export interface ImpactResult {
   downstream: string[]
   /** Lane ids that contain at least one affected step. */
   affectedLanes: number[]
-  /** Other features linked (via crossLinks) to any reached step. */
+  /** Other features touched: linked (via crossLinks) to a reached step, OR transitively depending on the focus feature. */
   affectedFeatures: string[]
+  /** Modules that own at least one affected feature. */
+  affectedModules: string[]
+}
+
+/** Features that transitively depend on `featureId` (its dependents) — changing the
+ *  feature ripples up to everything that declared a dependsOn edge onto it. */
+export function dependentsOf(data: WorkspaceData, featureId: string): Set<string> {
+  const rev: Record<string, string[]> = {}
+  for (const f of data.features) for (const dep of f.dependsOn ?? []) (rev[dep] = rev[dep] || []).push(f.id)
+  const set = new Set<string>()
+  const stack = [featureId]
+  while (stack.length) {
+    const x = stack.pop()!
+    for (const y of rev[x] || []) if (!set.has(y)) { set.add(y); stack.push(y) }
+  }
+  return set
 }
 
 /** Resolve the swimlane entry node(s) for a focus id (a swim-node id, or a feature
@@ -69,12 +85,18 @@ export function computeImpact(data: WorkspaceData, focusId: string): ImpactResul
     (a, b) => a - b,
   )
 
-  const affectedFeatures = data.features
+  const viaLinks = data.features
     .filter((f) => f.id !== focusId && (f.crossLinks ?? []).some((l) => l.view === 'swimlane' && l.targetId && reached.has(l.targetId)))
     .map((f) => f.id)
-    .sort()
+  // If the focus is itself a feature, everything that depends on it is impacted too.
+  const isFeature = data.features.some((f) => f.id === focusId)
+  const viaDeps = isFeature ? [...dependentsOf(data, focusId)] : []
+  const affectedFeatures = [...new Set([...viaLinks, ...viaDeps])].filter((id) => id !== focusId).sort()
 
-  return { focus: focusId, entryNodes, downstream, affectedLanes, affectedFeatures }
+  const moduleOf = new Map(data.features.map((f) => [f.id, f.moduleId]))
+  const affectedModules = [...new Set(affectedFeatures.map((id) => moduleOf.get(id)).filter((m): m is string => !!m))].sort()
+
+  return { focus: focusId, entryNodes, downstream, affectedLanes, affectedFeatures, affectedModules }
 }
 
 export const DEFAULT_IMPACT_THRESHOLD = 3
@@ -90,19 +112,105 @@ export function deriveImpactAlerts(data: WorkspaceData, threshold = DEFAULT_IMPA
   for (const f of data.features) {
     if (f.status !== 'must' && f.status !== 'progress') continue
     const imp = computeImpact(data, f.id)
-    if (!imp.entryNodes.length || imp.downstream.length < threshold) continue
+    // Qualify on the swimlane footprint (as before) OR on declared cross-feature
+    // dependents (the new dependsOn axis — not the crossLink-reachable features,
+    // which are already part of the same swimlane footprint).
+    const swimQualifies = !!imp.entryNodes.length && imp.downstream.length >= threshold
+    const hasDependents = dependentsOf(data, f.id).size > 0
+    if (!swimQualifies && !hasDependents) continue
     const steps = imp.downstream.length
     const lanes = imp.affectedLanes.length
+    const feats = imp.affectedFeatures.length
+    const swimPart = imp.entryNodes.length ? `${steps} downstream step${steps === 1 ? '' : 's'} across ${lanes} lane${lanes === 1 ? '' : 's'}` : ''
+    const featPart = feats ? `${feats} other feature${feats === 1 ? '' : 's'}` : ''
+    const detail = `Changing "${f.name}" affects ${[swimPart, featPart].filter(Boolean).join(' and ')}.`
+    const selection = imp.entryNodes.length
+      ? { type: 'swimnode' as const, id: imp.entryNodes[0], view: 'swimlane' as const }
+      : { type: 'feature' as const, id: f.id, view: 'mindmap' as const }
     alerts.push({
       id: `impact:${f.id}`,
       kind: 'impact',
       title: `Impact: ${f.name}`,
-      detail: `Changing "${f.name}" affects ${steps} downstream step${steps === 1 ? '' : 's'} across ${lanes} lane${lanes === 1 ? '' : 's'} in the Swimlane.`,
+      detail,
       tags: ['@BA', '@Dev'],
       time: 'live',
       actionLabel: 'View impact zone',
-      action: { view: 'swimlane', selection: { type: 'swimnode', id: imp.entryNodes[0], view: 'swimlane' } },
+      action: { view: imp.entryNodes.length ? 'swimlane' : 'mindmap', selection },
     })
   }
   return alerts.sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/**
+ * Live "outdated" alerts DERIVED from the board: any feature/step a VCS webhook
+ * flagged `codeStale` (its linked code changed after the node was last updated).
+ * Replaces the old seeded mock alert — deterministic, cleared when the node is
+ * re-linked/reviewed. Pure.
+ */
+export function deriveOutdatedAlerts(data: WorkspaceData): Alert[] {
+  const alerts: Alert[] = []
+  for (const f of data.features)
+    if (f.codeStale)
+      alerts.push({
+        id: `outdated:${f.id}`,
+        kind: 'outdated',
+        title: `Outdated: ${f.name}`,
+        detail: `Linked code changed after "${f.name}" was last updated. Re-check the spec against the code, then resolve.`,
+        tags: ['@Dev', '@BA'],
+        time: 'live',
+        actionLabel: 'Open feature',
+        action: { view: 'mindmap', selection: { type: 'feature', id: f.id, view: 'mindmap' } },
+      })
+  for (const n of data.swimNodes)
+    if (n.codeStale)
+      alerts.push({
+        id: `outdated:${n.id}`,
+        kind: 'outdated',
+        title: `Outdated: ${n.label}`,
+        detail: `Linked code changed after step "${n.label}" was last updated. Re-check the flow against the code, then resolve.`,
+        tags: ['@Dev'],
+        time: 'live',
+        actionLabel: 'Open step',
+        action: { view: 'swimlane', selection: { type: 'swimnode', id: n.id, view: 'swimlane' } },
+      })
+  return alerts.sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/**
+ * Live "definition of done" alerts DERIVED from the board: any committed feature
+ * (must/progress) that has acceptance criteria with at least one unmet item. Ties
+ * the DoD warning to the structured acceptance-criteria checklist. Pure.
+ */
+export function deriveDodAlerts(data: WorkspaceData): Alert[] {
+  const alerts: Alert[] = []
+  for (const f of data.features) {
+    if (f.status !== 'must' && f.status !== 'progress') continue
+    const total = f.validations?.length ?? 0
+    if (!total) continue
+    const done = (f.validationsDone ?? []).filter((t) => f.validations!.includes(t)).length
+    if (done >= total) continue
+    alerts.push({
+      id: `dod:${f.id}`,
+      kind: 'dod',
+      title: `Definition of Done: ${f.name}`,
+      detail: `${total - done} of ${total} acceptance criteria unmet — cannot ship "${f.name}" until they are checked off.`,
+      tags: ['@Tester', '@BA'],
+      time: 'live',
+      actionLabel: 'Open feature',
+      action: { view: 'mindmap', selection: { type: 'feature', id: f.id, view: 'mindmap' } },
+    })
+  }
+  return alerts.sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/** All live, derived alerts for a board (impact + outdated + DoD), plus the board's
+ *  own stored non-derived alerts (e.g. pending human-decision 'question's). */
+export function deriveAllAlerts(data: WorkspaceData, threshold = DEFAULT_IMPACT_THRESHOLD): Alert[] {
+  const derivedKinds = new Set(['impact', 'outdated', 'dod'])
+  return [
+    ...deriveImpactAlerts(data, threshold),
+    ...deriveOutdatedAlerts(data),
+    ...deriveDodAlerts(data),
+    ...data.alerts.filter((a) => !derivedKinds.has(a.kind)),
+  ]
 }

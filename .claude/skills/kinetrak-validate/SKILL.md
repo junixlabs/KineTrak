@@ -9,7 +9,7 @@ description: >-
 allowed-tools: >-
   Read, Grep, Glob, mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__search,
   mcp__kinetrak__validate_board, mcp__kinetrak__update_swim_node, mcp__kinetrak__update_feature,
-  mcp__kinetrak__append_note, mcp__kinetrak__log_activity
+  mcp__kinetrak__check_acceptance, mcp__kinetrak__append_note, mcp__kinetrak__log_activity
 ---
 
 # kinetrak-validate
@@ -33,7 +33,10 @@ from implementation memory.
 
 3. **Check the work against each acceptance criterion.** Inspect the code (`Read`/`Grep`/`Glob`)
    and, if needed, re-run the tests (your own tools follow normal permissions). Confirm
-   cross-references resolve (`search`).
+   cross-references resolve (`search`). For each criterion you verified, tick it off with
+   `check_acceptance({target:'feature', id, index, done:true})` — the board tracks done/total
+   structurally, and an unmet criterion keeps the feature's live "Definition of Done" alert up so it
+   cannot be shipped by mistake.
 
 4. **Record the verdict** — `append_note` on the feature with a clear PASS/FAIL per criterion and
    any gaps found. This note is the review signal the human reads.

@@ -15,6 +15,7 @@ import {
   scopedRootForUser,
 } from './state'
 import { registerMcp } from './mcp'
+import { registerWebhooks } from './webhook'
 import { createKey, hydrateKeys, listKeys, revokeKey } from './keys'
 import {
   AuthError,
@@ -42,7 +43,9 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const DIST = join(HERE, '..', 'dist')
 
 const app = express()
-app.use(express.json({ limit: '8mb' }))
+// Stash the raw body so VCS webhook adaptors can verify HMAC signatures over the
+// exact bytes the provider signed (JSON.stringify would not round-trip identically).
+app.use(express.json({ limit: '8mb', verify: (req, _res, buf) => { (req as unknown as { rawBody?: Buffer }).rawBody = buf } }))
 
 // CORS for the Vite dev origin and MCP clients.
 app.use((req, res, next) => {
@@ -186,6 +189,9 @@ app.get('/api/projects/:id/activity', requireUser, (req: AuthedRequest, res) => 
   const since = Number(req.query.since) || 0
   res.json({ ok: true, items: listActivity(id, since) })
 })
+
+// VCS webhooks (GitHub/GitLab) → flag outdated board nodes.
+registerWebhooks(app)
 
 // MCP (Streamable HTTP) at /mcp.
 registerMcp(app)

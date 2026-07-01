@@ -5,13 +5,17 @@
 // Uses only relative imports + Node-safe helpers (crypto.randomUUID / structuredClone)
 // so it runs unchanged under both Vite and tsx.
 import type {
+  Alert,
+  CodeRef,
   Feature,
   Module,
   NodeKind,
   Org,
   Project,
   ProjectTemplate,
+  Release,
   Snapshot,
+  SwimLane,
   SwimNode,
   WorkspaceData,
   WorkspaceSettings,
@@ -51,6 +55,22 @@ export type Command =
   | { type: 'deleteSnapshot'; projectId: string; id: string }
   | { type: 'appendNote'; projectId: string; target: 'feature' | 'swimnode'; id: string; text: string }
   | { type: 'updateSettings'; projectId: string; patch: Partial<WorkspaceSettings> }
+  // ── Business-logic SSOT ──────────────────────────────────────────────────
+  | { type: 'linkFeatureStep'; projectId: string; featureId: string; nodeId: string; op: 'link' | 'unlink' }
+  | { type: 'linkCode'; projectId: string; target: 'feature' | 'swimnode'; id: string; ref: CodeRef; op: 'link' | 'unlink' }
+  | { type: 'setDependency'; projectId: string; featureId: string; dependsOnId: string; op: 'add' | 'remove' }
+  | { type: 'setAcceptance'; projectId: string; target: 'feature' | 'swimnode'; id: string; items: string[] }
+  | { type: 'checkAcceptance'; projectId: string; target: 'feature' | 'swimnode'; id: string; index: number; done: boolean }
+  | { type: 'markCodeStale'; projectId: string; targets: { target: 'feature' | 'swimnode'; id: string }[]; stale: boolean }
+  | { type: 'addLane'; projectId: string; id: number; name?: string }
+  | { type: 'updateLane'; projectId: string; id: number; patch: Partial<SwimLane> }
+  | { type: 'deleteLane'; projectId: string; id: number }
+  | { type: 'addRelease'; projectId: string; id: string; name?: string }
+  | { type: 'updateRelease'; projectId: string; id: string; patch: Partial<Release> }
+  | { type: 'deleteRelease'; projectId: string; id: string }
+  | { type: 'askHuman'; projectId: string; id: string; question: string; nodeId?: string; view?: 'mindmap' | 'story' | 'swimlane'; options?: string[] }
+  | { type: 'answerQuestion'; projectId: string; id: string; answer: string }
+  | { type: 'resolveQuestion'; projectId: string; id: string }
 
 const mapData = (root: Root, projectId: string, fn: (d: WorkspaceData) => WorkspaceData): Root => ({
   ...root,
@@ -197,6 +217,159 @@ export function applyCommand(root: Root, cmd: Command): Root {
     case 'updateSettings':
       return mapData(root, cmd.projectId, (d) => ({ ...d, settings: { ...d.settings, ...cmd.patch } }))
 
+    // ── Business-logic SSOT ────────────────────────────────────────────────────
+    case 'linkFeatureStep':
+      return mapData(root, cmd.projectId, (d) => {
+        const feat = d.features.find((f) => f.id === cmd.featureId)
+        const node = d.swimNodes.find((n) => n.id === cmd.nodeId)
+        if (!feat || !node) return d
+        const upFeat = (links: import('../store/types').CrossLink[] = []) =>
+          cmd.op === 'unlink'
+            ? links.filter((l) => !(l.view === 'swimlane' && l.targetId === cmd.nodeId))
+            : links.some((l) => l.view === 'swimlane' && l.targetId === cmd.nodeId)
+              ? links
+              : [...links, { view: 'swimlane' as const, label: `Swimlane · ${node.code ?? node.label}`, targetId: cmd.nodeId }]
+        const upNode = (links: import('../store/types').CrossLink[] = []) =>
+          cmd.op === 'unlink'
+            ? links.filter((l) => !(l.view === 'mindmap' && l.targetId === cmd.featureId))
+            : links.some((l) => l.view === 'mindmap' && l.targetId === cmd.featureId)
+              ? links
+              : [...links, { view: 'mindmap' as const, label: `Mindmap · ${feat.name}`, targetId: cmd.featureId }]
+        return {
+          ...d,
+          features: d.features.map((f) => (f.id === cmd.featureId ? { ...f, crossLinks: upFeat(f.crossLinks) } : f)),
+          swimNodes: d.swimNodes.map((n) => (n.id === cmd.nodeId ? { ...n, crossLinks: upNode(n.crossLinks) } : n)),
+        }
+      })
+
+    case 'linkCode':
+      return mapData(root, cmd.projectId, (d) => {
+        const same = (a: CodeRef, b: CodeRef) => a.path === b.path && (a.symbol ?? '') === (b.symbol ?? '')
+        const up = <T extends { codeRefs?: CodeRef[]; codeStale?: boolean }>(x: T): T =>
+          cmd.op === 'unlink'
+            ? { ...x, codeRefs: (x.codeRefs ?? []).filter((r) => !same(r, cmd.ref)) }
+            : // re-linking = reconciling → clear the stale flag
+              { ...x, codeStale: false, codeRefs: [...(x.codeRefs ?? []).filter((r) => !same(r, cmd.ref)), cmd.ref] }
+        return cmd.target === 'feature'
+          ? { ...d, features: d.features.map((f) => (f.id === cmd.id ? up(f) : f)) }
+          : { ...d, swimNodes: d.swimNodes.map((n) => (n.id === cmd.id ? up(n) : n)) }
+      })
+
+    case 'setDependency':
+      return mapData(root, cmd.projectId, (d) => ({
+        ...d,
+        features: d.features.map((f) => {
+          if (f.id !== cmd.featureId || cmd.dependsOnId === cmd.featureId) return f
+          const cur = f.dependsOn ?? []
+          const next = cmd.op === 'remove' ? cur.filter((x) => x !== cmd.dependsOnId) : cur.includes(cmd.dependsOnId) ? cur : [...cur, cmd.dependsOnId]
+          return { ...f, dependsOn: next }
+        }),
+      }))
+
+    case 'setAcceptance':
+      return mapData(root, cmd.projectId, (d) => {
+        const up = <T extends { validations?: string[]; validationsDone?: string[] }>(x: T): T => ({
+          ...x,
+          validations: cmd.items,
+          validationsDone: (x.validationsDone ?? []).filter((t) => cmd.items.includes(t)),
+        })
+        return cmd.target === 'feature'
+          ? { ...d, features: d.features.map((f) => (f.id === cmd.id ? up(f) : f)) }
+          : { ...d, swimNodes: d.swimNodes.map((n) => (n.id === cmd.id ? up(n) : n)) }
+      })
+
+    case 'checkAcceptance':
+      return mapData(root, cmd.projectId, (d) => {
+        const up = <T extends { validations?: string[]; validationsDone?: string[] }>(x: T): T => {
+          const item = (x.validations ?? [])[cmd.index]
+          if (item === undefined) return x
+          const done = new Set(x.validationsDone ?? [])
+          if (cmd.done) done.add(item)
+          else done.delete(item)
+          return { ...x, validationsDone: [...done] }
+        }
+        return cmd.target === 'feature'
+          ? { ...d, features: d.features.map((f) => (f.id === cmd.id ? up(f) : f)) }
+          : { ...d, swimNodes: d.swimNodes.map((n) => (n.id === cmd.id ? up(n) : n)) }
+      })
+
+    case 'markCodeStale':
+      return mapData(root, cmd.projectId, (d) => {
+        const feats = new Set(cmd.targets.filter((t) => t.target === 'feature').map((t) => t.id))
+        const nodes = new Set(cmd.targets.filter((t) => t.target === 'swimnode').map((t) => t.id))
+        return {
+          ...d,
+          features: d.features.map((f) => (feats.has(f.id) ? { ...f, codeStale: cmd.stale } : f)),
+          swimNodes: d.swimNodes.map((n) => (nodes.has(n.id) ? { ...n, codeStale: cmd.stale } : n)),
+        }
+      })
+
+    case 'addLane':
+      return mapData(root, cmd.projectId, (d) => {
+        const last = d.lanes[d.lanes.length - 1]
+        const h = last?.h ?? 96
+        const y = last ? last.y + last.h : 0
+        return {
+          ...d,
+          lanes: [...d.lanes, { id: cmd.id, name: cmd.name ?? 'New lane', sub: '', color: MODULE_PALETTE[d.lanes.length % MODULE_PALETTE.length], owners: [], y, h }],
+        }
+      })
+    case 'updateLane':
+      return mapData(root, cmd.projectId, (d) => ({ ...d, lanes: d.lanes.map((l) => (l.id === cmd.id ? { ...l, ...cmd.patch } : l)) }))
+    case 'deleteLane':
+      return mapData(root, cmd.projectId, (d) => {
+        const remaining = d.lanes.filter((l) => l.id !== cmd.id)
+        const fallback = remaining[0]?.id
+        return {
+          ...d,
+          lanes: remaining,
+          // Reassign orphaned steps to the first remaining lane (never leave a bad lane).
+          swimNodes: fallback === undefined ? d.swimNodes : d.swimNodes.map((n) => (n.lane === cmd.id ? { ...n, lane: fallback } : n)),
+        }
+      })
+
+    case 'addRelease':
+      return mapData(root, cmd.projectId, (d) => ({
+        ...d,
+        releases: [...d.releases, { id: cmd.id, name: cmd.name ?? 'New release', tag: (cmd.name ?? 'REL').slice(0, 4).toUpperCase(), color: '#2f6fed', bg: '#e9f1ff', bdr: '#d3deff' }],
+      }))
+    case 'updateRelease':
+      return mapData(root, cmd.projectId, (d) => ({ ...d, releases: d.releases.map((r) => (r.id === cmd.id ? { ...r, ...cmd.patch } : r)) }))
+    case 'deleteRelease':
+      return mapData(root, cmd.projectId, (d) => {
+        const remaining = d.releases.filter((r) => r.id !== cmd.id)
+        const fallback = remaining[0]?.id
+        return {
+          ...d,
+          releases: remaining,
+          features: fallback === undefined ? d.features : d.features.map((f) => (f.releaseId === cmd.id ? { ...f, releaseId: fallback } : f)),
+        }
+      })
+
+    case 'askHuman':
+      return mapData(root, cmd.projectId, (d) => {
+        const sel = cmd.nodeId ? { type: 'swimnode' as const, id: cmd.nodeId, view: (cmd.view ?? 'swimlane') as import('../store/types').ViewId } : null
+        const alert: Alert = {
+          id: cmd.id,
+          kind: 'question',
+          title: 'Needs a decision',
+          detail: cmd.question + (cmd.options?.length ? `  ·  Options: ${cmd.options.join(' / ')}` : ''),
+          tags: ['@human'],
+          time: 'pending',
+          actionLabel: cmd.nodeId ? 'Open step' : 'Review',
+          action: { view: cmd.view ?? 'swimlane', selection: sel },
+          ...(cmd.options?.length ? { options: cmd.options } : {}),
+        }
+        return { ...d, alerts: [...d.alerts, alert] }
+      })
+    case 'answerQuestion':
+      return mapData(root, cmd.projectId, (d) => ({
+        ...d,
+        alerts: d.alerts.map((a) => (a.id === cmd.id && a.kind === 'question' ? { ...a, answer: cmd.answer, time: 'answered' } : a)),
+      }))
+    case 'resolveQuestion':
+      return mapData(root, cmd.projectId, (d) => ({ ...d, alerts: d.alerts.filter((a) => a.id !== cmd.id) }))
+
     default:
       return root
   }
@@ -236,9 +409,10 @@ const joinText = (...parts: (string | undefined)[]) => parts.filter(Boolean).joi
 export function searchableItems(data: WorkspaceData): SearchItem[] {
   const items: SearchItem[] = []
   for (const m of data.modules) items.push({ kind: 'module', id: m.id, label: m.name, text: joinText(m.name, m.backbone.name, m.backbone.sub) })
+  const refText = (refs?: import('../store/types').CodeRef[]) => (refs ?? []).map((r) => joinText(r.path, r.symbol)).join(' ')
   for (const f of data.features)
-    items.push({ kind: 'feature', id: f.id, label: f.name, text: joinText(f.name, f.desc, ...(f.constraints ?? []), ...(f.validations ?? [])) })
-  for (const n of data.swimNodes) items.push({ kind: 'swimnode', id: n.id, label: n.label, text: joinText(n.label, n.desc, n.owner, ...(n.constraints ?? [])) })
+    items.push({ kind: 'feature', id: f.id, label: f.name, text: joinText(f.name, f.desc, ...(f.constraints ?? []), ...(f.validations ?? []), refText(f.codeRefs)) })
+  for (const n of data.swimNodes) items.push({ kind: 'swimnode', id: n.id, label: n.label, text: joinText(n.label, n.desc, n.owner, ...(n.constraints ?? []), refText(n.codeRefs)) })
   return items
 }
 

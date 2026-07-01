@@ -1,8 +1,8 @@
-import { X, Link2, ChevronRight, Trash2 } from 'lucide-react'
+import { X, Link2, ChevronRight, Trash2, FileCode2, GitBranch, AlertTriangle } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor, hexA } from '@/theme/tokens'
 import { FieldLabel, TextField, TextArea, SelectField, ListEditor, ChecklistEditor, RoleChips } from './fields'
-import type { CrossLink, FeatureStatus, NodeKind, NodeStatus, Selection } from '@/store/types'
+import type { CodeRef, CrossLink, FeatureStatus, NodeKind, NodeStatus, Selection } from '@/store/types'
 
 const NODE_STATUS: { key: NodeStatus; label: string }[] = [
   { key: 'todo', label: 'To do' },
@@ -165,6 +165,66 @@ function CrossLinks({ links, onGo }: { links: CrossLink[]; onGo: (l: CrossLink) 
   )
 }
 
+/** Read-only display of code references (agent/webhook-written) — the neck into
+ *  the codebase that makes the board a source of truth for business logic. */
+function CodeRefs({ refs }: { refs: CodeRef[] }) {
+  if (!refs.length) return null
+  return (
+    <div className="mt-4">
+      <FieldLabel>CODE REFERENCES</FieldLabel>
+      {refs.map((r, i) => {
+        const label = r.symbol ? `${r.path} · ${r.symbol}` : r.path
+        const inner = (
+          <>
+            <FileCode2 size={14} className="flex-none text-[#0d9488]" strokeWidth={1.8} />
+            <span className="flex-1 truncate font-mono text-[11.5px] text-muted">{label}</span>
+            {r.url && <ChevronRight size={13} className="flex-none text-faint" strokeWidth={2} />}
+          </>
+        )
+        const cls = 'mb-1.5 flex w-full items-center gap-2 rounded-lg border border-line bg-[#fbfcfd] px-[11px] py-[9px] text-left'
+        return r.url ? (
+          <a key={i} href={r.url} target="_blank" rel="noreferrer" className={`${cls} hover:border-[#9ee0d6] hover:bg-[#f0fbf9]`}>
+            {inner}
+          </a>
+        ) : (
+          <div key={i} className={cls}>{inner}</div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Read-only display of feature→feature dependencies. */
+function Dependencies({ ids }: { ids: string[] }) {
+  const data = useWorkspace((s) => s.currentData())
+  if (!ids.length) return null
+  const name = (id: string) => data.features.find((f) => f.id === id)?.name ?? id
+  return (
+    <div className="mt-4">
+      <FieldLabel>DEPENDS ON</FieldLabel>
+      <div className="flex flex-wrap gap-1.5">
+        {ids.map((id) => (
+          <span key={id} className="flex items-center gap-1 rounded-full bg-[#f1edff] px-[9px] py-[3px] text-[11.5px] font-semibold text-[#5b3ec4]">
+            <GitBranch size={12} strokeWidth={2} />
+            {name(id)}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Amber banner shown when a VCS webhook flagged the node's linked code as changed. */
+function StaleBanner({ stale }: { stale?: boolean }) {
+  if (!stale) return null
+  return (
+    <div className="mt-4 flex items-start gap-2 rounded-lg border border-[#f5d99a] bg-[#fef6e7] px-3 py-2.5">
+      <AlertTriangle size={15} className="mt-[1px] flex-none text-[#f59e0b]" strokeWidth={2} />
+      <span className="text-[11.5px] leading-[1.45] text-[#8a5a00]">Linked code changed after this was last updated — re-check the spec against the code, then resolve (agent: <span className="font-mono">resolve_outdated</span>).</span>
+    </div>
+  )
+}
+
 // ── Feature editor ───────────────────────────────────────────────────────────
 
 function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: string; readOnly: boolean; goLink: (l: CrossLink) => void }) {
@@ -227,6 +287,9 @@ function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: strin
         />
       </div>
 
+      <StaleBanner stale={f.codeStale} />
+      <Dependencies ids={f.dependsOn ?? []} />
+      <CodeRefs refs={f.codeRefs ?? []} />
       <CrossLinks links={f.crossLinks ?? []} onGo={goLink} />
       {!readOnly && <DeleteButton label="feature" onDelete={() => deleteFeature(id)} />}
     </>
@@ -340,6 +403,8 @@ function SwimEditor({ id, readOnly, goLink }: { id: string; readOnly: boolean; g
         />
       </div>
 
+      <StaleBanner stale={n.codeStale} />
+      <CodeRefs refs={n.codeRefs ?? []} />
       <CrossLinks links={n.crossLinks ?? []} onGo={goLink} />
       <div className="mt-2 text-[11px] text-faint">Current lane: {lane?.name ?? '—'}</div>
       {!readOnly && <DeleteButton label="step (and its edges)" onDelete={() => deleteSwimNode(id)} />}
