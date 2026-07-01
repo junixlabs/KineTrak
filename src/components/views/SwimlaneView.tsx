@@ -11,7 +11,7 @@ import {
   type Node,
   type NodeMouseHandler,
 } from '@xyflow/react'
-import { Plus } from 'lucide-react'
+import { Plus, Network } from 'lucide-react'
 import SwimStepNode from '@/components/nodes/SwimStepNode'
 import LaneBackground from '@/components/nodes/LaneBackground'
 import DeletableEdge from '@/components/nodes/DeletableEdge'
@@ -25,7 +25,7 @@ import { laneMatchesRole } from '@/store/selectors'
 const nodeTypes = { swimStep: SwimStepNode, lane: LaneBackground }
 const edgeTypes = { deletable: DeletableEdge }
 
-const LANE_WIDTH = 1860
+const LANE_WIDTH = 1860 // minimum lane band width; grows to fit the widest lane
 const COMPACT_ZOOM = 0.5
 const NODE_SIZE: Record<string, { w: number; h: number }> = {
   start: { w: 178, h: 46 },
@@ -46,6 +46,7 @@ function SwimlaneInner() {
   const setHovered = useWorkspace((s) => s.setHovered)
   const select = useWorkspace((s) => s.select)
   const addSwimNode = useWorkspace((s) => s.addSwimNode)
+  const arrangeSwimNodes = useWorkspace((s) => s.arrangeSwimNodes)
   const addSwimEdge = useWorkspace((s) => s.addSwimEdge)
   const deleteSwimNode = useWorkspace((s) => s.deleteSwimNode)
   const updateSwimNodePos = useWorkspace((s) => s.updateSwimNodePos)
@@ -70,6 +71,18 @@ function SwimlaneInner() {
     return hit
   }, [focus, reach, data.swimNodes])
 
+  // Grow the lane band to fit the right-most node so steps never spill onto the
+  // blank canvas beyond a fixed-width band (which happened once a lane held more
+  // than ~8 nodes).
+  const laneWidth = useMemo(() => {
+    let max = LANE_WIDTH
+    data.swimNodes.forEach((n) => {
+      const size = NODE_SIZE[n.kind] ?? DEFAULT_NODE_SIZE
+      max = Math.max(max, n.x + size.w + 120)
+    })
+    return max
+  }, [data.swimNodes])
+
   const computedNodes: Node[] = useMemo(() => {
     const list: Node[] = []
     data.lanes.forEach((lane) => {
@@ -79,7 +92,7 @@ function SwimlaneInner() {
         id: `lane-${lane.id}`,
         type: 'lane',
         position: { x: 0, y: lane.y },
-        data: { name: lane.name, sub: lane.sub, color: lane.color, width: LANE_WIDTH, height: lane.h, dim: roleDim || focusDim },
+        data: { name: lane.name, sub: lane.sub, color: lane.color, width: laneWidth, height: lane.h, dim: roleDim || focusDim },
         draggable: false,
         selectable: false,
         zIndex: 0,
@@ -112,7 +125,7 @@ function SwimlaneInner() {
       })
     })
     return list
-  }, [data, roleFilter, focus, reach, laneHit, selected, compact, recent])
+  }, [data, laneWidth, roleFilter, focus, reach, laneHit, selected, compact, recent])
 
   const edges: Edge[] = useMemo(() => {
     const laneIds = new Set(data.lanes.map((l) => l.id))
@@ -122,7 +135,9 @@ function SwimlaneInner() {
       .map((e) => {
         const on = !!focus && reach.has(e.from) && reach.has(e.to)
         const dim = !!focus && !on
-        const stroke = on ? '#2f6fed' : dim ? '#e3e6ea' : '#b6bdc8'
+        // Keep the resting state faint so a dense flow reads as a light lattice,
+        // not a grey haze; hovering a node lights its impact path bright blue.
+        const stroke = on ? '#2f6fed' : dim ? '#eef0f3' : '#d3d8e0'
         return {
           id: `${e.from}-${e.to}`,
           source: e.from,
@@ -131,7 +146,7 @@ function SwimlaneInner() {
           data: { from: e.from, to: e.to },
           label: e.branch,
           animated: on,
-          style: { stroke, strokeWidth: on ? 2.4 : 1.6 },
+          style: { stroke, strokeWidth: on ? 2.4 : 1.4 },
           markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 16, height: 16 },
           zIndex: 1,
         }
@@ -191,12 +206,19 @@ function SwimlaneInner() {
       )}
 
       {editable && (
-        <div className="absolute left-[18px] top-[18px] z-20">
+        <div className="absolute left-[18px] top-[18px] z-20 flex items-start gap-2">
           <button
             onClick={() => setLaneMenu((v) => !v)}
             className="flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-white px-3 text-[12.5px] font-bold text-brand shadow-card hover:bg-[#eef1ff]"
           >
             <Plus size={15} strokeWidth={2.5} /> Step
+          </button>
+          <button
+            onClick={() => { arrangeSwimNodes(); setLaneMenu(false); setTimeout(() => fitView({ padding: 0.15 }), 80) }}
+            title="Lay steps out left→right by flow order"
+            className="flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-white px-3 text-[12.5px] font-bold text-ink shadow-card hover:bg-[#f4f6f9]"
+          >
+            <Network size={15} strokeWidth={2.5} /> Auto-arrange
           </button>
           {laneMenu && (
             <>

@@ -18,6 +18,7 @@ import type {
 import { cloneData, sampleTemplate, blankTemplate } from './seed'
 import { makeId, nextNodeCode } from './ids'
 import { applyCommand, type Command, type Root } from '@/shared/board'
+import { autoArrangeSwimlane } from '@/lib/swimlayout'
 
 /** UI-only view selector: the three diagram views plus the derived Overview.
  *  Kept separate from the domain `ViewId` (used by crossLinks/selection/alerts). */
@@ -137,6 +138,7 @@ interface WorkspaceState {
   addSwimNode: (lane: number) => void
   updateSwimNode: (id: string, patch: Partial<SwimNode>) => void
   updateSwimNodePos: (id: string, x: number, y: number) => void
+  arrangeSwimNodes: () => void
   deleteSwimNode: (id: string) => void
   addSwimEdge: (from: string, to: string) => void
   deleteSwimEdge: (from: string, to: string) => void
@@ -330,6 +332,12 @@ export const useWorkspace = create<WorkspaceState>()(
         updateSwimNodePos: (id, x, y) => {
           if (!editable()) return
           dispatch({ type: 'updateSwimNodePos', projectId: pid(), id, x, y })
+        },
+        arrangeSwimNodes: () => {
+          if (!editable()) return
+          const d = get().currentData()
+          const positions = autoArrangeSwimlane(d.swimNodes, d.swimEdges, d.lanes)
+          if (positions.length) dispatch({ type: 'arrangeSwimNodes', projectId: pid(), positions })
         },
         deleteSwimNode: (id) => {
           if (!editable()) return

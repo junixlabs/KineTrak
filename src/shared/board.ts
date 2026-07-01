@@ -46,6 +46,7 @@ export type Command =
   | { type: 'addSwimNode'; projectId: string; id: string; code: string; lane: number; x: number; y: number; label?: string; kind?: NodeKind }
   | { type: 'updateSwimNode'; projectId: string; id: string; patch: Partial<SwimNode> }
   | { type: 'updateSwimNodePos'; projectId: string; id: string; x: number; y: number }
+  | { type: 'arrangeSwimNodes'; projectId: string; positions: { id: string; x: number; y: number }[] }
   | { type: 'deleteSwimNode'; projectId: string; id: string }
   | { type: 'addSwimEdge'; projectId: string; from: string; to: string; branch?: string }
   | { type: 'deleteSwimEdge'; projectId: string; from: string; to: string }
@@ -161,6 +162,16 @@ export function applyCommand(root: Root, cmd: Command): Root {
       return mapData(root, cmd.projectId, (d) => ({ ...d, swimNodes: d.swimNodes.map((n) => (n.id === cmd.id ? { ...n, ...cmd.patch } : n)) }))
     case 'updateSwimNodePos':
       return mapData(root, cmd.projectId, (d) => ({ ...d, swimNodes: d.swimNodes.map((n) => (n.id === cmd.id ? { ...n, x: cmd.x, y: cmd.y } : n)) }))
+    case 'arrangeSwimNodes': {
+      const pos = new Map(cmd.positions.map((p) => [p.id, p]))
+      return mapData(root, cmd.projectId, (d) => ({
+        ...d,
+        swimNodes: d.swimNodes.map((n) => {
+          const p = pos.get(n.id)
+          return p ? { ...n, x: p.x, y: p.y } : n
+        }),
+      }))
+    }
     case 'deleteSwimNode':
       return mapData(root, cmd.projectId, (d) => ({
         ...d,
