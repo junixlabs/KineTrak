@@ -27,8 +27,9 @@ const FEATURE_HALF = 23
 const ROOT_X = 40
 const GAP1 = 64 // root ↔ module gap
 const GAP2 = 88 // module ↔ feature gap
-const ROW = 52
+const ROW = 52 // vertical pitch of a feature row
 const TOP = 56
+const MODULE_GAP = 20 // extra vertical gap between module blocks
 
 // Right side grows to the right of the root; left side mirrors it.
 const RIGHT_MODULE_X = ROOT_X + ROOT_W + GAP1
@@ -37,13 +38,28 @@ const LEFT_MODULE_X = ROOT_X - GAP1 - MODULE_W
 const LEFT_FEATURE_X = LEFT_MODULE_X - GAP2 - FEATURE_W
 
 /**
- * Balanced two-sided mindmap: modules split left/right of the root (by feature
- * count so both columns are ~equal height), features fan out on their module's
- * side. Halves the vertical extent vs a single column and reads like a real
- * mindmap. Works for any module/feature counts.
+ * Balanced two-sided mindmap with per-module collapse/expand: modules split
+ * left/right of the root (by feature count so both columns stay ~balanced), and
+ * only *expanded* modules fan their features out. Collapsed modules occupy a
+ * single slot, so the map's height scales with the number of *visible* rows —
+ * not the total feature count. This keeps large projects (hundreds of features)
+ * readable and fit-able instead of degenerating into an unreadable tall ribbon.
+ *
+ * `expanded` is the set of module ids whose features should be laid out. Side
+ * assignment ignores it so modules never jump sides when you expand one.
  */
-export function computeMindmapLayout(modules: Module[], features: Feature[]): MindmapLayout {
-  const featuresOf = (id: string) => features.filter((f) => f.moduleId === id)
+export function computeMindmapLayout(
+  modules: Module[],
+  features: Feature[],
+  expanded: Set<string> = new Set(),
+): MindmapLayout {
+  const byModule = new Map<string, Feature[]>()
+  features.forEach((f) => {
+    const list = byModule.get(f.moduleId)
+    if (list) list.push(f)
+    else byModule.set(f.moduleId, [f])
+  })
+  const featuresOf = (id: string) => byModule.get(id) ?? []
   const span = (m: Module) => Math.max(featuresOf(m.id).length, 1)
 
   // Decide each module's side: honor a pinned `side`, then auto-balance the rest
@@ -68,26 +84,30 @@ export function computeMindmapLayout(modules: Module[], features: Feature[]): Mi
   const moduleCenter: Record<string, number> = {}
   const side: Record<string, Side> = {}
 
-  // Stack one side top-down; each module centers on its own features.
+  // Stack one side top-down. An expanded module reserves a row per feature and
+  // centers on them; a collapsed module (or one with no features) occupies a
+  // single module-height slot. Returns the side's total pixel height.
   const placeSide = (mods: Module[], which: Side) => {
-    let row = 0
-    mods.forEach((m) => {
+    let y = TOP
+    mods.forEach((m, i) => {
+      if (i > 0) y += MODULE_GAP
       side[m.id] = which
       const own = featuresOf(m.id)
-      const centers: number[] = []
-      own.forEach((f) => {
-        const c = TOP + row * ROW
-        featureCenter[f.id] = c
-        centers.push(c)
-        row += 1
-      })
-      if (centers.length === 0) {
-        centers.push(TOP + row * ROW)
-        row += 1
+      if (expanded.has(m.id) && own.length > 0) {
+        const centers: number[] = []
+        own.forEach((f) => {
+          const c = y + FEATURE_HALF
+          featureCenter[f.id] = c
+          centers.push(c)
+          y += ROW
+        })
+        moduleCenter[m.id] = centers.reduce((a, b) => a + b, 0) / centers.length
+      } else {
+        moduleCenter[m.id] = y + MODULE_HALF
+        y += MODULE_HALF * 2
       }
-      moduleCenter[m.id] = centers.reduce((a, b) => a + b, 0) / centers.length
     })
-    return row
+    return y
   }
 
   const rightRows = placeSide(rightMods, 'right')
@@ -101,15 +121,17 @@ export function computeMindmapLayout(modules: Module[], features: Feature[]): Mi
     modules: {},
     features: {},
     side,
-    height: TOP + Math.max(rightRows, leftRows, 1) * ROW,
+    height: Math.max(rightRows, leftRows, TOP),
   }
   modules.forEach((m) => {
     const x = side[m.id] === 'left' ? LEFT_MODULE_X : RIGHT_MODULE_X
     layout.modules[m.id] = { x, y: moduleCenter[m.id] - MODULE_HALF }
   })
   features.forEach((f) => {
+    const c = featureCenter[f.id]
+    if (c === undefined) return // collapsed module — feature not laid out
     const x = side[f.moduleId] === 'left' ? LEFT_FEATURE_X : RIGHT_FEATURE_X
-    layout.features[f.id] = { x, y: featureCenter[f.id] - FEATURE_HALF }
+    layout.features[f.id] = { x, y: c - FEATURE_HALF }
   })
   return layout
 }

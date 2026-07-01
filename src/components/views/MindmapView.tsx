@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -22,9 +22,6 @@ import type { Selection } from '@/store/types'
 
 const nodeTypes = { mindRoot: MindRootNode, mindModule: MindModuleNode, mindFeature: MindFeatureNode }
 
-/** Below this zoom, collapse to modules-only (semantic zoom). */
-const FEATURE_ZOOM = 0.55
-
 function MindmapInner() {
   const data = useWorkspace((s) => s.currentData())
   const hoveredId = useWorkspace((s) => s.hoveredId)
@@ -38,7 +35,17 @@ function MindmapInner() {
 
   const zoom = useStore((s) => s.transform[2])
   const { zoomIn, zoomOut, fitView } = useReactFlow()
-  const showFeatures = zoom >= FEATURE_ZOOM
+
+  // Which modules are expanded to reveal their features. Collapsed by default so
+  // large projects fit; the map height tracks visible rows, not total features.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const toggleExpand = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   const actItems = useActivity((s) => s.items)
   const actSeen = useActivity((s) => s.lastSeenTs)
@@ -64,7 +71,8 @@ function MindmapInner() {
     return set
   }, [focus, data])
 
-  const layout = useMemo(() => computeMindmapLayout(data.modules, data.features), [data])
+  const layout = useMemo(() => computeMindmapLayout(data.modules, data.features, expanded), [data, expanded])
+  const moduleById = useMemo(() => new Map(data.modules.map((m) => [m.id, m])), [data.modules])
 
   const nodes: Node[] = useMemo(() => {
     const list: Node[] = [
@@ -86,29 +94,28 @@ function MindmapInner() {
         id: m.id,
         type: 'mindModule',
         position: layout.modules[m.id],
-        data: { id: m.id, name: m.name, color: m.color, ...prog, dim: roleDim || focusDim, highlight: focusSet.has(m.id), recent: recent.has(m.id) },
+        data: { id: m.id, name: m.name, color: m.color, ...prog, dim: roleDim || focusDim, highlight: focusSet.has(m.id), recent: recent.has(m.id), expanded: expanded.has(m.id) },
         draggable: false,
       })
     })
 
-    if (showFeatures) {
-      data.features.forEach((f) => {
-        const m = data.modules.find((x) => x.id === f.moduleId)
-        if (!m) return // orphan feature (module missing) — skip rather than crash
-        const roleDim = !moduleMatchesRole(m, roleFilter)
-        const focusDim = !!focus && !focusSet.has(f.id)
-        const isSelected = !!selected && selected.view === 'mindmap' && selected.id === f.id
-        list.push({
-          id: f.id,
-          type: 'mindFeature',
-          position: layout.features[f.id],
-          data: { name: f.name, status: f.status, dim: roleDim || focusDim, selected: isSelected, recent: recent.has(f.id) },
-          draggable: false,
-        })
+    data.features.forEach((f) => {
+      if (!expanded.has(f.moduleId)) return // only expanded modules reveal features
+      const m = moduleById.get(f.moduleId)
+      if (!m) return // orphan feature (module missing) — skip rather than crash
+      const roleDim = !moduleMatchesRole(m, roleFilter)
+      const focusDim = !!focus && !focusSet.has(f.id)
+      const isSelected = !!selected && selected.view === 'mindmap' && selected.id === f.id
+      list.push({
+        id: f.id,
+        type: 'mindFeature',
+        position: layout.features[f.id],
+        data: { name: f.name, status: f.status, dim: roleDim || focusDim, selected: isSelected, recent: recent.has(f.id) },
+        draggable: false,
       })
-    }
+    })
     return list
-  }, [data, layout, roleFilter, focus, focusSet, showFeatures, selected, recent])
+  }, [data, layout, moduleById, roleFilter, focus, focusSet, expanded, selected, recent])
 
   const edges: Edge[] = useMemo(() => {
     const list: Edge[] = []
@@ -124,24 +131,23 @@ function MindmapInner() {
         style: { stroke: on ? '#2f6fed' : '#c7cdd6', strokeWidth: on ? 2.4 : 1.6 },
       })
     })
-    if (showFeatures) {
-      const moduleIds = new Set(data.modules.map((m) => m.id))
-      data.features.forEach((f) => {
-        if (!moduleIds.has(f.moduleId)) return // orphan feature — no edge to a missing module
-        const on = focusSet.has(f.id)
-        const left = layout.side[f.moduleId] === 'left'
-        list.push({
-          id: `${f.moduleId}-${f.id}`,
-          source: f.moduleId,
-          target: f.id,
-          sourceHandle: left ? 'out-left' : 'out-right',
-          targetHandle: left ? 'in-right' : 'in-left',
-          style: { stroke: on ? '#2f6fed' : '#d6dbe2', strokeWidth: on ? 2.2 : 1.4 },
-        })
+    const moduleIds = new Set(data.modules.map((m) => m.id))
+    data.features.forEach((f) => {
+      if (!expanded.has(f.moduleId)) return // feature hidden while its module is collapsed
+      if (!moduleIds.has(f.moduleId)) return // orphan feature — no edge to a missing module
+      const on = focusSet.has(f.id)
+      const left = layout.side[f.moduleId] === 'left'
+      list.push({
+        id: `${f.moduleId}-${f.id}`,
+        source: f.moduleId,
+        target: f.id,
+        sourceHandle: left ? 'out-left' : 'out-right',
+        targetHandle: left ? 'in-right' : 'in-left',
+        style: { stroke: on ? '#2f6fed' : '#d6dbe2', strokeWidth: on ? 2.2 : 1.4 },
       })
-    }
+    })
     return list
-  }, [data, layout, focusSet, showFeatures])
+  }, [data, layout, focusSet, expanded])
 
   const onEnter: NodeMouseHandler = (_, node) => {
     if (node.id !== 'root') setHovered(node.id)
@@ -149,15 +155,17 @@ function MindmapInner() {
   const onLeave: NodeMouseHandler = () => setHovered(null)
   const onClick: NodeMouseHandler = (_, node) => {
     if (node.type === 'mindFeature') select({ type: 'feature', id: node.id, view: 'mindmap' } as Selection)
-    else if (node.type === 'mindModule') select({ type: 'module', id: node.id, view: 'mindmap' } as Selection)
+    else if (node.type === 'mindModule') {
+      toggleExpand(node.id)
+      select({ type: 'module', id: node.id, view: 'mindmap' } as Selection)
+    }
   }
 
   return (
     <>
       {!present && (
         <ViewHint>
-          Click a feature for details · status labels <b className="text-brand">sync across all views</b>
-          {!showFeatures && <> · <b className="text-brand">zoom in</b> to reveal features</>}
+          <b className="text-brand">Click a module</b> to expand its features · click a feature for details · status labels <b className="text-brand">sync across all views</b>
         </ViewHint>
       )}
       {!readOnly && !present && (
@@ -178,7 +186,7 @@ function MindmapInner() {
         onPaneClick={() => select(null)}
         fitView
         fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.3}
+        minZoom={0.15}
         maxZoom={1.6}
         proOptions={{ hideAttribution: true }}
         nodesConnectable={false}

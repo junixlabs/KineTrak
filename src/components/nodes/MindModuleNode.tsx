@@ -1,5 +1,5 @@
 import { Handle, Position } from '@xyflow/react'
-import { Plus } from 'lucide-react'
+import { Plus, ChevronRight } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 
 export interface MindModuleData {
@@ -12,6 +12,7 @@ export interface MindModuleData {
   dim: boolean
   highlight: boolean
   recent?: boolean
+  expanded: boolean
 }
 
 export default function MindModuleNode({ data }: { data: MindModuleData }) {
@@ -36,8 +37,16 @@ export default function MindModuleNode({ data }: { data: MindModuleData }) {
       <span className="absolute bottom-0 left-0 top-0 w-1" style={{ background: data.color }} />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[13px] font-bold leading-tight text-ink">{data.name}</span>
-        <span className="flex-none font-mono text-[10px] font-bold text-faint">
+        <span className="flex flex-none items-center gap-1 font-mono text-[10px] font-bold text-faint">
           {data.done}/{data.total}
+          {data.total > 0 && (
+            <ChevronRight
+              size={13}
+              strokeWidth={2.75}
+              className="transition-transform duration-200"
+              style={{ transform: data.expanded ? 'rotate(90deg)' : 'none', color: data.expanded ? data.color : undefined }}
+            />
+          )}
         </span>
       </div>
       <div className="h-1 overflow-hidden rounded-sm bg-[#eef0f3]">
