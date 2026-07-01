@@ -1,7 +1,8 @@
 import { X, Link2, ChevronRight, Trash2, FileCode2, GitBranch, AlertTriangle } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor, hexA } from '@/theme/tokens'
-import { FieldLabel, TextField, TextArea, SelectField, ListEditor, ChecklistEditor, RoleChips } from './fields'
+import { FieldLabel, TextField, SelectField, ListEditor, ChecklistEditor, RoleChips } from './fields'
+import { MarkdownField } from './Markdownish'
 import type { CodeRef, CrossLink, FeatureStatus, NodeKind, NodeStatus, Selection } from '@/store/types'
 
 const NODE_STATUS: { key: NodeStatus; label: string }[] = [
@@ -267,7 +268,7 @@ function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: strin
 
       <div className="mt-4">
         <FieldLabel>DESCRIPTION</FieldLabel>
-        <TextArea value={f.desc ?? ''} readOnly={readOnly} onChange={(v) => updateFeature(id, { desc: v })} placeholder="Feature description…" />
+        <MarkdownField value={f.desc ?? ''} readOnly={readOnly} onChange={(v) => updateFeature(id, { desc: v })} placeholder="Feature description…" />
       </div>
       <div className="mt-4">
         <FieldLabel>API / TECHNICAL CONSTRAINTS</FieldLabel>
@@ -383,7 +384,7 @@ function SwimEditor({ id, readOnly, goLink }: { id: string; readOnly: boolean; g
       </div>
       <div className="mt-4">
         <FieldLabel>DESCRIPTION</FieldLabel>
-        <TextArea value={n.desc ?? ''} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { desc: v })} placeholder="Step description…" />
+        <MarkdownField value={n.desc ?? ''} readOnly={readOnly} onChange={(v) => updateSwimNode(id, { desc: v })} placeholder="Step description…" />
       </div>
       <div className="mt-4">
         <FieldLabel>API / TECHNICAL CONSTRAINTS</FieldLabel>
