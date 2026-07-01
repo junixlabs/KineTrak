@@ -62,6 +62,28 @@ Module/feature/step **IDs are durable; names drift.** Resolve IDs fresh via `sea
 `get_board` each session — never hard-code an ID from a previous session or from a note. Use the
 `find_or_create_*` tools when re-running a task so you stay idempotent.
 
+### 1.5 Codifiable business rules (when a project has them)
+
+Most projects' logic is **flow** (Swimlane) + **acceptance criteria** — those are covered directly.
+Some projects also have **codifiable rules**: invariants, decision tables, state transitions,
+eligibility/pricing conditions (e.g. "a refund > $500 needs manager approval", "an order in state X
+can't move to Y"). Do **not** ask for a special "rule" object — KineTrak has none by design (a
+first-class Rule entity would be dead weight for the many projects that have no such rules). Capture
+a codifiable rule with the primitives that already exist:
+
+| Aspect of the rule | Represent it as |
+|---|---|
+| The rule statement | a `constraint` on the feature/step it governs |
+| Where the rule is enforced in code | `link_code` to that file / symbol |
+| Verifying the rule holds | an acceptance criterion (`set_acceptance` / `check_acceptance`) |
+| The rule drifting from its code | already automatic — `codeStale` → outdated alert (once code-linked) |
+| Why the rule changed | a dated `append_note` (lightweight ADR) |
+| What a change to the rule affects | `compute_impact` (via crossLinks / `dependsOn`) |
+
+That is a rule's full lifecycle with zero new machinery; projects without rules simply don't use it.
+Only if a single project accumulates *so many* rules that constraints become unmanageable should a
+dedicated Rule model be reconsidered — until then this convention is the source of truth for rules.
+
 ---
 
 ## 2. The lifecycle
