@@ -1,6 +1,6 @@
 import type { Alert, FeatureStatus, NodeStatus, WorkspaceData } from '../store/types'
 import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD } from './impact'
-import { isDescOverBudget } from './descriptions'
+import { isDescOverBudget, isSteeringDoc } from './descriptions'
 
 // A glanceable "state of the product" summary for the human — the read-only
 // counterpart to the agent's next_action. PURE and fully DERIVED from board
@@ -62,8 +62,11 @@ export function deriveOverview(data: WorkspaceData, threshold = DEFAULT_IMPACT_T
     ...data.features.filter((f) => f.codeStale).map((f) => ({ kind: 'feature' as const, id: f.id, label: f.name })),
     ...data.swimNodes.filter((n) => n.codeStale).map((n) => ({ kind: 'swimnode' as const, id: n.id, label: n.label })),
   ]
+  const moduleName = new Map(data.modules.map((m) => [m.id, m.name]))
   const bloatedDescriptions: Gap[] = [
-    ...data.features.filter((f) => isDescOverBudget(f.desc)).map((f) => ({ kind: 'feature' as const, id: f.id, label: f.name })),
+    ...data.features
+      .filter((f) => isDescOverBudget(f.desc) && !isSteeringDoc(f.name, moduleName.get(f.moduleId)))
+      .map((f) => ({ kind: 'feature' as const, id: f.id, label: f.name })),
     ...data.swimNodes.filter((n) => isDescOverBudget(n.desc)).map((n) => ({ kind: 'swimnode' as const, id: n.id, label: n.label })),
   ]
 

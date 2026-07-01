@@ -12,7 +12,7 @@ import { activityRepo } from './infra/repositories'
 import type { Project } from '../src/store/types'
 import { makeId, nextNodeCode } from '../src/store/ids'
 import { computeImpact } from '../src/lib/impact'
-import { descStats } from '../src/lib/descriptions'
+import { descStats, isSteeringDoc } from '../src/lib/descriptions'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -237,7 +237,10 @@ export function buildMcpServer(key: ApiKey): McpServer {
       dupNames(d.modules.map((m) => m.name)).forEach((n) => issues.push({ severity: 'warning', kind: 'duplicate_module_name', message: `Duplicate module name “${n}”` }))
 
       // Description-contract budget (see AGENT_PLAYBOOK §1.6): flag rambling descriptions to compact.
+      // The Meta/Project Context steering node is exempt from the char/line budget.
+      const moduleName = new Map(d.modules.map((m) => [m.id, m.name]))
       d.features.forEach((f) => {
+        if (isSteeringDoc(f.name, moduleName.get(f.moduleId))) return
         const s = descStats(f.desc)
         if (s.overBudget) issues.push({ severity: 'warning', kind: 'bloated_description', message: `Feature “${f.name}” description over budget — ${s.reasons.join('; ')}`, ids: [f.id] })
       })

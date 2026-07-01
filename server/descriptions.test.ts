@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { descStats, LOG_MARKER, DESC_MAX_CHARS } from '../src/lib/descriptions'
+import { descStats, isSteeringDoc, LOG_MARKER, DESC_MAX_CHARS } from '../src/lib/descriptions'
 
 test('a tight contract is within budget', () => {
   const s = descStats('Goal: compute the impact zone when a node changes.\nNon-goals: no UI editor.')
@@ -33,4 +33,11 @@ test('too many log entries are flagged', () => {
 test('empty description is within budget', () => {
   assert.equal(descStats(undefined).overBudget, false)
   assert.equal(descStats('').overBudget, false)
+})
+
+test('only the Meta/Project Context node is treated as a steering doc (budget-exempt)', () => {
+  assert.equal(isSteeringDoc('Project Context', 'Meta'), true)
+  assert.equal(isSteeringDoc('project context', 'meta'), true) // case-insensitive
+  assert.equal(isSteeringDoc('Project Context', 'Agent & MCP'), false) // wrong module
+  assert.equal(isSteeringDoc('Checkout', 'Meta'), false) // wrong feature
 })

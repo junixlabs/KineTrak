@@ -42,3 +42,11 @@ export function descStats(text?: string): DescStats {
 }
 
 export const isDescOverBudget = (text?: string): boolean => descStats(text).overBudget
+
+/** The Meta/Project Context node is a steering doc (domain/stack/conventions),
+ *  not a feature contract — it legitimately holds more than the feature budget,
+ *  so it is exempt from the char/line budget (its log is still kept tight by the
+ *  session-close routine). */
+export function isSteeringDoc(featureName?: string, moduleName?: string): boolean {
+  return (featureName ?? '').trim().toLowerCase() === 'project context' && (moduleName ?? '').trim().toLowerCase() === 'meta'
+}
