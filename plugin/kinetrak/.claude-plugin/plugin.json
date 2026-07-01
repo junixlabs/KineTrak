@@ -1,0 +1,27 @@
+{
+  "name": "kinetrak",
+  "displayName": "KineTrak",
+  "version": "1.0.0",
+  "description": "Operate a KineTrak board with an AI agent: onboard an existing codebase, then run the lifecycle (orient → specify → decompose → implement → validate → ship) over MCP. Bundles the agent skills and the KineTrak MCP server.",
+  "author": { "name": "junixlabs" },
+  "homepage": "https://kinetrak.thejunix.com",
+  "repository": "https://github.com/junixlabs/KineTrak",
+  "license": "MIT",
+  "keywords": ["kinetrak", "mcp", "agent", "playbook", "sdlc"],
+  "userConfig": {
+    "api_key": {
+      "type": "string",
+      "title": "KineTrak API Key",
+      "description": "Your Bearer key from the Connect page at https://kinetrak.thejunix.com (scoped to one workspace).",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "kinetrak": {
+      "type": "http",
+      "url": "https://kinetrak.thejunix.com/mcp",
+      "headers": { "Authorization": "Bearer ${user_config.api_key}" }
+    }
+  }
+}

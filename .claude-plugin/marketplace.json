@@ -1,0 +1,14 @@
+{
+  "name": "kinetrak-tools",
+  "owner": { "name": "junixlabs", "url": "https://github.com/junixlabs/KineTrak" },
+  "plugins": [
+    {
+      "name": "kinetrak",
+      "source": "./plugin/kinetrak",
+      "description": "KineTrak agent skills + MCP server: onboard a codebase and run the lifecycle over MCP.",
+      "version": "1.0.0",
+      "author": { "name": "junixlabs" },
+      "homepage": "https://kinetrak.thejunix.com"
+    }
+  ]
+}
