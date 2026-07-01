@@ -47,7 +47,13 @@ The header shows **Live · synced** when connected to the server, **Local** when
 
 ## Connect an agent (Claude Code / Desktop)
 
-Streamable HTTP endpoint: **`http://localhost:8787/mcp`**
+Streamable HTTP endpoint: **`http://localhost:8787/mcp`** (POST only).
+
+The endpoint is **stateless**: every `POST /mcp` is a self-contained JSON-RPC exchange — no session
+id, no server-held session state. Each request re-authenticates by its API key and is independently
+scoped, so a server restart (deploy) or a proxy closing an idle stream can never strand a client on a
+dead session. `GET`/`DELETE /mcp` return `405` (they only exist to drive a persistent session's SSE
+stream, which stateless mode doesn't use). Any `mcp-session-id` header a client sends is ignored.
 
 The fastest path is the in-app **Connect page** — open the app, then *Home → Connect agent* (or the
 *Connect* button in the workspace header). It lets you create/copy/revoke API keys, shows the live

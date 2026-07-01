@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,7 +5,6 @@ import type { Express, Request, Response } from 'express'
 import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
 import { applyAndBroadcast as applyRaw, getCatalog, getProject, searchOrg } from './state'
 import { bearerFrom, verifyKey, type ApiKey } from './keys'
 import { recordNote, type Actor } from './activity'
@@ -851,67 +849,46 @@ function authorize(req: Request, res: Response): ApiKey | null {
   return null
 }
 
-/** Mount Streamable-HTTP MCP (stateful sessions) at /mcp. */
+/**
+ * Mount Streamable-HTTP MCP at /mcp in STATELESS mode: every POST is a fresh,
+ * self-contained JSON-RPC exchange — a new server + transport per request, no
+ * session id, no in-RAM session map.
+ *
+ * Why stateless: the tools are pure request/response (no server-initiated
+ * notifications), and the deployment sits behind Cloudflare on a single process
+ * that restarts on every deploy. A stateful session lives only in that process's
+ * RAM, so a container restart (auto-deploy) or a Cloudflare idle-SSE close would
+ * strand a client on a session id the server no longer knows — the "session keeps
+ * dropping" failure. Stateless removes that entire class of bugs: there is no
+ * session to lose, each request re-authorizes by its own key and is independently
+ * org-scoped (so the old cross-workspace session guard is unnecessary too).
+ *
+ * GET/DELETE (which only exist to drive/close a persistent session's SSE stream)
+ * have no meaning here, so they 405.
+ */
 export function registerMcp(app: Express) {
-  const transports: Record<string, StreamableHTTPServerTransport> = {}
-  // Each session is bound to the org of the key that opened it. A different key
-  // (even a valid one for another workspace) may not drive someone else's
-  // session, so a guessed/leaked session-id can't cross the workspace boundary.
-  const sessionOrg: Record<string, string> = {}
-
-  /** Reject a request whose key doesn't own the session it targets. */
-  const sessionMismatch = (sid: string | undefined, key: ApiKey, res: Response): boolean => {
-    if (sid && sessionOrg[sid] && sessionOrg[sid] !== key.orgId) {
-      res.status(403).json({ jsonrpc: '2.0', error: { code: -32003, message: 'Forbidden — this session belongs to another workspace.' }, id: null })
-      return true
-    }
-    return false
-  }
-
   app.post('/mcp', async (req: Request, res: Response) => {
     const key = authorize(req, res)
     if (!key) return
-    const sid = req.headers['mcp-session-id'] as string | undefined
-    if (sessionMismatch(sid, key, res)) return
-    let transport = sid ? transports[sid] : undefined
-
-    if (!transport) {
-      if (!isInitializeRequest(req.body)) {
-        res.status(400).json({ jsonrpc: '2.0', error: { code: -32000, message: 'No valid session — send an initialize request first.' }, id: null })
-        return
-      }
-      transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (id) => {
-          transports[id] = transport!
-          sessionOrg[id] = key.orgId // bind the session to this key's workspace
-        },
+    try {
+      // Fresh, key-scoped instances per request (org scope + activity attribution).
+      const server = buildMcpServer(key)
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
+      res.on('close', () => {
+        void transport.close()
+        void server.close()
       })
-      transport.onclose = () => {
-        if (transport!.sessionId) {
-          delete transports[transport!.sessionId]
-          delete sessionOrg[transport!.sessionId]
-        }
-      }
-      // Bind this session's tools to the key (org scope + activity attribution).
-      await buildMcpServer(key).connect(transport)
+      await server.connect(transport)
+      await transport.handleRequest(req, res, req.body)
+    } catch (e) {
+      console.error('MCP request failed:', e)
+      if (!res.headersSent)
+        res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null })
     }
-
-    await transport.handleRequest(req, res, req.body)
   })
 
-  const bySession = async (req: Request, res: Response) => {
-    const key = authorize(req, res)
-    if (!key) return
-    const sid = req.headers['mcp-session-id'] as string | undefined
-    if (sessionMismatch(sid, key, res)) return
-    const transport = sid ? transports[sid] : undefined
-    if (!transport) {
-      res.status(400).send('Missing or unknown mcp-session-id')
-      return
-    }
-    await transport.handleRequest(req, res)
-  }
-  app.get('/mcp', bySession) // SSE stream for server→client notifications
-  app.delete('/mcp', bySession) // end session
+  const notAllowed = (_req: Request, res: Response) =>
+    res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed — KineTrak MCP is stateless; use POST /mcp.' }, id: null })
+  app.get('/mcp', notAllowed) // no persistent SSE stream in stateless mode
+  app.delete('/mcp', notAllowed) // no session to end
 }
