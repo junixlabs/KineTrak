@@ -1,0 +1,64 @@
+import type { Alert, FeatureStatus, NodeStatus, WorkspaceData } from '../store/types'
+import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD } from './impact'
+
+// A glanceable "state of the product" summary for the human — the read-only
+// counterpart to the agent's next_action. PURE and fully DERIVED from board
+// metadata + pointers: it reads no external code and stores nothing (honors the
+// "board holds meaning + pointers, never code" principle). Just a lens on data
+// the impact engine already computes.
+
+export interface Gap {
+  kind: 'feature' | 'swimnode'
+  id: string
+  label: string
+}
+
+export interface Overview {
+  features: Record<FeatureStatus, number> & { total: number }
+  steps: Record<NodeStatus, number> & { total: number }
+  alerts: { impact: number; outdated: number; dod: number; question: number; total: number; list: Alert[] }
+  /** Semantic completeness of the board as a source of truth (not structural — that's validate_board). */
+  fidelity: {
+    /** Committed features (must/progress) with no code linked. */
+    featuresWithoutCode: Gap[]
+    /** Committed features with unmet acceptance criteria. */
+    unmetAcceptance: Gap[]
+    /** Swim steps not linked to any feature (untraceable). */
+    stepsWithoutFeature: Gap[]
+    /** Features/steps a VCS webhook flagged as drifted from their code. */
+    staleNodes: Gap[]
+  }
+}
+
+const committed = (s: FeatureStatus) => s === 'must' || s === 'progress'
+
+export function deriveOverview(data: WorkspaceData, threshold = DEFAULT_IMPACT_THRESHOLD): Overview {
+  const features = { total: data.features.length, must: 0, progress: 0, done: 0, nice: 0 } as Overview['features']
+  for (const f of data.features) features[f.status]++
+  const steps = { total: data.swimNodes.length, todo: 0, progress: 0, done: 0, blocked: 0 } as Overview['steps']
+  for (const n of data.swimNodes) steps[n.status]++
+
+  const list = deriveAllAlerts(data, threshold)
+  const by = (k: Alert['kind']) => list.filter((a) => a.kind === k).length
+  const alerts = { impact: by('impact'), outdated: by('outdated'), dod: by('dod'), question: by('question'), total: list.length, list }
+
+  // A step is traceable if some feature crossLinks into it (link_feature_step writes this).
+  const linkedNodes = new Set<string>()
+  for (const f of data.features) for (const l of f.crossLinks ?? []) if (l.view === 'swimlane' && l.targetId) linkedNodes.add(l.targetId)
+
+  const featuresWithoutCode: Gap[] = data.features
+    .filter((f) => committed(f.status) && !(f.codeRefs?.length))
+    .map((f) => ({ kind: 'feature', id: f.id, label: f.name }))
+  const unmetAcceptance: Gap[] = data.features
+    .filter((f) => committed(f.status) && (f.validations?.length ?? 0) > (f.validationsDone ?? []).filter((t) => f.validations!.includes(t)).length)
+    .map((f) => ({ kind: 'feature', id: f.id, label: f.name }))
+  const stepsWithoutFeature: Gap[] = data.swimNodes
+    .filter((n) => !linkedNodes.has(n.id))
+    .map((n) => ({ kind: 'swimnode', id: n.id, label: n.label }))
+  const staleNodes: Gap[] = [
+    ...data.features.filter((f) => f.codeStale).map((f) => ({ kind: 'feature' as const, id: f.id, label: f.name })),
+    ...data.swimNodes.filter((n) => n.codeStale).map((n) => ({ kind: 'swimnode' as const, id: n.id, label: n.label })),
+  ]
+
+  return { features, steps, alerts, fidelity: { featuresWithoutCode, unmetAcceptance, stepsWithoutFeature, staleNodes } }
+}

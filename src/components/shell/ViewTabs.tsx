@@ -1,14 +1,14 @@
-import { Network, LayoutGrid, Workflow } from 'lucide-react'
-import { useWorkspace } from '@/store/useWorkspace'
-import type { ViewId } from '@/store/types'
+import { Network, LayoutGrid, Workflow, Gauge } from 'lucide-react'
+import { useWorkspace, type WorkView } from '@/store/useWorkspace'
 
-const TABS: { id: ViewId; label: string; Icon: typeof Network }[] = [
+const TABS: { id: WorkView; label: string; Icon: typeof Network }[] = [
   { id: 'mindmap', label: 'Mindmap', Icon: Network },
   { id: 'story', label: 'Story Map', Icon: LayoutGrid },
   { id: 'swimlane', label: 'Swimlane', Icon: Workflow },
+  { id: 'overview', label: 'Overview', Icon: Gauge },
 ]
 
-const TAB_W = 124
+const TAB_W = 122
 
 export default function ViewTabs() {
   const activeView = useWorkspace((s) => s.activeView)

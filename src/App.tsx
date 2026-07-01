@@ -3,6 +3,7 @@ import SnapshotBanner from '@/components/shell/SnapshotBanner'
 import MindmapView from '@/components/views/MindmapView'
 import StoryMapView from '@/components/views/StoryMapView'
 import SwimlaneView from '@/components/views/SwimlaneView'
+import OverviewView from '@/components/views/OverviewView'
 import DetailPanel from '@/components/panel/DetailPanel'
 import Home from '@/components/home/Home'
 import ConnectPage from '@/components/connect/ConnectPage'
@@ -62,6 +63,7 @@ export default function App() {
             {activeView === 'mindmap' && <MindmapView />}
             {activeView === 'story' && <StoryMapView />}
             {activeView === 'swimlane' && <SwimlaneView />}
+            {activeView === 'overview' && <OverviewView />}
             <DetailPanel />
           </main>
         </div>

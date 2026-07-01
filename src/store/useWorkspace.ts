@@ -19,6 +19,10 @@ import { cloneData, sampleTemplate, blankTemplate } from './seed'
 import { makeId, nextNodeCode } from './ids'
 import { applyCommand, type Command, type Root } from '@/shared/board'
 
+/** UI-only view selector: the three diagram views plus the derived Overview.
+ *  Kept separate from the domain `ViewId` (used by crossLinks/selection/alerts). */
+export type WorkView = ViewId | 'overview'
+
 const PERSIST_VERSION = 2
 const EMPTY_DATA: WorkspaceData = blankTemplate()
 
@@ -58,7 +62,7 @@ interface WorkspaceState {
   // UI
   screen: 'home' | 'workspace' | 'connect' | 'guide'
   present: boolean
-  activeView: ViewId
+  activeView: WorkView
   activeSnapshotId: string | null
   selected: Selection | null
   hoveredId: string | null
@@ -87,7 +91,7 @@ interface WorkspaceState {
   goGuide: () => void
   openProject: (id: string) => void
   setPresent: (v: boolean) => void
-  setView: (v: ViewId) => void
+  setView: (v: WorkView) => void
   select: (sel: Selection | null) => void
   clearSelection: () => void
   setHovered: (id: string | null) => void
@@ -390,7 +394,7 @@ export const useWorkspace = create<WorkspaceState>()(
           }))
           proj.data.swimNodes = proj.data.swimNodes.map((n) => (ov.swimStatus?.[n.id] ? { ...n, status: ov.swimStatus[n.id] } : n))
         }
-        return { ...root, screen: 'home' as const, activeView: (p.activeView as ViewId) ?? 'swimlane', roleFilter: (p.roleFilter as Role) ?? null }
+        return { ...root, screen: 'home' as const, activeView: (p.activeView as WorkView) ?? 'swimlane', roleFilter: (p.roleFilter as Role) ?? null }
       },
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<WorkspaceState>
