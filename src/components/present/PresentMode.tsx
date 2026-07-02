@@ -4,6 +4,7 @@ import ViewTabs from '@/components/shell/ViewTabs'
 import MindmapView from '@/components/views/MindmapView'
 import StoryMapView from '@/components/views/StoryMapView'
 import SwimlaneView from '@/components/views/SwimlaneView'
+import OverviewView from '@/components/views/OverviewView'
 import { useWorkspace } from '@/store/useWorkspace'
 
 export default function PresentMode() {
@@ -52,6 +53,7 @@ export default function PresentMode() {
         {activeView === 'mindmap' && <MindmapView />}
         {activeView === 'story' && <StoryMapView />}
         {activeView === 'swimlane' && <SwimlaneView />}
+        {activeView === 'overview' && <OverviewView />}
       </main>
     </div>
   )

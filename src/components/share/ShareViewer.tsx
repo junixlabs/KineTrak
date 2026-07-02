@@ -4,6 +4,7 @@ import ActivityPanel from '@/components/shell/ActivityPanel'
 import MindmapView from '@/components/views/MindmapView'
 import StoryMapView from '@/components/views/StoryMapView'
 import SwimlaneView from '@/components/views/SwimlaneView'
+import OverviewView from '@/components/views/OverviewView'
 import DetailPanel from '@/components/panel/DetailPanel'
 import { useWorkspace } from '@/store/useWorkspace'
 
@@ -38,6 +39,7 @@ export default function ShareViewer() {
         {activeView === 'mindmap' && <MindmapView />}
         {activeView === 'story' && <StoryMapView />}
         {activeView === 'swimlane' && <SwimlaneView />}
+        {activeView === 'overview' && <OverviewView />}
         <DetailPanel />
       </main>
     </div>

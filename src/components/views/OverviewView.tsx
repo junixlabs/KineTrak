@@ -37,6 +37,9 @@ export default function OverviewView() {
   const data = useWorkspace((s) => s.currentData())
   const setView = useWorkspace((s) => s.setView)
   const select = useWorkspace((s) => s.select)
+  // Present mode & share links are stakeholder-facing: show the status rollups
+  // (the executive summary) but hide the internal source-of-truth hygiene gaps.
+  const presenting = useWorkspace((s) => s.present || s.isReadOnly())
   const ov = useMemo(() => deriveOverview(data, data.settings?.impactThreshold ?? DEFAULT_IMPACT_THRESHOLD), [data])
 
   const goGap = (g: Gap) =>
@@ -128,7 +131,9 @@ export default function OverviewView() {
           </div>
         )}
 
-        {/* ── SSOT fidelity (semantic completeness, not structural) ────────── */}
+        {/* ── SSOT fidelity (semantic completeness, not structural) ──────────
+            Internal hygiene — hidden while presenting or on a share link. */}
+        {!presenting && (
         <div className="mt-5">
           <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">Source-of-truth fidelity</div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -149,6 +154,7 @@ export default function OverviewView() {
             </Card>
           </div>
         </div>
+        )}
 
         <div className="mt-4 text-[11px] text-faint">Derived live from the board — no code is read or stored here.</div>
       </div>
