@@ -135,10 +135,10 @@ interface WorkspaceState {
   addFeature: (moduleId: string, releaseId: string) => void
   updateFeature: (id: string, patch: Partial<Feature>) => void
   deleteFeature: (id: string) => void
-  addSwimNode: (lane: number) => void
+  addSwimNode: (lane: number, flowId?: string) => void
   updateSwimNode: (id: string, patch: Partial<SwimNode>) => void
   updateSwimNodePos: (id: string, x: number, y: number) => void
-  arrangeSwimNodes: () => void
+  arrangeSwimNodes: (flowId?: string) => void
   deleteSwimNode: (id: string) => void
   addSwimEdge: (from: string, to: string) => void
   deleteSwimEdge: (from: string, to: string) => void
@@ -313,16 +313,16 @@ export const useWorkspace = create<WorkspaceState>()(
           dispatch({ type: 'deleteFeature', projectId: pid(), id })
           clearSelIf(id)
         },
-        addSwimNode: (lane) => {
+        addSwimNode: (lane, flowId) => {
           if (!editable()) return
           const d = get().currentData()
           const code = nextNodeCode(d.swimNodes.map((n) => n.code))
           const laneObj = d.lanes.find((l) => l.id === lane)
-          const count = d.swimNodes.filter((n) => n.lane === lane).length
+          const count = d.swimNodes.filter((n) => n.lane === lane && (!flowId || n.flowId === flowId)).length
           const x = 220 + count * 210
           const y = laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80
           const id = makeId('n')
-          dispatch({ type: 'addSwimNode', projectId: pid(), id, code, lane, x, y })
+          dispatch({ type: 'addSwimNode', projectId: pid(), id, code, lane, x, y, flowId })
           set({ selected: { type: 'swimnode', id, view: 'swimlane' } })
         },
         updateSwimNode: (id, patch) => {
@@ -333,10 +333,12 @@ export const useWorkspace = create<WorkspaceState>()(
           if (!editable()) return
           dispatch({ type: 'updateSwimNodePos', projectId: pid(), id, x, y })
         },
-        arrangeSwimNodes: () => {
+        arrangeSwimNodes: (flowId) => {
           if (!editable()) return
           const d = get().currentData()
-          const positions = autoArrangeSwimlane(d.swimNodes, d.swimEdges, d.lanes)
+          // Scoped to one flow: arrange its steps plus legacy unscoped steps (they show in every flow view).
+          const nodes = flowId ? d.swimNodes.filter((n) => !n.flowId || n.flowId === flowId) : d.swimNodes
+          const positions = autoArrangeSwimlane(nodes, d.swimEdges, d.lanes)
           if (positions.length) dispatch({ type: 'arrangeSwimNodes', projectId: pid(), positions })
         },
         deleteSwimNode: (id) => {

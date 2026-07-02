@@ -87,6 +87,9 @@ export interface SwimNode {
   code?: string
   label: string
   lane: number
+  /** Feature id owning this step's flow (feature-scoped swimlane). Unset = legacy
+   *  shared canvas: the step shows in every flow view. */
+  flowId?: string
   kind: NodeKind
   status: NodeStatus
   /** Layout position on the swimlane canvas. */

@@ -11,7 +11,7 @@ import {
   type Node,
   type NodeMouseHandler,
 } from '@xyflow/react'
-import { Plus, Network } from 'lucide-react'
+import { Plus, Network, Waypoints } from 'lucide-react'
 import SwimStepNode from '@/components/nodes/SwimStepNode'
 import LaneBackground from '@/components/nodes/LaneBackground'
 import DeletableEdge from '@/components/nodes/DeletableEdge'
@@ -55,6 +55,19 @@ function SwimlaneInner() {
   const { zoomIn, zoomOut, fitView } = useReactFlow()
   const compact = zoom < COMPACT_ZOOM
   const [laneMenu, setLaneMenu] = useState(false)
+  const [flowMenu, setFlowMenu] = useState(false)
+  // Feature-scoped flows: null = all flows (the whole canvas). Steps without a
+  // flowId are legacy shared-canvas steps and stay visible in every flow view.
+  const [flowFilter, setFlowFilter] = useState<string | null>(null)
+
+  const flows = useMemo(() => {
+    const ids = [...new Set(data.swimNodes.map((n) => n.flowId).filter((id): id is string => !!id))]
+    return ids.map((id) => ({ id, name: data.features.find((f) => f.id === id)?.name ?? id }))
+  }, [data.swimNodes, data.features])
+  const visibleNodes = useMemo(
+    () => data.swimNodes.filter((n) => !flowFilter || !n.flowId || n.flowId === flowFilter),
+    [data.swimNodes, flowFilter],
+  )
 
   const actItems = useActivity((s) => s.items)
   const actSeen = useActivity((s) => s.lastSeenTs)
@@ -67,21 +80,21 @@ function SwimlaneInner() {
   const reach = useMemo(() => reachableFrom(focus, data.swimEdges), [focus, data.swimEdges])
   const laneHit = useMemo(() => {
     const hit: Record<number, boolean> = {}
-    if (focus) data.swimNodes.forEach((n) => { if (reach.has(n.id)) hit[n.lane] = true })
+    if (focus) visibleNodes.forEach((n) => { if (reach.has(n.id)) hit[n.lane] = true })
     return hit
-  }, [focus, reach, data.swimNodes])
+  }, [focus, reach, visibleNodes])
 
   // Grow the lane band to fit the right-most node so steps never spill onto the
   // blank canvas beyond a fixed-width band (which happened once a lane held more
   // than ~8 nodes).
   const laneWidth = useMemo(() => {
     let max = LANE_WIDTH
-    data.swimNodes.forEach((n) => {
+    visibleNodes.forEach((n) => {
       const size = NODE_SIZE[n.kind] ?? DEFAULT_NODE_SIZE
       max = Math.max(max, n.x + size.w + 120)
     })
     return max
-  }, [data.swimNodes])
+  }, [visibleNodes])
 
   const computedNodes: Node[] = useMemo(() => {
     const list: Node[] = []
@@ -98,7 +111,7 @@ function SwimlaneInner() {
         zIndex: 0,
       })
     })
-    data.swimNodes.forEach((n) => {
+    visibleNodes.forEach((n) => {
       const lane = data.lanes.find((l) => l.id === n.lane)
       if (!lane) return
       const size = NODE_SIZE[n.kind] ?? DEFAULT_NODE_SIZE
@@ -125,11 +138,11 @@ function SwimlaneInner() {
       })
     })
     return list
-  }, [data, laneWidth, roleFilter, focus, reach, laneHit, selected, compact, recent])
+  }, [data, visibleNodes, laneWidth, roleFilter, focus, reach, laneHit, selected, compact, recent])
 
   const edges: Edge[] = useMemo(() => {
     const laneIds = new Set(data.lanes.map((l) => l.id))
-    const present = new Set(data.swimNodes.filter((n) => laneIds.has(n.lane)).map((n) => n.id))
+    const present = new Set(visibleNodes.filter((n) => laneIds.has(n.lane)).map((n) => n.id))
     return data.swimEdges
       .filter((e) => present.has(e.from) && present.has(e.to))
       .map((e) => {
@@ -151,7 +164,7 @@ function SwimlaneInner() {
           zIndex: 1,
         }
       })
-  }, [data.swimEdges, data.swimNodes, data.lanes, focus, reach])
+  }, [data.swimEdges, visibleNodes, data.lanes, focus, reach])
 
   // React Flow needs node state for drag/connect interactions; re-seed it from the store.
   // Merge by id so React Flow's measured dimensions survive — replacing the array
@@ -205,22 +218,61 @@ function SwimlaneInner() {
         </ViewHint>
       )}
 
-      {editable && (
+      {(editable || flows.length > 0) && (
         <div className="absolute left-[18px] top-[18px] z-20 flex items-start gap-2">
-          <button
-            onClick={() => setLaneMenu((v) => !v)}
-            className="flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-white px-3 text-[12.5px] font-bold text-brand shadow-card hover:bg-[#eef1ff]"
-          >
-            <Plus size={15} strokeWidth={2.5} /> Step
-          </button>
-          <button
-            onClick={() => { arrangeSwimNodes(); setLaneMenu(false); setTimeout(() => fitView({ padding: 0.15 }), 80) }}
-            title="Lay steps out left→right by flow order"
-            className="flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-white px-3 text-[12.5px] font-bold text-ink shadow-card hover:bg-[#f4f6f9]"
-          >
-            <Network size={15} strokeWidth={2.5} /> Auto-arrange
-          </button>
-          {laneMenu && (
+          {editable && (
+            <>
+              <button
+                onClick={() => setLaneMenu((v) => !v)}
+                className="flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-white px-3 text-[12.5px] font-bold text-brand shadow-card hover:bg-[#eef1ff]"
+              >
+                <Plus size={15} strokeWidth={2.5} /> Step
+              </button>
+              <button
+                onClick={() => { arrangeSwimNodes(flowFilter ?? undefined); setLaneMenu(false); setTimeout(() => fitView({ padding: 0.15 }), 80) }}
+                title="Lay steps out left→right by flow order"
+                className="flex h-9 items-center gap-1.5 rounded-[10px] border border-line bg-white px-3 text-[12.5px] font-bold text-ink shadow-card hover:bg-[#f4f6f9]"
+              >
+                <Network size={15} strokeWidth={2.5} /> Auto-arrange
+              </button>
+            </>
+          )}
+          {flows.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setFlowMenu((v) => !v)}
+                title="Filter the canvas to one feature's flow"
+                className={`flex h-9 items-center gap-1.5 rounded-[10px] border border-line px-3 text-[12.5px] font-bold shadow-card ${flowFilter ? 'bg-brand text-white hover:opacity-90' : 'bg-white text-ink hover:bg-[#f4f6f9]'}`}
+              >
+                <Waypoints size={15} strokeWidth={2.5} />
+                {flowFilter ? (flows.find((f) => f.id === flowFilter)?.name ?? 'Flow') : 'All flows'}
+              </button>
+              {flowMenu && (
+                <>
+                  <div className="fixed inset-0 z-[1]" onClick={() => setFlowMenu(false)} />
+                  <div className="absolute left-0 top-[42px] z-[2] w-[260px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
+                    <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-bold tracking-wide text-faint">SHOW FLOW</div>
+                    <button
+                      onClick={() => { setFlowFilter(null); setFlowMenu(false); setTimeout(() => fitView({ padding: 0.15 }), 80) }}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold hover:bg-[#f4f6f9] ${flowFilter === null ? 'text-brand' : 'text-ink'}`}
+                    >
+                      All flows
+                    </button>
+                    {flows.map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => { setFlowFilter(f.id); setFlowMenu(false); setTimeout(() => fitView({ padding: 0.15 }), 80) }}
+                        className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold hover:bg-[#f4f6f9] ${flowFilter === f.id ? 'text-brand' : 'text-ink'}`}
+                      >
+                        <span className="truncate">{f.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {editable && laneMenu && (
             <>
               <div className="fixed inset-0 z-[1]" onClick={() => setLaneMenu(false)} />
               <div className="absolute left-0 top-[42px] z-[2] w-[220px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
@@ -228,7 +280,7 @@ function SwimlaneInner() {
                 {data.lanes.map((l) => (
                   <button
                     key={l.id}
-                    onClick={() => { addSwimNode(l.id); setLaneMenu(false) }}
+                    onClick={() => { addSwimNode(l.id, flowFilter ?? undefined); setLaneMenu(false) }}
                     className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink hover:bg-[#f4f6f9]"
                   >
                     <span className="h-2.5 w-2.5 flex-none rounded-sm" style={{ background: l.color }} />

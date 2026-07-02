@@ -31,8 +31,10 @@ const ARRANGE_STEP_X = 210
  * node's lane. Collisions in the same lane+depth bump to the next free column.
  * Returns the new positions; the caller dispatches the moves.
  */
-function arrangeSwimlane(data: import('../src/shared/board').Root['projects'][number]['data']) {
-  const { swimNodes, swimEdges, lanes } = data
+function arrangeSwimlane(data: import('../src/shared/board').Root['projects'][number]['data'], flowId?: string) {
+  const { swimEdges, lanes } = data
+  // Scoped to one flow: arrange that flow's steps plus legacy unscoped steps (they show in every flow view).
+  const swimNodes = flowId ? data.swimNodes.filter((n) => !n.flowId || n.flowId === flowId) : data.swimNodes
   const ids = new Set(swimNodes.map((n) => n.id))
   const adj = new Map<string, string[]>()
   const indeg = new Map<string, number>()
@@ -227,6 +229,18 @@ export function buildMcpServer(key: ApiKey): McpServer {
       })
       d.swimEdges.forEach((e) => {
         if (!nodeIds.has(e.from) || !nodeIds.has(e.to)) issues.push({ severity: 'error', kind: 'dangling_edge', message: `An edge references a missing step`, ids: [e.from, e.to] })
+      })
+      const featIds = new Set(d.features.map((f) => f.id))
+      const nodeById = new Map(d.swimNodes.map((n) => [n.id, n]))
+      d.swimNodes.forEach((n) => {
+        if (n.flowId && !featIds.has(n.flowId))
+          issues.push({ severity: 'warning', kind: 'dangling_flow', message: `Step “${n.label}” belongs to a flow whose feature no longer exists`, ids: [n.id] })
+      })
+      d.swimEdges.forEach((e) => {
+        const a = nodeById.get(e.from)
+        const b = nodeById.get(e.to)
+        if (a?.flowId && b?.flowId && a.flowId !== b.flowId)
+          issues.push({ severity: 'warning', kind: 'cross_flow_edge', message: `Edge “${a.label}” → “${b.label}” crosses two flows — steps of one flow should connect within it`, ids: [e.from, e.to] })
       })
       const dupNames = (names: string[]) => {
         const seen = new Set<string>()
@@ -698,26 +712,29 @@ export function buildMcpServer(key: ApiKey): McpServer {
   // ── Swimlane nodes & edges ───────────────────────────────────────────────────
   server.registerTool(
     'add_swim_node',
-    { description: 'Add a swimlane step to a lane (lane is the numeric lane id from get_board).', inputSchema: { projectId: z.string().optional(), lane: z.number().int(), label: z.string().optional(), kind: nodeKind.optional() } },
-    async ({ projectId, lane, label, kind }) => {
+    { description: 'Add a swimlane step to a lane (lane is the numeric lane id from get_board). Pass flowId (the owning feature id) to scope the step to that feature\'s flow — the UI can then filter the canvas to one flow; omit for the legacy shared canvas.', inputSchema: { projectId: z.string().optional(), lane: z.number().int(), label: z.string().optional(), kind: nodeKind.optional(), flowId: z.string().optional() } },
+    async ({ projectId, lane, label, kind, flowId }) => {
       const p = await requireProj(projectId)
       const d = p.data
+      if (flowId && !d.features.some((f) => f.id === flowId)) return json({ error: 'flowId does not reference a feature on this board' })
       const code = nextNodeCode(d.swimNodes.map((n) => n.code))
-      const count = d.swimNodes.filter((n) => n.lane === lane).length
+      const count = d.swimNodes.filter((n) => n.lane === lane && (!flowId || n.flowId === flowId)).length
       const laneObj = d.lanes.find((l) => l.id === lane)
       const x = 220 + count * 210
       const y = laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80
       const id = makeId('n')
-      await applyAndBroadcast({ type: 'addSwimNode', projectId: p.id, id, code, lane, x, y, label, kind })
+      await applyAndBroadcast({ type: 'addSwimNode', projectId: p.id, id, code, lane, x, y, label, kind, flowId })
       return json({ id, code })
     },
   )
   server.registerTool(
     'update_swim_node',
-    { description: 'Update a swimlane step (label, status, kind, lane, owner, description, constraints).', inputSchema: { projectId: z.string().optional(), id: z.string(), label: z.string().optional(), status: nodeStatus.optional(), kind: nodeKind.optional(), lane: z.number().int().optional(), owner: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional() } },
-    async ({ projectId, id, ...rest }) => {
+    { description: 'Update a swimlane step (label, status, kind, lane, owner, description, constraints, flowId). flowId scopes the step to a feature\'s flow — pass "" to un-scope it back to the shared canvas.', inputSchema: { projectId: z.string().optional(), id: z.string(), label: z.string().optional(), status: nodeStatus.optional(), kind: nodeKind.optional(), lane: z.number().int().optional(), owner: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional(), flowId: z.string().optional() } },
+    async ({ projectId, id, flowId, ...rest }) => {
       const p = await requireProj(projectId)
+      if (flowId && !p.data.features.some((f) => f.id === flowId)) return json({ error: 'flowId does not reference a feature on this board' })
       const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+      if (flowId !== undefined) patch.flowId = flowId === '' ? undefined : flowId
       await applyAndBroadcast({ type: 'updateSwimNode', projectId: p.id, id, patch })
       return json({ ok: true })
     },
@@ -734,10 +751,10 @@ export function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'arrange_swimlane',
-    { description: 'Auto-tidy the swimlane: lay every step left→right by its flow depth (longest path along arrows) and vertically centered in its lane. One call cleans up the whole diagram.', inputSchema: { projectId: z.string().optional() } },
-    async ({ projectId }) => {
+    { description: 'Auto-tidy the swimlane: lay every step left→right by its flow depth (longest path along arrows) and vertically centered in its lane. One call cleans up the whole diagram. Pass flowId to arrange only that feature\'s flow (plus legacy unscoped steps).', inputSchema: { projectId: z.string().optional(), flowId: z.string().optional() } },
+    async ({ projectId, flowId }) => {
       const p = await requireProj(projectId)
-      const placed = arrangeSwimlane(p.data)
+      const placed = arrangeSwimlane(p.data, flowId)
       for (const n of placed) await applyAndBroadcast({ type: 'updateSwimNodePos', projectId: p.id, id: n.id, x: n.x, y: n.y })
       return json({ ok: true, moved: placed.length })
     },

@@ -43,7 +43,7 @@ export type Command =
   | { type: 'addFeature'; projectId: string; id: string; moduleId: string; releaseId: string; name?: string }
   | { type: 'updateFeature'; projectId: string; id: string; patch: Partial<Feature> }
   | { type: 'deleteFeature'; projectId: string; id: string }
-  | { type: 'addSwimNode'; projectId: string; id: string; code: string; lane: number; x: number; y: number; label?: string; kind?: NodeKind }
+  | { type: 'addSwimNode'; projectId: string; id: string; code: string; lane: number; x: number; y: number; label?: string; kind?: NodeKind; flowId?: string }
   | { type: 'updateSwimNode'; projectId: string; id: string; patch: Partial<SwimNode> }
   | { type: 'updateSwimNodePos'; projectId: string; id: string; x: number; y: number }
   | { type: 'arrangeSwimNodes'; projectId: string; positions: { id: string; x: number; y: number }[] }
@@ -156,7 +156,7 @@ export function applyCommand(root: Root, cmd: Command): Root {
     case 'addSwimNode':
       return mapData(root, cmd.projectId, (d) => ({
         ...d,
-        swimNodes: [...d.swimNodes, { id: cmd.id, code: cmd.code, label: cmd.label ?? 'New step', lane: cmd.lane, kind: cmd.kind ?? 'process', status: 'todo', x: cmd.x, y: cmd.y }],
+        swimNodes: [...d.swimNodes, { id: cmd.id, code: cmd.code, label: cmd.label ?? 'New step', lane: cmd.lane, kind: cmd.kind ?? 'process', status: 'todo', x: cmd.x, y: cmd.y, ...(cmd.flowId ? { flowId: cmd.flowId } : {}) }],
       }))
     case 'updateSwimNode':
       return mapData(root, cmd.projectId, (d) => ({ ...d, swimNodes: d.swimNodes.map((n) => (n.id === cmd.id ? { ...n, ...cmd.patch } : n)) }))
