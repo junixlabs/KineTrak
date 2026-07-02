@@ -149,10 +149,25 @@ export type Selection =
   | { type: 'module'; id: string; view: ViewId }
   | { type: 'swimnode'; id: string; view: ViewId }
 
+/** What this board is to its project: the operational source of truth, a derived
+ *  map of truth held elsewhere (verify against truthPointers before acting), or an
+ *  as-built snapshot of an onboarded codebase (statuses mean "exists", not "shipped"). */
+export type BoardRole = 'ssot' | 'map' | 'asis-doc'
+
+/** Where the operational truth lives when the board is not it (tracker, git, CI…). */
+export interface TruthPointer {
+  name: string
+  url?: string
+}
+
 /** Per-project tunables (persisted with the board). */
 export interface WorkspaceSettings {
   /** Min downstream-step footprint for a linked feature to raise an impact alert. */
   impactThreshold?: number
+  boardRole?: BoardRole
+  truthPointers?: TruthPointer[]
+  /** The steering Meta/Project Context feature, pinned by id (names drift, ids don't). */
+  contextFeatureId?: string
 }
 
 /** The editable diagram graph owned by a project (and frozen inside each snapshot). */

@@ -9,10 +9,10 @@ import { applyAndBroadcast as applyRaw, getCatalog, getProject, searchOrg } from
 import { bearerFrom, verifyKey, type ApiKey } from './keys'
 import { recordNote, type Actor } from './activity'
 import { activityRepo } from './infra/repositories'
-import type { Project } from '../src/store/types'
+import type { Project, WorkspaceSettings } from '../src/store/types'
 import { makeId, nextNodeCode } from '../src/store/ids'
 import { computeImpact } from '../src/lib/impact'
-import { descStats, isSteeringDoc } from '../src/lib/descriptions'
+import { descStats, isSteeringFeature } from '../src/lib/descriptions'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -235,12 +235,15 @@ export function buildMcpServer(key: ApiKey): McpServer {
         return [...dups]
       }
       dupNames(d.modules.map((m) => m.name)).forEach((n) => issues.push({ severity: 'warning', kind: 'duplicate_module_name', message: `Duplicate module name “${n}”` }))
+      const ctxId = d.settings?.contextFeatureId
+      if (ctxId && !d.features.some((f) => f.id === ctxId))
+        issues.push({ severity: 'warning', kind: 'dangling_context_pointer', message: 'settings.contextFeatureId points at a missing feature — fix the board contract (update_settings)', ids: [ctxId] })
 
       // Description-contract budget (see AGENT_PLAYBOOK §1.6): flag rambling descriptions to compact.
       // The Meta/Project Context steering node is exempt from the char/line budget.
       const moduleName = new Map(d.modules.map((m) => [m.id, m.name]))
       d.features.forEach((f) => {
-        if (isSteeringDoc(f.name, moduleName.get(f.moduleId))) return
+        if (isSteeringFeature(f, moduleName.get(f.moduleId), d.settings?.contextFeatureId)) return
         const s = descStats(f.desc)
         if (s.overBudget) issues.push({ severity: 'warning', kind: 'bloated_description', message: `Feature “${f.name}” description over budget — ${s.reasons.join('; ')}`, ids: [f.id] })
       })
@@ -268,8 +271,10 @@ export function buildMcpServer(key: ApiKey): McpServer {
       const cursor = latest.length ? Number(latest[0].id) : 0
 
       const norm = (s: string) => s.trim().toLowerCase()
-      const hasContext =
-        d.modules.some((m) => norm(m.name) === 'meta') && d.features.some((f) => norm(f.name) === 'project context')
+      const ctxId = d.settings?.contextFeatureId
+      const hasContext = ctxId
+        ? d.features.some((f) => f.id === ctxId)
+        : d.modules.some((m) => norm(m.name) === 'meta') && d.features.some((f) => norm(f.name) === 'project context')
       const blocked = d.swimNodes.filter((n) => n.status === 'blocked')
       const inProgress = d.features.filter((f) => f.status === 'progress')
       const planned = d.features.filter((f) => f.status === 'must')
@@ -306,6 +311,11 @@ export function buildMcpServer(key: ApiKey): McpServer {
       return json({
         projectId: p.id,
         cursor,
+        boardContract: {
+          role: d.settings?.boardRole ?? null,
+          truthPointers: d.settings?.truthPointers ?? [],
+          contextFeatureId: ctxId ?? null,
+        },
         summary: {
           modules: d.modules.length,
           features: d.features.length,
@@ -349,6 +359,31 @@ export function buildMcpServer(key: ApiKey): McpServer {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'updateSettings', projectId: p.id, patch: { impactThreshold: threshold } })
       return json({ ok: true, impactThreshold: threshold })
+    },
+  )
+  server.registerTool(
+    'update_settings',
+    {
+      description:
+        'Set the per-project board contract so agents auto-orient instead of parsing Project Context prose: boardRole (ssot = this board is the operational source of truth · map = derived view, verify against truthPointers before acting · asis-doc = as-built snapshot, statuses mean "exists" not "shipped"), truthPointers (where truth lives when the board is not it, e.g. Forge/git), contextFeatureId (pin the steering Project Context feature by id — exempts it from the desc budget regardless of name).',
+      inputSchema: {
+        projectId: z.string().optional(),
+        boardRole: z.enum(['ssot', 'map', 'asis-doc']).optional(),
+        truthPointers: z.array(z.object({ name: z.string(), url: z.string().optional() })).optional(),
+        contextFeatureId: z.string().optional(),
+      },
+    },
+    async ({ projectId, boardRole, truthPointers, contextFeatureId }) => {
+      const p = await requireProj(projectId)
+      if (contextFeatureId && !p.data.features.some((f) => f.id === contextFeatureId))
+        return json({ error: 'contextFeatureId does not reference a feature on this board' })
+      const patch: Partial<WorkspaceSettings> = {}
+      if (boardRole !== undefined) patch.boardRole = boardRole
+      if (truthPointers !== undefined) patch.truthPointers = truthPointers
+      if (contextFeatureId !== undefined) patch.contextFeatureId = contextFeatureId
+      if (!Object.keys(patch).length) return json({ error: 'nothing to update — pass boardRole, truthPointers and/or contextFeatureId' })
+      await applyAndBroadcast({ type: 'updateSettings', projectId: p.id, patch })
+      return json({ ok: true, settings: { ...p.data.settings, ...patch } })
     },
   )
 

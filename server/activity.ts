@@ -123,6 +123,7 @@ function describe(cmd: Command, project?: Project): { summary: string; targetId?
     case 'addRelease': return { summary: `added a release` }
     case 'updateRelease': return { summary: `updated a release` }
     case 'deleteRelease': return { summary: `deleted a release` }
+    case 'updateSettings': return { summary: `updated board settings (${Object.keys(cmd.patch).join(', ')})` }
     case 'askHuman': return { summary: `asked the human: ${cmd.question.slice(0, 120)}`, targetId: cmd.nodeId }
     case 'answerQuestion': return { summary: `a decision was answered` }
     case 'resolveQuestion': return { summary: `resolved a pending decision` }

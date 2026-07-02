@@ -50,3 +50,16 @@ export const isDescOverBudget = (text?: string): boolean => descStats(text).over
 export function isSteeringDoc(featureName?: string, moduleName?: string): boolean {
   return (featureName ?? '').trim().toLowerCase() === 'project context' && (moduleName ?? '').trim().toLowerCase() === 'meta'
 }
+
+/** Whether a feature is the board's steering doc. A board that pins it via
+ *  settings.contextFeatureId is authoritative (one steering doc per board, and
+ *  the name match is off); un-migrated boards fall back to the legacy
+ *  Meta/Project Context name match. */
+export function isSteeringFeature(
+  feature: { id: string; name?: string },
+  moduleName: string | undefined,
+  contextFeatureId?: string,
+): boolean {
+  if (contextFeatureId) return feature.id === contextFeatureId
+  return isSteeringDoc(feature.name, moduleName)
+}

@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { descStats, isSteeringDoc, LOG_MARKER, DESC_MAX_CHARS } from '../src/lib/descriptions'
+import { descStats, isSteeringDoc, isSteeringFeature, LOG_MARKER, DESC_MAX_CHARS } from '../src/lib/descriptions'
 
 test('a tight contract is within budget', () => {
   const s = descStats('Goal: compute the impact zone when a node changes.\nNon-goals: no UI editor.')
@@ -40,4 +40,17 @@ test('only the Meta/Project Context node is treated as a steering doc (budget-ex
   assert.equal(isSteeringDoc('project context', 'meta'), true) // case-insensitive
   assert.equal(isSteeringDoc('Project Context', 'Agent & MCP'), false) // wrong module
   assert.equal(isSteeringDoc('Checkout', 'Meta'), false) // wrong feature
+})
+
+test('settings.contextFeatureId pins the steering doc by id (names drift, ids don’t)', () => {
+  const ctx = { id: 'f_ctx', name: 'Bối cảnh dự án' } // localized name, module not named "Meta"
+  assert.equal(isSteeringFeature(ctx, 'Điều khiển', 'f_ctx'), true)
+  assert.equal(isSteeringFeature({ id: 'f_other', name: 'Checkout' }, 'Payments', 'f_ctx'), false)
+  // a pinned board turns the name match off — one steering doc per board
+  assert.equal(isSteeringFeature({ id: 'f_legacy', name: 'Project Context' }, 'Meta', 'f_ctx'), false)
+})
+
+test('boards without contextFeatureId keep the legacy name-match exemption', () => {
+  assert.equal(isSteeringFeature({ id: 'f_1', name: 'Project Context' }, 'Meta', undefined), true)
+  assert.equal(isSteeringFeature({ id: 'f_1', name: 'Project Context' }, 'Agent & MCP', undefined), false)
 })
