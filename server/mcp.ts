@@ -9,7 +9,7 @@ import { applyAndBroadcast as applyRaw, getCatalog, getProject, searchOrg } from
 import { bearerFrom, verifyKey, type ApiKey } from './keys'
 import { recordNote, type Actor } from './activity'
 import { activityRepo } from './infra/repositories'
-import type { Project, WorkspaceSettings } from '../src/store/types'
+import type { Project, WorkspaceData, WorkspaceSettings } from '../src/store/types'
 import { makeId, nextNodeCode } from '../src/store/ids'
 import { computeImpact } from '../src/lib/impact'
 import { descStats, isSteeringFeature } from '../src/lib/descriptions'
@@ -74,6 +74,20 @@ function arrangeSwimlane(data: import('../src/shared/board').Root['projects'][nu
 const featureStatus = z.enum(['must', 'progress', 'done', 'nice'])
 const nodeStatus = z.enum(['todo', 'progress', 'done', 'blocked'])
 const nodeKind = z.enum(['start', 'process', 'decision', 'end'])
+
+/** Depth-1 sub-feature guard shared by update_feature and bulk_apply.
+ *  Returns an error string, or null when the parent assignment is legal. */
+function parentIdError(d: WorkspaceData, id: string, parentId: string, moduleOverride?: string): string | null {
+  const self = d.features.find((f) => f.id === id)
+  const parent = d.features.find((f) => f.id === parentId)
+  if (!self) return 'feature not found'
+  if (!parent) return 'parentId does not reference a feature on this board'
+  if (parentId === id) return 'a feature cannot be its own parent'
+  if (parent.moduleId !== (moduleOverride ?? self.moduleId)) return 'parent must be in the same module'
+  if (parent.parentId) return 'parent is itself a sub-feature — only one nesting level is allowed'
+  if (d.features.some((f) => f.parentId === id)) return 'this feature has sub-features of its own — promote them first (one nesting level)'
+  return null
+}
 
 // Sent to every client on initialize — the condensed Layer-A playbook. The full
 // process lives in docs/AGENT_PLAYBOOK.md; keep this in sync with it.
@@ -410,6 +424,149 @@ export function buildMcpServer(key: ApiKey): McpServer {
     },
   )
 
+  // ── Bulk write — one call, many ops (onboarding at scale) ────────────────────
+  const BULK_OPS = [
+    'find_or_create_module', 'find_or_create_feature', 'update_feature', 'set_acceptance', 'check_acceptance',
+    'link_code', 'link_feature_step', 'add_dependency', 'add_swim_node', 'add_swim_edge', 'update_swim_node', 'append_note',
+  ] as const
+  const BULK_CAP = 200
+  server.registerTool(
+    'bulk_apply',
+    {
+      description:
+        `Execute a batch of write-ops in order with the same validation + reducer path as the individual tools — one call instead of hundreds when onboarding a large repo. Each ops[i] = {op, args} where op is one of: ${BULK_OPS.join(', ')} and args match the same-named tool (omit projectId). Results are index-aligned with ops; a failed op reports its error at its index and later ops still run (sequential, no rollback). Tier-4 ops (deletes, ship, project/release/lane surgery) are not batchable. Cap ${BULK_CAP} ops per call; the whole batch logs ONE activity summary line.`,
+      inputSchema: {
+        projectId: z.string().optional(),
+        ops: z.array(z.object({ op: z.enum(BULK_OPS), args: z.record(z.string(), z.any()) })).min(1).max(BULK_CAP),
+      },
+    },
+    async ({ projectId, ops }) => {
+      const pid = (await requireProj(projectId)).id
+      // No actor → recordChange no-ops; the batch is narrated by ONE recordNote below.
+      const silent = (cmd: Parameters<typeof applyRaw>[0]) => applyRaw(cmd)
+      const err = (message: string) => ({ error: message })
+      const runOp = async (op: (typeof BULK_OPS)[number], a: Record<string, unknown>): Promise<Record<string, unknown>> => {
+        const d = (await requireProj(pid)).data // fresh state — earlier ops in the batch are visible
+        switch (op) {
+          case 'find_or_create_module': {
+            const name = typeof a.name === 'string' ? a.name.trim() : ''
+            if (!name) return err('name required')
+            const found = d.modules.find((m) => m.name.trim().toLowerCase() === name.toLowerCase())
+            if (found) return { id: found.id, created: false }
+            const id = makeId('m')
+            await silent({ type: 'addModule', projectId: pid, id, name, color: typeof a.color === 'string' ? a.color : undefined })
+            return { id, created: true }
+          }
+          case 'find_or_create_feature': {
+            const name = typeof a.name === 'string' ? a.name.trim() : ''
+            if (!name || typeof a.moduleId !== 'string') return err('moduleId and name required')
+            if (!d.modules.some((m) => m.id === a.moduleId)) return err('module not found')
+            const found = d.features.find((f) => f.moduleId === a.moduleId && f.name.trim().toLowerCase() === name.toLowerCase())
+            if (found) return { id: found.id, created: false }
+            const rel = (typeof a.releaseId === 'string' ? a.releaseId : undefined) ?? d.releases[0]?.id
+            if (!rel) return err('no release available')
+            const id = makeId('f')
+            await silent({ type: 'addFeature', projectId: pid, id, moduleId: a.moduleId, releaseId: rel, name })
+            return { id, created: true }
+          }
+          case 'update_feature': {
+            if (typeof a.id !== 'string') return err('id required')
+            if (a.status !== undefined && !featureStatus.options.includes(a.status as never)) return err('invalid status')
+            if (typeof a.parentId === 'string' && a.parentId !== '') {
+              const e = parentIdError(d, a.id, a.parentId, typeof a.moduleId === 'string' ? a.moduleId : undefined)
+              if (e) return err(e)
+            }
+            const patch: Record<string, unknown> = {}
+            for (const k of ['name', 'status', 'moduleId', 'releaseId', 'desc', 'constraints', 'validations'] as const)
+              if (a[k] !== undefined) patch[k] = a[k]
+            if (a.parentId !== undefined) patch.parentId = a.parentId === '' ? undefined : a.parentId
+            await silent({ type: 'updateFeature', projectId: pid, id: a.id, patch })
+            return { ok: true }
+          }
+          case 'set_acceptance': {
+            if ((a.target !== 'feature' && a.target !== 'swimnode') || typeof a.id !== 'string' || !Array.isArray(a.items)) return err('target, id, items required')
+            await silent({ type: 'setAcceptance', projectId: pid, target: a.target, id: a.id, items: a.items.map(String) })
+            return { ok: true }
+          }
+          case 'check_acceptance': {
+            if ((a.target !== 'feature' && a.target !== 'swimnode') || typeof a.id !== 'string' || typeof a.index !== 'number' || typeof a.done !== 'boolean') return err('target, id, index, done required')
+            await silent({ type: 'checkAcceptance', projectId: pid, target: a.target, id: a.id, index: a.index, done: a.done })
+            return { ok: true }
+          }
+          case 'link_code': {
+            if ((a.target !== 'feature' && a.target !== 'swimnode') || typeof a.id !== 'string' || typeof a.path !== 'string') return err('target, id, path required')
+            const ref = { path: a.path, ...(typeof a.symbol === 'string' ? { symbol: a.symbol } : {}), ...(typeof a.url === 'string' ? { url: a.url } : {}), ...(typeof a.sha === 'string' ? { sha: a.sha } : {}) }
+            await silent({ type: 'linkCode', projectId: pid, target: a.target, id: a.id, ref, op: 'link' })
+            return { ok: true }
+          }
+          case 'link_feature_step': {
+            if (typeof a.featureId !== 'string' || typeof a.nodeId !== 'string') return err('featureId and nodeId required')
+            if (!d.features.some((f) => f.id === a.featureId)) return err('feature not found')
+            if (!d.swimNodes.some((n) => n.id === a.nodeId)) return err('swim node not found')
+            await silent({ type: 'linkFeatureStep', projectId: pid, featureId: a.featureId, nodeId: a.nodeId, op: 'link' })
+            return { ok: true }
+          }
+          case 'add_dependency': {
+            if (typeof a.featureId !== 'string' || typeof a.dependsOnId !== 'string') return err('featureId and dependsOnId required')
+            if (!d.features.some((f) => f.id === a.featureId) || !d.features.some((f) => f.id === a.dependsOnId)) return err('feature not found')
+            await silent({ type: 'setDependency', projectId: pid, featureId: a.featureId, dependsOnId: a.dependsOnId, op: 'add' })
+            return { ok: true }
+          }
+          case 'add_swim_node': {
+            if (typeof a.lane !== 'number') return err('lane required')
+            if (a.kind !== undefined && !nodeKind.options.includes(a.kind as never)) return err('invalid kind')
+            if (typeof a.flowId === 'string' && a.flowId && !d.features.some((f) => f.id === a.flowId)) return err('flowId does not reference a feature on this board')
+            const code = nextNodeCode(d.swimNodes.map((n) => n.code))
+            const flowId = typeof a.flowId === 'string' && a.flowId ? a.flowId : undefined
+            const count = d.swimNodes.filter((n) => n.lane === a.lane && (!flowId || n.flowId === flowId)).length
+            const laneObj = d.lanes.find((l) => l.id === a.lane)
+            const id = makeId('n')
+            await silent({ type: 'addSwimNode', projectId: pid, id, code, lane: a.lane, x: 220 + count * 210, y: laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80, label: typeof a.label === 'string' ? a.label : undefined, kind: a.kind as never, flowId })
+            return { id, code }
+          }
+          case 'add_swim_edge': {
+            if (typeof a.from !== 'string' || typeof a.to !== 'string') return err('from and to required')
+            if (!d.swimNodes.some((n) => n.id === a.from) || !d.swimNodes.some((n) => n.id === a.to)) return err('swim node not found')
+            await silent({ type: 'addSwimEdge', projectId: pid, from: a.from, to: a.to, branch: typeof a.branch === 'string' ? a.branch : undefined })
+            return { ok: true }
+          }
+          case 'update_swim_node': {
+            if (typeof a.id !== 'string') return err('id required')
+            if (a.status !== undefined && !nodeStatus.options.includes(a.status as never)) return err('invalid status')
+            if (a.kind !== undefined && !nodeKind.options.includes(a.kind as never)) return err('invalid kind')
+            if (typeof a.flowId === 'string' && a.flowId && !d.features.some((f) => f.id === a.flowId)) return err('flowId does not reference a feature on this board')
+            const patch: Record<string, unknown> = {}
+            for (const k of ['label', 'status', 'kind', 'lane', 'owner', 'desc', 'constraints'] as const)
+              if (a[k] !== undefined) patch[k] = a[k]
+            if (a.flowId !== undefined) patch.flowId = a.flowId === '' ? undefined : a.flowId
+            await silent({ type: 'updateSwimNode', projectId: pid, id: a.id, patch })
+            return { ok: true }
+          }
+          case 'append_note': {
+            if ((a.target !== 'feature' && a.target !== 'swimnode') || typeof a.id !== 'string' || typeof a.text !== 'string') return err('target, id, text required')
+            await silent({ type: 'appendNote', projectId: pid, target: a.target, id: a.id, text: a.text })
+            return { ok: true }
+          }
+        }
+      }
+      const results: Record<string, unknown>[] = []
+      let failed = 0
+      for (const { op, args } of ops) {
+        try {
+          const r = await runOp(op, args ?? {})
+          if ('error' in r) failed++
+          results.push(r)
+        } catch (e) {
+          failed++
+          results.push(err(e instanceof Error ? e.message : String(e)))
+        }
+      }
+      const kinds = [...new Set(ops.map((o) => o.op))].join(', ')
+      recordNote(pid, actor, `bulk_apply: ${ops.length} op(s), ${ops.length - failed} ok / ${failed} failed — ${kinds}`)
+      return json({ ok: failed === 0, applied: ops.length - failed, failed, results })
+    },
+  )
+
   // ── Business-logic SSOT: links, code refs, dependencies, acceptance ──────────
   server.registerTool(
     'link_feature_step',
@@ -684,15 +841,8 @@ export function buildMcpServer(key: ApiKey): McpServer {
     async ({ projectId, id, parentId, ...rest }) => {
       const p = await requireProj(projectId)
       if (parentId) {
-        const self = p.data.features.find((f) => f.id === id)
-        const parent = p.data.features.find((f) => f.id === parentId)
-        if (!self) return json({ error: 'feature not found' })
-        if (!parent) return json({ error: 'parentId does not reference a feature on this board' })
-        if (parentId === id) return json({ error: 'a feature cannot be its own parent' })
-        const targetModule = (rest.moduleId as string | undefined) ?? self.moduleId
-        if (parent.moduleId !== targetModule) return json({ error: 'parent must be in the same module' })
-        if (parent.parentId) return json({ error: 'parent is itself a sub-feature — only one nesting level is allowed' })
-        if (p.data.features.some((f) => f.parentId === id)) return json({ error: 'this feature has sub-features of its own — promote them first (one nesting level)' })
+        const err = parentIdError(p.data, id, parentId, rest.moduleId as string | undefined)
+        if (err) return json({ error: err })
       }
       const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
       if (parentId !== undefined) patch.parentId = parentId === '' ? undefined : parentId
