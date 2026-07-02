@@ -222,6 +222,15 @@ export function buildMcpServer(key: ApiKey): McpServer {
       d.features.forEach((f) => {
         if (!moduleIds.has(f.moduleId)) issues.push({ severity: 'error', kind: 'orphan_feature', message: `Feature “${f.name}” points at a missing module`, ids: [f.id] })
       })
+      const featById = new Map(d.features.map((f) => [f.id, f]))
+      d.features.forEach((f) => {
+        if (!f.parentId) return
+        const parent = featById.get(f.parentId)
+        if (!parent) issues.push({ severity: 'warning', kind: 'missing_parent', message: `Sub-feature “${f.name}” points at a missing parent`, ids: [f.id] })
+        else if (f.parentId === f.id) issues.push({ severity: 'error', kind: 'nested_parent', message: `Feature “${f.name}” is its own parent`, ids: [f.id] })
+        else if (parent.moduleId !== f.moduleId) issues.push({ severity: 'error', kind: 'cross_module_parent', message: `Sub-feature “${f.name}” has its parent in another module`, ids: [f.id, parent.id] })
+        else if (parent.parentId) issues.push({ severity: 'error', kind: 'nested_parent', message: `Sub-feature “${f.name}” nests deeper than one level (parent “${parent.name}” is itself a sub-feature)`, ids: [f.id, parent.id] })
+      })
       d.swimNodes.forEach((n) => {
         if (!laneIds.has(n.lane)) issues.push({ severity: 'error', kind: 'node_bad_lane', message: `Step “${n.label}” is in a non-existent lane`, ids: [n.id] })
         const connected = d.swimEdges.some((e) => e.from === n.id || e.to === n.id)
@@ -671,10 +680,22 @@ export function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'update_feature',
-    { description: 'Update a feature (name, status, module, release, description, constraints, validations). This is where the SPEC lives — put the goal, non-goals, constraints and acceptance criteria in desc before implementing. Status: must/nice = planned, progress = in progress, done = shipped.', inputSchema: { projectId: z.string().optional(), id: z.string(), name: z.string().optional(), status: featureStatus.optional(), moduleId: z.string().optional(), releaseId: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional(), validations: z.array(z.string()).optional() } },
-    async ({ projectId, id, ...rest }) => {
+    { description: 'Update a feature (name, status, module, release, description, constraints, validations, parentId). This is where the SPEC lives — put the goal, non-goals, constraints and acceptance criteria in desc before implementing. Status: must/nice = planned, progress = in progress, done = shipped. parentId nests the feature one level under a parent in the same module (epic → sub-feature); pass "" to promote it back to top level.', inputSchema: { projectId: z.string().optional(), id: z.string(), name: z.string().optional(), status: featureStatus.optional(), moduleId: z.string().optional(), releaseId: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional(), validations: z.array(z.string()).optional(), parentId: z.string().optional() } },
+    async ({ projectId, id, parentId, ...rest }) => {
       const p = await requireProj(projectId)
+      if (parentId) {
+        const self = p.data.features.find((f) => f.id === id)
+        const parent = p.data.features.find((f) => f.id === parentId)
+        if (!self) return json({ error: 'feature not found' })
+        if (!parent) return json({ error: 'parentId does not reference a feature on this board' })
+        if (parentId === id) return json({ error: 'a feature cannot be its own parent' })
+        const targetModule = (rest.moduleId as string | undefined) ?? self.moduleId
+        if (parent.moduleId !== targetModule) return json({ error: 'parent must be in the same module' })
+        if (parent.parentId) return json({ error: 'parent is itself a sub-feature — only one nesting level is allowed' })
+        if (p.data.features.some((f) => f.parentId === id)) return json({ error: 'this feature has sub-features of its own — promote them first (one nesting level)' })
+      }
       const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+      if (parentId !== undefined) patch.parentId = parentId === '' ? undefined : parentId
       await applyAndBroadcast({ type: 'updateFeature', projectId: p.id, id, patch })
       return json({ ok: true })
     },

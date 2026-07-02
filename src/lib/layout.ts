@@ -13,6 +13,8 @@ export interface MindmapLayout {
   features: Record<string, XY>
   /** Which side of the root each module (and its features) sits on. */
   side: Record<string, Side>
+  /** featureId → effective parent feature id (only valid depth-1 links). */
+  parent: Record<string, string>
   height: number
 }
 
@@ -30,6 +32,7 @@ const GAP2 = 88 // module ↔ feature gap
 const ROW = 52 // vertical pitch of a feature row
 const TOP = 56
 const MODULE_GAP = 20 // extra vertical gap between module blocks
+const SUB_INDENT = 36 // horizontal inset of a sub-feature under its parent
 
 // Right side grows to the right of the root; left side mirrors it.
 const RIGHT_MODULE_X = ROOT_X + ROOT_W + GAP1
@@ -59,7 +62,39 @@ export function computeMindmapLayout(
     if (list) list.push(f)
     else byModule.set(f.moduleId, [f])
   })
-  const featuresOf = (id: string) => byModule.get(id) ?? []
+  // Effective depth-1 parent links: parent must exist in the same module and be a
+  // root itself. Anything else (missing/cross-module/nested parent) renders flat —
+  // validate_board flags it, the layout never crashes on it.
+  const byId = new Map(features.map((f) => [f.id, f]))
+  const parentOf = (f: Feature): string | undefined => {
+    if (!f.parentId || f.parentId === f.id) return undefined
+    const p = byId.get(f.parentId)
+    return p && p.moduleId === f.moduleId && !p.parentId ? p.id : undefined
+  }
+  const parent: Record<string, string> = {}
+  features.forEach((f) => {
+    const pid = parentOf(f)
+    if (pid) parent[f.id] = pid
+  })
+  // Order features within a module so each parent is immediately followed by its
+  // children (original order preserved among roots and among siblings).
+  const featuresOf = (id: string) => {
+    const own = byModule.get(id) ?? []
+    const kids = new Map<string, Feature[]>()
+    own.forEach((f) => {
+      const pid = parent[f.id]
+      if (!pid) return
+      const list = kids.get(pid)
+      if (list) list.push(f)
+      else kids.set(pid, [f])
+    })
+    const ordered: Feature[] = []
+    own.forEach((f) => {
+      if (parent[f.id]) return
+      ordered.push(f, ...(kids.get(f.id) ?? []))
+    })
+    return ordered
+  }
   const span = (m: Module) => Math.max(featuresOf(m.id).length, 1)
 
   // Decide each module's side: honor a pinned `side`, then auto-balance the rest
@@ -121,6 +156,7 @@ export function computeMindmapLayout(
     modules: {},
     features: {},
     side,
+    parent,
     height: Math.max(rightRows, leftRows, TOP),
   }
   modules.forEach((m) => {
@@ -130,7 +166,9 @@ export function computeMindmapLayout(
   features.forEach((f) => {
     const c = featureCenter[f.id]
     if (c === undefined) return // collapsed module — feature not laid out
-    const x = side[f.moduleId] === 'left' ? LEFT_FEATURE_X : RIGHT_FEATURE_X
+    // Sub-features inset toward the outside so the parent→child step reads as a level.
+    const indent = parent[f.id] ? SUB_INDENT : 0
+    const x = side[f.moduleId] === 'left' ? LEFT_FEATURE_X - indent : RIGHT_FEATURE_X + indent
     layout.features[f.id] = { x, y: c - FEATURE_HALF }
   })
   return layout

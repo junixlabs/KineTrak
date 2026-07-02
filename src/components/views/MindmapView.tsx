@@ -137,9 +137,11 @@ function MindmapInner() {
       if (!moduleIds.has(f.moduleId)) return // orphan feature — no edge to a missing module
       const on = focusSet.has(f.id)
       const left = layout.side[f.moduleId] === 'left'
+      // A sub-feature hangs off its parent feature, not the module.
+      const source = layout.parent[f.id] ?? f.moduleId
       list.push({
-        id: `${f.moduleId}-${f.id}`,
-        source: f.moduleId,
+        id: `${source}-${f.id}`,
+        source,
         target: f.id,
         sourceHandle: left ? 'out-left' : 'out-right',
         targetHandle: left ? 'in-right' : 'in-left',

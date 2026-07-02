@@ -151,7 +151,11 @@ export function applyCommand(root: Root, cmd: Command): Root {
     case 'updateFeature':
       return mapData(root, cmd.projectId, (d) => ({ ...d, features: d.features.map((f) => (f.id === cmd.id ? { ...f, ...cmd.patch } : f)) }))
     case 'deleteFeature':
-      return mapData(root, cmd.projectId, (d) => ({ ...d, features: d.features.filter((f) => f.id !== cmd.id) }))
+      return mapData(root, cmd.projectId, (d) => ({
+        ...d,
+        // Children are promoted, never cascade-deleted.
+        features: d.features.filter((f) => f.id !== cmd.id).map((f) => (f.parentId === cmd.id ? { ...f, parentId: undefined } : f)),
+      }))
 
     case 'addSwimNode':
       return mapData(root, cmd.projectId, (d) => ({

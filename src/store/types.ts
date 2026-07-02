@@ -45,6 +45,10 @@ export interface Feature {
   name: string
   status: FeatureStatus
   releaseId: string
+  /** Parent feature (same module) — one nesting level only: a parent never has a
+   *  parent of its own. Gives the mindmap an epic → sub-feature level; Story Map,
+   *  releases and the impact engine keep treating features flat. */
+  parentId?: string
   desc?: string
   constraints?: string[]
   validations?: string[]
