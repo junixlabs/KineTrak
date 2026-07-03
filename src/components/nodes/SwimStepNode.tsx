@@ -64,7 +64,9 @@ export default function SwimStepNode({ data }: { data: SwimStepData }) {
       </span>
 
       {!data.compact && (
-        <span className="flex-1 text-[12px] font-semibold leading-tight" style={{ color: textColor }}>
+        // break-words: labels often carry unbreakable code tokens (KINETRAK_WEBHOOK_SECRET,
+        // bulk_apply(projectId, …)) that would otherwise overflow the card sideways.
+        <span className="min-w-0 flex-1 break-words text-[12px] font-semibold leading-tight" style={{ color: textColor }}>
           {data.label}
         </span>
       )}
