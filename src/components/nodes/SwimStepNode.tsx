@@ -25,8 +25,10 @@ export default function SwimStepNode({ data }: { data: SwimStepData }) {
     ? '!h-2 !w-2 !border-2 !border-white !bg-brand'
     : '!opacity-0'
 
+  // minHeight (not a fixed height) so a long label grows the card instead of
+  // spilling over its border; React Flow re-measures, keeping handles centered.
   const base =
-    'relative flex items-center gap-2 rounded-xl border px-3 transition-[opacity,box-shadow,border-color] duration-200'
+    'relative flex items-center gap-2 rounded-xl border px-3 py-1.5 transition-[opacity,box-shadow,border-color] duration-200'
   const bg = terminal ? '#14181f' : '#ffffff'
   const textColor = terminal ? '#ffffff' : '#14181f'
   const borderColor = data.focused ? '#2f6fed' : data.recent ? '#f59e0b' : decision ? '#7c5cff' : terminal ? '#14181f' : '#e5e8ec'
@@ -36,7 +38,7 @@ export default function SwimStepNode({ data }: { data: SwimStepData }) {
       className={base}
       style={{
         width: data.width,
-        height: data.height,
+        minHeight: data.height,
         background: bg,
         borderColor,
         opacity: data.dim ? 0.28 : 1,

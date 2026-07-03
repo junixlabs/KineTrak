@@ -338,7 +338,8 @@ export const useWorkspace = create<WorkspaceState>()(
           const d = get().currentData()
           // Scoped to one flow: arrange its steps plus legacy unscoped steps (they show in every flow view).
           const nodes = flowId ? d.swimNodes.filter((n) => !n.flowId || n.flowId === flowId) : d.swimNodes
-          const positions = autoArrangeSwimlane(nodes, d.swimEdges, d.lanes)
+          const avoid = flowId ? d.swimNodes.filter((n) => n.flowId && n.flowId !== flowId) : []
+          const positions = autoArrangeSwimlane(nodes, d.swimEdges, d.lanes, avoid)
           if (positions.length) dispatch({ type: 'arrangeSwimNodes', projectId: pid(), positions })
         },
         deleteSwimNode: (id) => {

@@ -1,4 +1,6 @@
-import type { SwimNode, SwimEdge, SwimLane } from '@/store/types'
+// Relative imports only (no `@` alias) so this module runs unchanged under both
+// Vite and tsx — it is imported by the server's MCP layer as well as the client.
+import type { SwimNode, SwimEdge, SwimLane } from '../store/types'
 
 export interface SwimPos {
   id: string
@@ -8,7 +10,7 @@ export interface SwimPos {
 
 const START_X = 60
 const COL_W = 220 // horizontal pitch between flow columns
-const NODE_H = 58 // representative node height used for lane centering
+const NODE_H: Record<string, number> = { start: 46, end: 46, decision: 66, process: 58 } // per-kind heights for lane centering (mirrors the UI's NODE_SIZE)
 
 /**
  * Auto-arrange swimlane nodes into a readable left→right flow grid.
@@ -21,10 +23,17 @@ const NODE_H = 58 // representative node height used for lane centering
  *
  * Nodes keep their lane; only x (and the lane-centered y) are reassigned. Nodes
  * whose lane no longer exists are left untouched.
+ *
+ * `avoid` = nodes that stay in place on the same canvas (a flow-scoped arrange
+ * leaves the other flows' steps where they are). The arranged block starts to
+ * the right of all of them, so repeated per-flow arranges never stack flows on
+ * top of each other in the all-flows view.
  */
-export function autoArrangeSwimlane(nodes: SwimNode[], edges: SwimEdge[], lanes: SwimLane[]): SwimPos[] {
+export function autoArrangeSwimlane(nodes: SwimNode[], edges: SwimEdge[], lanes: SwimLane[], avoid: SwimNode[] = []): SwimPos[] {
   const laneById = new Map(lanes.map((l) => [l.id, l]))
   const placeable = nodes.filter((n) => laneById.has(n.lane))
+  let startX = START_X
+  avoid.forEach((n) => { startX = Math.max(startX, n.x + COL_W) })
   const ids = new Set(placeable.map((n) => n.id))
 
   // Adjacency + indegree over present nodes only (ignore dangling edges).
@@ -79,10 +88,11 @@ export function autoArrangeSwimlane(nodes: SwimNode[], edges: SwimEdge[], lanes:
 
   return placeable.map((n) => {
     const lane = laneById.get(n.lane)!
+    const h = NODE_H[n.kind] ?? 58
     return {
       id: n.id,
-      x: START_X + (col.get(n.id) ?? 0) * COL_W,
-      y: Math.round(lane.y + (lane.h - NODE_H) / 2),
+      x: startX + (col.get(n.id) ?? 0) * COL_W,
+      y: Math.round(lane.y + (lane.h - h) / 2),
     }
   })
 }

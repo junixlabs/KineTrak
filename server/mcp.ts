@@ -13,6 +13,8 @@ import type { Project, WorkspaceData, WorkspaceSettings } from '../src/store/typ
 import { makeId, nextNodeCode } from '../src/store/ids'
 import { computeImpact } from '../src/lib/impact'
 import { descStats, isSteeringFeature } from '../src/lib/descriptions'
+import { autoArrangeSwimlane } from '../src/lib/swimlayout'
+import { flowStatusIssues } from '../src/lib/flowstatus'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -21,54 +23,16 @@ const dateLabel = () => {
   return `${d.getFullYear()} · ${p(d.getMonth() + 1)} · ${p(d.getDate())}`
 }
 
-// Node footprints (must match SwimlaneView's NODE_SIZE) for vertical centering.
-const SWIM_NODE_H: Record<string, number> = { start: 46, end: 46, decision: 66, process: 58 }
-const ARRANGE_BASE_X = 220
-const ARRANGE_STEP_X = 210
-
 /**
- * Tidy a swimlane: x by flow depth (longest path along edges), y centered in the
- * node's lane. Collisions in the same lane+depth bump to the next free column.
- * Returns the new positions; the caller dispatches the moves.
+ * Tidy a swimlane: x by flow depth, y centered in the node's lane — the shared
+ * layout in src/lib/swimlayout (same code the web UI runs). Scoped to one flow,
+ * it arranges that flow's steps plus legacy unscoped steps while staying clear
+ * of the other flows' steps, which keep their canvas positions.
  */
 function arrangeSwimlane(data: import('../src/shared/board').Root['projects'][number]['data'], flowId?: string) {
-  const { swimEdges, lanes } = data
-  // Scoped to one flow: arrange that flow's steps plus legacy unscoped steps (they show in every flow view).
   const swimNodes = flowId ? data.swimNodes.filter((n) => !n.flowId || n.flowId === flowId) : data.swimNodes
-  const ids = new Set(swimNodes.map((n) => n.id))
-  const adj = new Map<string, string[]>()
-  const indeg = new Map<string, number>()
-  swimNodes.forEach((n) => { adj.set(n.id, []); indeg.set(n.id, 0) })
-  swimEdges.forEach((e) => {
-    if (!ids.has(e.from) || !ids.has(e.to) || e.from === e.to) return
-    adj.get(e.from)!.push(e.to)
-    indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1)
-  })
-  // Longest-path depth via Kahn topological order (cycles fall back to depth 0).
-  const depth = new Map<string, number>(swimNodes.map((n) => [n.id, 0]))
-  const queue = swimNodes.filter((n) => (indeg.get(n.id) ?? 0) === 0).map((n) => n.id)
-  const deg = new Map(indeg)
-  while (queue.length) {
-    const u = queue.shift()!
-    for (const v of adj.get(u) ?? []) {
-      depth.set(v, Math.max(depth.get(v)!, depth.get(u)! + 1))
-      deg.set(v, deg.get(v)! - 1)
-      if (deg.get(v) === 0) queue.push(v)
-    }
-  }
-  const used = new Set<string>()
-  return swimNodes
-    .slice()
-    .sort((a, b) => depth.get(a.id)! - depth.get(b.id)!)
-    .map((n) => {
-      const lane = lanes.find((l) => l.id === n.lane)
-      let d = depth.get(n.id)!
-      while (used.has(`${n.lane}:${d}`)) d += 1
-      used.add(`${n.lane}:${d}`)
-      const h = SWIM_NODE_H[n.kind] ?? 58
-      const y = lane ? Math.round(lane.y + (lane.h - h) / 2) : 80
-      return { id: n.id, x: ARRANGE_BASE_X + d * ARRANGE_STEP_X, y }
-    })
+  const avoid = flowId ? data.swimNodes.filter((n) => n.flowId && n.flowId !== flowId) : []
+  return autoArrangeSwimlane(swimNodes, data.swimEdges, data.lanes, avoid)
 }
 
 const featureStatus = z.enum(['must', 'progress', 'done', 'nice'])
@@ -265,6 +229,7 @@ export function buildMcpServer(key: ApiKey): McpServer {
         if (a?.flowId && b?.flowId && a.flowId !== b.flowId)
           issues.push({ severity: 'warning', kind: 'cross_flow_edge', message: `Edge “${a.label}” → “${b.label}” crosses two flows — steps of one flow should connect within it`, ids: [e.from, e.to] })
       })
+      flowStatusIssues(d.features, d.swimNodes).forEach((i) => issues.push(i))
       const dupNames = (names: string[]) => {
         const seen = new Set<string>()
         const dups = new Set<string>()
