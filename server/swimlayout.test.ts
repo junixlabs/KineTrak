@@ -31,9 +31,9 @@ test('scoped arrange starts clear of avoided nodes (no flow stacking)', () => {
   pos.forEach((p) => assert.ok(p.x > maxAvoidX, `${p.id} (x=${p.x}) must start right of the placed flow (x≤${maxAvoidX})`))
 })
 
-test('unscoped arrange (no avoid) still packs from the canvas origin', () => {
+test('unscoped arrange (no avoid) starts clear of the lane title block', () => {
   const pos = autoArrangeSwimlane([node('a', 0)], [], lanes)
-  assert.equal(pos[0].x, 60)
+  assert.equal(pos[0].x, 220)
 })
 
 test('lane centering uses the per-kind node height', () => {

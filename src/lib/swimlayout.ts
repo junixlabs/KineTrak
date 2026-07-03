@@ -8,7 +8,7 @@ export interface SwimPos {
   y: number
 }
 
-const START_X = 60
+const START_X = 220 // first column clears the lane title block (LaneBackground: 16px inset + 152px label)
 const COL_W = 220 // horizontal pitch between flow columns
 const NODE_H: Record<string, number> = { start: 46, end: 46, decision: 66, process: 58 } // per-kind heights for lane centering (mirrors the UI's NODE_SIZE)
 
