@@ -118,6 +118,7 @@ interface WorkspaceState {
   setSyncStatus: (s: SyncStatus) => void
   applyServerRoot: (root: Root) => void
   applyServerProject: (project: Project) => void
+  applyServerOrgBoard: (board: OrgBoard) => void
 
   // Auth (used by the auth layer)
   setCurrentUser: (user: User | null) => void
@@ -260,6 +261,14 @@ export const useWorkspace = create<WorkspaceState>()(
             projects: s.projects.some((p) => p.id === project.id)
               ? s.projects.map((p) => (p.id === project.id ? project : p))
               : [...s.projects, project],
+          })),
+
+        // Merge one org board pushed by the server (deletes ride the full resync).
+        applyServerOrgBoard: (board) =>
+          set((s) => ({
+            orgBoards: s.orgBoards.some((b) => b.id === board.id)
+              ? s.orgBoards.map((b) => (b.id === board.id ? board : b))
+              : [...s.orgBoards, board],
           })),
 
         // ── Org / project ──────────────────────────────────────────────────

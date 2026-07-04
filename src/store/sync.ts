@@ -3,7 +3,7 @@ import { useActivity, type Activity } from './useActivity'
 import { useToast } from './useToast'
 import { SYNC_URL, authFetch, getToken } from './api'
 import type { Command, Root } from '@/shared/board'
-import type { Project } from './types'
+import type { OrgBoard, Project } from './types'
 
 /** Pull the activity history for the active project (newest 200). */
 export async function refreshActivity() {
@@ -85,6 +85,7 @@ function openWs() {
       const msg = JSON.parse(e.data)
       if (msg?.type === 'state') useWorkspace.getState().applyServerRoot(msg.root as Root)
       else if (msg?.type === 'project') useWorkspace.getState().applyServerProject(msg.project as Project)
+      else if (msg?.type === 'orgboard') useWorkspace.getState().applyServerOrgBoard(msg.board as OrgBoard)
       else if (msg?.type === 'activity') ingestActivity(msg.item as Activity)
     } catch {
       /* ignore malformed frames */

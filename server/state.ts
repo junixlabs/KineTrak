@@ -1,6 +1,6 @@
 import { applyCommand, type Command, type Root } from '../src/shared/board'
 import type { Org, OrgBoard, Project, ProjectHeader } from '../src/store/types'
-import { recordChange, type Actor } from './activity'
+import { recordChange, recordNote, type Actor } from './activity'
 import { getStore, type Catalog } from './infra/store'
 import { searchRepo } from './infra/repositories'
 import { ProjectRegistry } from './runtime/ProjectRegistry'
@@ -21,8 +21,8 @@ let catalog: Catalog = { orgs: [], headers: [] }
 let orgBoards: OrgBoard[] = []
 
 /** What changed, so the broadcast layer can scope frames: one project's board,
- *  or the catalog (org/project lifecycle → clients resync their list). */
-export type ChangeEvent = { kind: 'project'; project: Project } | { kind: 'catalog' }
+ *  one org board, or the catalog (org/project lifecycle → clients resync). */
+export type ChangeEvent = { kind: 'project'; project: Project } | { kind: 'catalog' } | { kind: 'orgboard'; board: OrgBoard }
 const listeners = new Set<(e: ChangeEvent) => void>()
 
 const header = (p: Project): ProjectHeader => ({ id: p.id, orgId: p.orgId, name: p.name, createdAt: p.createdAt })
@@ -118,11 +118,17 @@ const ORG_BOARD_CMDS = new Set([
  */
 export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<void> {
   let affected: Project | undefined
+  let orgBoard: OrgBoard | undefined
 
   if (CATALOG_CMDS.has(cmd.type)) {
     affected = await applyCatalog(cmd)
   } else if (ORG_BOARD_CMDS.has(cmd.type)) {
-    await applyOrgBoard(cmd)
+    // Capture the pre-state so delete notes can still resolve node/project names.
+    const boardId = (cmd as { boardId?: string; id?: string }).boardId ?? (cmd as { id?: string }).id
+    const prevBoard = orgBoards.find((b) => b.id === boardId)
+    orgBoard = await applyOrgBoard(cmd)
+    // Resolve names from the PRE-state so deletes still see their node/edge.
+    if (actor) noteOrgBoardChange(cmd, prevBoard, actor)
   } else {
     const pid = (cmd as { projectId?: string }).projectId
     const lp = pid ? await registry.acquire(pid) : null
@@ -131,24 +137,94 @@ export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<vo
   }
 
   recordChange(actor, cmd, affected)
-  const event: ChangeEvent = CATALOG_CMDS.has(cmd.type) || !affected ? { kind: 'catalog' } : { kind: 'project', project: affected }
+  const event: ChangeEvent = ORG_BOARD_CMDS.has(cmd.type)
+    ? orgBoard
+      ? { kind: 'orgboard', board: orgBoard }
+      : { kind: 'catalog' } // org-board delete → clients resync the whole scoped root
+    : CATALOG_CMDS.has(cmd.type) || !affected
+      ? { kind: 'catalog' }
+      : { kind: 'project', project: affected }
   listeners.forEach((l) => l(event))
 }
 
 // Same durable-write-first invariant as applyCatalog: persist, then swap the
 // resident array — a failed write leaves nothing observable.
-async function applyOrgBoard(cmd: Command): Promise<void> {
+// Returns the post-state board (undefined for deletes).
+async function applyOrgBoard(cmd: Command): Promise<OrgBoard | undefined> {
   const next = applyCommand({ orgs: [], projects: [], orgBoards }, cmd).orgBoards ?? []
+  let changed: OrgBoard | undefined
   if (cmd.type === 'deleteOrgBoard') {
     await store.deleteOrgBoard(cmd.id)
   } else {
     const boardId = (cmd as { boardId?: string; id?: string }).boardId ?? (cmd as { id?: string }).id
-    const changed = next.find((b) => b.id === boardId)
-    if (!changed) throw new Error('org board not found')
-    if (cmd.type === 'createOrgBoard' && !catalog.orgs.some((o) => o.id === changed.orgId)) throw new Error('org not found')
-    await store.saveOrgBoard(changed)
+    const found = next.find((b) => b.id === boardId)
+    if (!found) throw new Error('org board not found')
+    if (cmd.type === 'createOrgBoard' && !catalog.orgs.some((o) => o.id === found.orgId)) throw new Error('org not found')
+    await store.saveOrgBoard(found)
+    changed = found
   }
   orgBoards = next
+  return changed
+}
+
+/** Narrate an org-board mutation into the activity feeds of the endpoint
+ *  projects it touches. The activity pipeline stays project-scoped (its table,
+ *  ring and cursors are keyed by projectId) — an org-board edit is simply a
+ *  note in each affected project's story. Mutations touching no project node
+ *  are skipped; webhook-driven staleness carries its own richer note. */
+function noteOrgBoardChange(cmd: Command, board: OrgBoard | undefined, actor: Actor): void {
+  if (!board) return
+  const node = (id: string) => board.nodes.find((n) => n.id === id)
+  const edgeName = (from: string, to: string) => {
+    const e = board.edges.find((x) => x.from === from && x.to === to)
+    return e?.label || `${node(from)?.label ?? '?'} → ${node(to)?.label ?? '?'}`
+  }
+  const notes: { projectId: string; summary: string }[] = []
+  const forEdge = (from: string, to: string, summary: string) => {
+    for (const pid of new Set([node(from)?.projectId, node(to)?.projectId]))
+      if (pid) notes.push({ projectId: pid, summary })
+  }
+  switch (cmd.type) {
+    case 'addOrgBoardEdge':
+      forEdge(cmd.from, cmd.to, `connected an integration “${edgeName(cmd.from, cmd.to)}” on org board “${board.name}”`)
+      break
+    case 'updateOrgBoardEdge': {
+      const what = 'desc' in cmd.patch ? 'contract of' : 'fromFeatureId' in cmd.patch || 'toFeatureId' in cmd.patch ? 'anchors of' : ''
+      forEdge(cmd.from, cmd.to, `updated ${what ? `the ${what} ` : ''}integration “${edgeName(cmd.from, cmd.to)}” on org board “${board.name}”`)
+      break
+    }
+    case 'deleteOrgBoardEdge':
+      forEdge(cmd.from, cmd.to, `removed an integration on org board “${board.name}”`)
+      break
+    case 'linkOrgEdgeCode':
+      forEdge(cmd.from, cmd.to, `${cmd.op === 'unlink' ? 'unlinked code from' : 'linked code to'} integration “${edgeName(cmd.from, cmd.to)}” (${cmd.ref.path})`)
+      break
+    case 'markOrgEdgeStale':
+      // stale:true comes from the webhook, which writes its own richer note.
+      if (!cmd.stale) for (const e of cmd.edges) forEdge(e.from, e.to, `reconciled integration “${edgeName(e.from, e.to)}” on org board “${board.name}”`)
+      break
+    case 'addOrgBoardNode':
+    case 'updateOrgBoardNode':
+    case 'deleteOrgBoardNode': {
+      // A just-added node is not in the pre-state board — its project rides on the command.
+      const pid = cmd.type === 'addOrgBoardNode' ? cmd.projectId : node(cmd.id)?.projectId
+      if (pid)
+        notes.push({
+          projectId: pid,
+          summary: `${cmd.type === 'addOrgBoardNode' ? 'added this project to' : cmd.type === 'deleteOrgBoardNode' ? 'removed this project from' : 'updated this project’s system on'} org board “${board.name}”`,
+        })
+      break
+    }
+    default:
+      break // board create/rename/delete carry no project anchor
+  }
+  const seen = new Set<string>()
+  for (const { projectId, summary } of notes) {
+    const key = `${projectId}:${summary}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    if (catalog.headers.some((h) => h.id === projectId)) recordNote(projectId, actor, summary)
+  }
 }
 
 // Invariant: persist to the store FIRST, then update the resident catalog /

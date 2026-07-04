@@ -256,11 +256,22 @@ function sendProjectFrame(project: Project) {
   })
 }
 
+// One org board changed → push just that board to its org's owner sessions.
+// (Board deletes ride the catalog resync instead — no tombstone frame needed.)
+function sendOrgBoardFrame(board: import('../src/store/types').OrgBoard) {
+  const frame = JSON.stringify({ type: 'orgboard', board })
+  wss.clients.forEach((c) => {
+    const ws = c as AuthedSocket
+    if (ws.readyState === WebSocket.OPEN && ws.userId && userOwnsOrg(ws.userId, board.orgId)) ws.send(frame)
+  })
+}
+
 onChange((e) => {
   // Catalog lifecycle (rare) → resync the whole scoped root; a board mutation
-  // (frequent) → ship only the changed project. No more whole-root re-broadcast
-  // on every edit.
+  // (frequent) → ship only the changed project / org board. No more whole-root
+  // re-broadcast on every edit.
   if (e.kind === 'catalog') wss.clients.forEach((c) => void sendScoped(c as AuthedSocket))
+  else if (e.kind === 'orgboard') sendOrgBoardFrame(e.board)
   else sendProjectFrame(e.project)
 })
 
