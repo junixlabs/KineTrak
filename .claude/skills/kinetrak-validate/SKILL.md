@@ -9,7 +9,9 @@ description: >-
 allowed-tools: >-
   Read, Grep, Glob, mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__search,
   mcp__kinetrak__validate_board, mcp__kinetrak__update_swim_node, mcp__kinetrak__update_feature,
-  mcp__kinetrak__check_acceptance, mcp__kinetrak__append_note, mcp__kinetrak__log_activity
+  mcp__kinetrak__check_acceptance, mcp__kinetrak__append_note, mcp__kinetrak__log_activity,
+  mcp__kinetrak__validate_org_board, mcp__kinetrak__compute_org_impact,
+  mcp__kinetrak__update_org_board_edge, mcp__kinetrak__resolve_org_edge_stale
 ---
 
 # kinetrak-validate
@@ -38,14 +40,21 @@ from implementation memory.
    structurally, and an unmet criterion keeps the feature's live "Definition of Done" alert up so it
    cannot be shipped by mistake.
 
-4. **Record the verdict** — `append_note` on the feature with a clear PASS/FAIL per criterion and
+4. **Cross-system check (when the feature is anchored to org-board integrations).**
+   `compute_org_impact({featureId})` — if the feature provides/consumes integrations, confirm each
+   edge's contract still describes what was built: update the edge `desc`
+   (`update_org_board_edge`) if the implementation moved, `resolve_org_edge_stale` once
+   reconciled, and run `validate_org_board`. A stale contract is a FAIL item in the verdict
+   (alert-only — it informs the ship note, it does not hard-block).
+
+5. **Record the verdict** — `append_note` on the feature with a clear PASS/FAIL per criterion and
    any gaps found. This note is the review signal the human reads.
 
-5. **Mark review state.** Per `docs/AGENT_PLAYBOOK.md` §5, "in review" = all steps `done` + a
+6. **Mark review state.** Per `docs/AGENT_PLAYBOOK.md` §5, "in review" = all steps `done` + a
    validation note present (there is no dedicated status). Keep the feature `progress` until it
    ships; do not set `done` here.
 
-6. **Narrate** — `log_activity` the outcome.
+7. **Narrate** — `log_activity` the outcome.
 
 ## Human gate
 

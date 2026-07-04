@@ -36,10 +36,14 @@ of a cold full reload.
    `docs/AGENT_PLAYBOOK.md` §1.6). `validate_board` flags `bloated_description`; the Overview lists
    them under "Descriptions to compact" — clear the ones you own.
 
-4. **Snapshot if significant.** If meaningful work shipped or large changes landed this session,
+4. **Settle integration contracts.** If you touched org-board edges this session, make sure each
+   contract `desc` reflects the final state and nothing you reconciled is still flagged stale —
+   the next session (possibly another project's agent) reads those edges as truth.
+
+5. **Snapshot if significant.** If meaningful work shipped or large changes landed this session,
    `create_snapshot` with a named, dated label. Skip for trivial sessions.
 
-5. **Sign off.** `log_activity("Session complete. Next session: <plan>.")`.
+6. **Sign off.** `log_activity("Session complete. Next session: <plan>.")`.
 
 ## Terminal state
 

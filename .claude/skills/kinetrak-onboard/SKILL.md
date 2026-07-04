@@ -13,7 +13,8 @@ allowed-tools: >-
   mcp__kinetrak__get_board, mcp__kinetrak__search, mcp__kinetrak__validate_board,
   mcp__kinetrak__find_or_create_module, mcp__kinetrak__find_or_create_feature,
   mcp__kinetrak__update_feature, mcp__kinetrak__update_module, mcp__kinetrak__create_snapshot,
-  mcp__kinetrak__log_activity, mcp__kinetrak__append_note
+  mcp__kinetrak__log_activity, mcp__kinetrak__append_note, mcp__kinetrak__list_org_boards,
+  mcp__kinetrak__get_org_board, mcp__kinetrak__add_org_board_node, mcp__kinetrak__add_org_board_edge
 ---
 
 # kinetrak-onboard
@@ -62,6 +63,11 @@ the scan into board structure using the rules in `references/mindmap-mapping.md`
 
 Set feature `status` to reflect reality: shipped/working capabilities → `done`; partial/in-flight →
 `progress`. Do **not** invent features the code does not have.
+
+If the scan shows this codebase **talks to other systems the workspace already tracks**
+(`list_org_boards`), offer to map it onto the existing org board: `add_org_board_node` for this
+project, `add_org_board_edge` for each integration found in the code, with the contract in `desc`
+and feature anchors once B1's features exist. Additive only — same rule as the rest of onboarding.
 
 ## B2 · Human gate (mandatory, synchronous)
 

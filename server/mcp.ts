@@ -69,7 +69,7 @@ EXISTING CODEBASE not yet on the board? Do NOT restructure. Scan the code with y
 
 STOP AND GET HUMAN APPROVAL before any irreversible or high-blast-radius action: delete_module / delete_feature / delete_swim_node / delete_swim_edge, shipping a feature, restructuring many items at once, or creating/deleting a project. Gates are hard — do not bypass one because you judge it safe.
 
-CROSS-SYSTEM VIEW: org boards (list_org_boards / get_org_board / create_org_board) map how this workspace's projects work together — one node per project (or external system), edges = integrations whose desc carries the contract. Use them when a feature spans services; keep standing architecture docs elsewhere.
+CROSS-SYSTEM VIEW: org boards (list_org_boards / get_org_board / create_org_board) map how this workspace's projects work together — one node per project (or external system), edges = integrations whose desc carries the contract. ANCHOR each edge end to the owning feature (fromFeatureId/toFeatureId) and link_org_edge_code the implementing files: anchors power compute_org_impact + consumer-side "provider changing" alerts, and code links power contract-drift flags (reconcile by updating the edge desc/codeRefs or resolve_org_edge_stale). Before specifying a feature that touches a boundary, read the org board and run compute_org_impact; CHANGING a contract other projects consume needs ask_human first. validate_org_board catches dangling anchors/contracts. All alert-only — nothing here gates shipping. Keep standing architecture docs elsewhere.
 
 AT SESSION END, append_note your summary + next step + the latest cursor onto "Project Context", and snapshot if you did significant work.`
 

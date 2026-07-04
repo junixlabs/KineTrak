@@ -24,12 +24,15 @@ Rules:
 - **The reducer (`src/shared/board.ts`) stays pure** and import-free of server code —
   it runs in the browser too. Mint ids/timestamps in the caller and pass them in the command.
 
-## The two aggregates
+## The three aggregates
 
 - **Catalog** (orgs + project *headers*) is resident in RAM (`state.getCatalog()`), used
   for listing and scoping. Cheap, always loaded.
 - **Project board** (the heavy `WorkspaceData` + snapshots) loads on demand through the
   **`ProjectRegistry`** and is evicted when idle. One `LoadedProject` per id at a time.
+- **Org boards** (system maps) are small JSONB documents kept resident like the catalog
+  (`state.getOrgBoards()`), written through `applyOrgBoard` with the same persist-first
+  invariant. Their commands are routed by the `ORG_BOARD_CMDS` set in `state.ts`.
 
 ## Write-path invariants (where the bugs were)
 
@@ -63,8 +66,10 @@ Rules:
 ## Realtime broadcast
 
 `onChange` carries a `ChangeEvent`: a **board** mutation pushes only the changed project
-(`{type:'project'}`) to clients that can see it; a **catalog** lifecycle change resyncs the
-scoped root. Never broadcast the whole root on a board edit.
+(`{type:'project'}`) to clients that can see it; an **org-board** mutation pushes only that
+board (`{type:'orgboard'}`) to the org owner's sessions and map-share viewers; a **catalog**
+lifecycle change (including org-board deletes) resyncs the scoped root. Never broadcast the
+whole root on a board edit.
 
 ## Search
 
@@ -81,6 +86,11 @@ it — do not hand-copy field lists. The projection is rebuilt on every `savePro
 - **New MCP tool**: register in `mcp.ts`; read via `await requireProj(projectId)` /
   `getCatalog()` / `searchOrg()`; write via `await applyAndBroadcast(...)`. Never call a
   repository from a tool.
+- **New org-board command**: add the variant to `Command` + a case in `applyCommand`, add its
+  type string to `ORG_BOARD_CMDS` (`state.ts`) and an authz case in `scope.authorizeCommand`
+  (boardId → org via the injectable `boardOrg` resolver). If humans should see it in a
+  project's feed, extend `noteOrgBoardChange`. Validation rules live in
+  `src/shared/orgboard.orgBoardIssues` (pure — the caller resolves features via lookup).
 - **New table / column**: edit `infra/schema.ts`, run `npm run db:generate`, commit the SQL
   under `infra/migrations`. Migrations run automatically at boot.
 

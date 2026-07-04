@@ -11,7 +11,8 @@ description: >-
 allowed-tools: >-
   mcp__kinetrak__list_projects, mcp__kinetrak__next_action, mcp__kinetrak__get_board,
   mcp__kinetrak__get_changes_since, mcp__kinetrak__search, mcp__kinetrak__validate_board,
-  mcp__kinetrak__log_activity
+  mcp__kinetrak__log_activity, mcp__kinetrak__list_org_boards, mcp__kinetrak__get_org_board,
+  mcp__kinetrak__validate_org_board
 ---
 
 # kinetrak-orient
@@ -49,7 +50,12 @@ session.
    (orphan features, dangling edges, steps in missing lanes), surface them — fixing them may need
    to happen before new work, and some fixes are Tier-4 (deletes).
 
-6. **Announce.** Call `log_activity(projectId, "<one line: what you are about to do>")` so the human
+6. **Cross-system recall (when the work may span services).** `list_org_boards` → `get_org_board`
+   for the workspace's system maps: which projects integrate, and the contracts on the edges. Run
+   `validate_org_board` if you will rely on its feature anchors. (Convention:
+   `docs/AGENT_PLAYBOOK.md` §1.7.)
+
+7. **Announce.** Call `log_activity(projectId, "<one line: what you are about to do>")` so the human
    watching the board live knows an agent is active.
 
 ## Output

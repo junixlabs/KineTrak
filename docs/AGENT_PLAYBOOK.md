@@ -79,6 +79,7 @@ a codifiable rule with the primitives that already exist:
 | The rule drifting from its code | already automatic — `codeStale` → outdated alert (once code-linked) |
 | Why the rule changed | a dated `append_note` (lightweight ADR) |
 | What a change to the rule affects | `compute_impact` (via crossLinks / `dependsOn`) |
+| A cross-system integration contract | an org-board edge: `desc` = the contract, `link_org_edge_code` + feature anchors (§1.7) |
 
 That is a rule's full lifecycle with zero new machinery; projects without rules simply don't use it.
 Only if a single project accumulates *so many* rules that constraints become unmanageable should a
@@ -108,6 +109,29 @@ Honor these rules on every write:
 **~5 entries**. Over budget → `validate_board` raises a `bloated_description` warning and the Overview
 lists it under "Descriptions to compact". Nothing is cut — you are expected to *rewrite it tighter*.
 If the contract can't fit the budget, it is probably **two features** — split it.
+
+### 1.7 Org boards — cross-system truth
+
+When work spans **multiple projects/services**, the workspace's **org boards** (system maps) are
+the source of truth for the boundaries: each node is one of the org's projects (or an external
+system), each edge is an **integration** whose `desc` carries the contract (endpoints, events,
+payloads) and whose `kind` is `api`/`event`/`data`/`other`. The rules:
+
+- **Anchor edges to features.** `fromFeatureId`/`toFeatureId` tie each end of an integration to
+  the feature that owns it inside that project. Anchors are what make cross-project impact
+  (`compute_org_impact`, consumer-side alerts) and contract drift work — set them whenever you
+  know which features own the integration.
+- **The edge desc is a contract, not a diagram note.** Same writing contract as §1.6: current
+  state, 3-second read, no history. `link_org_edge_code` the implementing files on both sides so
+  a VCS webhook flags the edge `codeStale` when they change.
+- **Reconciling = touching the contract.** Updating the edge `desc`/`codeRefs` (or
+  `resolve_org_edge_stale`) clears the stale flag; renaming a label does not.
+- **Alert-only by design.** Cross-project impact never gates shipping — it informs the humans and
+  agents on the other side. Treat a stale anchored edge as a **check item** before shipping, not a
+  hard stop.
+- **Scope test** (what belongs on an org board): if it is tied to a feature/flow ("feature X calls
+  service B with contract Y") → board. If it is feature-independent standing architecture (a full
+  C4 diagram, message-bus conventions) → keep it outside; at most a truthPointer.
 
 ---
 
@@ -140,6 +164,9 @@ specs, which swim steps are done) rather than always starting at step 1. But alw
 **goal, non-goals, constraints, acceptance criteria**. Set the feature `status` to reflect intent
 (`must` for committed work, `nice` for optional). For an existing project, the spec must state
 explicitly **what is out of scope** — "preserve existing structure unless told otherwise."
+If the feature touches a system boundary, read the org board first (`get_org_board`,
+`compute_org_impact`) — the integration contracts there are constraints on your spec, and a spec
+that **changes** a contract needs an `ask_human` gate (it affects other projects' owners).
 → *Human gate: the human reviews the spec before implementation begins.*
 
 **3 · Decompose** — Create an ordered sequence of swim steps for the feature, connected with edges
@@ -158,12 +185,16 @@ to show flow. Keep it to **~7 steps per pass**; if it needs more, split into two
 - `validate_board` — catch orphans, dangling edges, disconnected steps.
 - Re-read the feature's acceptance criteria (written in step 2) and check the work against them.
 - `search` to confirm cross-references resolve.
+- If the feature is anchored to org-board integrations: `validate_org_board` + confirm the edge
+  contracts still describe what you built (update the edge `desc` if the implementation moved).
 - `append_note` with the validation result.
 → *Human gate: the human sees the validation note (Activity feed + card).*
 
 **6 · Ship** — Set the feature `status` to `done`. `create_snapshot` with a named, dated label
 (e.g. `"v3: checkout flow shipped"`). `log_activity` the shipment. Update the Story Map release
-column if the project uses releases. → *Tier-4 gate (§6): the ship promotion needs approval.*
+column if the project uses releases. List any **stale anchored integration** as an open check item
+in the ship note (alert-only — it informs, it does not block). → *Tier-4 gate (§6): the ship
+promotion needs approval.*
 
 ---
 
@@ -243,9 +274,9 @@ Sort every operation by reversibility and blast radius. Enforce these as process
 | Tier | Stance | KineTrak operations |
 |---|---|---|
 | **1 — Read** | Autonomous, no gate | `get_board`, `get_changes_since`, `list_projects`, `search`, `validate_board`, `next_action`, `log_activity`; a single leaf step status flip |
-| **2 — Additive** | Autonomous, but narrate via `log_activity` | `append_note`, `add_swim_node`, `add_swim_edge`, `update_swim_node`, `move_swim_node`, `arrange_swimlane` |
-| **3 — New structure** | Proceed, but flag for async review | `add_module`, `add_feature`, `update_module`, `update_feature`, `reorder_modules`, `reorder_features`, routine `create_snapshot` |
-| **4 — Irreversible / high blast radius** | **Stop and get synchronous approval first** | `delete_module`, `delete_feature`, `delete_swim_node`, `delete_swim_edge`; **ship** promotion; restructuring that touches **>3 modules or >10 features** in one pass; creating or deleting a project |
+| **2 — Additive** | Autonomous, but narrate via `log_activity` | `append_note`, `add_swim_node`, `add_swim_edge`, `update_swim_node`, `move_swim_node`, `arrange_swimlane`; org-board edge upkeep (`update_org_board_edge` contract/anchors, `link_org_edge_code`, `resolve_org_edge_stale`) |
+| **3 — New structure** | Proceed, but flag for async review | `add_module`, `add_feature`, `update_module`, `update_feature`, `reorder_modules`, `reorder_features`, routine `create_snapshot`; `create_org_board`, `add_org_board_node`, `add_org_board_edge` |
+| **4 — Irreversible / high blast radius** | **Stop and get synchronous approval first** | `delete_module`, `delete_feature`, `delete_swim_node`, `delete_swim_edge`; `delete_org_board`, `delete_org_board_node`, `delete_org_board_edge`; **ship** promotion; restructuring that touches **>3 modules or >10 features** in one pass; creating or deleting a project |
 
 **Before any Tier-3/4 pause**, your `log_activity` (or message to the human) must state:
 
@@ -269,7 +300,9 @@ Never bypass a gate because you judge it safe. The gate is the human's, not your
 3. Read the `Meta / Project Context` node.
 4. `search(area)` for the specific area you are about to touch.
 5. `validate_board()` to surface structural problems before you build on top of them.
-6. `log_activity("Starting: <task>. Board state: <one-line summary>.")`
+6. If the work may span services: `list_org_boards` → `get_org_board` for the boundaries, and
+   `validate_org_board` if you will rely on its anchors.
+7. `log_activity("Starting: <task>. Board state: <one-line summary>.")`
 
 > Shortcut: `next_action(projectId)` returns the latest cursor plus a recommended next step in one
 > call — useful to start step 1, though still read the board/Context for full context.
@@ -315,6 +348,10 @@ needs to resume incrementally.
 
 **Brownfield:** scan code → draft map (additive) → **human confirms** → snapshot `v0: as-is` →
 develop (additive/scoped; restructuring is Tier 4).
+
+**Cross-system:** feature touches a boundary → `get_org_board` + `compute_org_impact` in Specify →
+anchor edges (`fromFeatureId`/`toFeatureId`) + `link_org_edge_code` in Decompose/Implement →
+`validate_org_board` + reconcile contracts in Validate. Changing a contract = `ask_human` first.
 
 **Stop and ask (Tier 4):** any `delete_*`, ship promotion, wide restructuring, project
 create/delete.

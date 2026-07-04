@@ -8,7 +8,7 @@ disable-model-invocation: true
 allowed-tools: >-
   mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__search,
   mcp__kinetrak__validate_board, mcp__kinetrak__update_feature, mcp__kinetrak__create_snapshot,
-  mcp__kinetrak__log_activity
+  mcp__kinetrak__log_activity, mcp__kinetrak__compute_org_impact
 ---
 
 # kinetrak-ship
@@ -31,11 +31,14 @@ feature that **passed** `kinetrak-validate`.
 ## Steps
 
 1. **Re-check integrity** — `validate_board`. Do not ship over `error`-severity issues.
-2. **Promote** — `update_feature` → `status: done`. If the project uses releases, move the feature
+2. **Cross-system check items** — `compute_org_impact({featureId})`: any integration this feature
+   provides/consumes that is flagged `codeStale` goes into the ship note as an open check item
+   (alert-only — it informs the human, it does not block the promotion).
+3. **Promote** — `update_feature` → `status: done`. If the project uses releases, move the feature
    into the target release column (Story Map).
-3. **Checkpoint** — `create_snapshot` with a named, dated label: `"v<n>: <feature> shipped"`. This
+4. **Checkpoint** — `create_snapshot` with a named, dated label: `"v<n>: <feature> shipped"`. This
    is the immutable reference point for what shipped.
-4. **Announce** — `log_activity("Shipped <feature>. Snapshot <label> created.")`.
+5. **Announce** — `log_activity("Shipped <feature>. Snapshot <label> created.")`.
 
 ## Terminal state
 

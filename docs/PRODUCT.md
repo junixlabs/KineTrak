@@ -52,6 +52,25 @@ Công cụ dùng được thật, không chỉ xem seed:
   chuyển project, tạo/đổi tên/xoá project & org, project mới chọn **Sample** (copy demo) hoặc **Blank**.
 - Single-user, local — org mới chỉ là nhóm (chưa auth/chia sẻ).
 
+## 4d. Org boards — System Maps (cross-system business logic)
+
+- Mỗi **Org** có thể có **nhiều System Map**: node = một project của org (hoặc external system),
+  edge = **integration** có `kind` (api/event/data/other), `label`, và `desc` = **contract**
+  (context-in-card). Tạo map mới mặc định **seed từ các project sẵn có** (một node/project).
+- **Neo vào feature**: mỗi đầu edge neo được vào một feature trong project ở đầu đó
+  (`fromFeatureId`/`toFeatureId`) — khớp nối để impact & drift suy luận xuyên project. Panel
+  feature có mục **Integrations** trỏ ngược về org board.
+- **Impact xuyên project (alert-only)**: provider feature đang `must/progress` → board consumer
+  nhận alert "Provider changing"; edge `codeStale` → alert "Contract outdated" ở cả hai đầu.
+  Không chặn ship — chỉ báo.
+- **Contract drift**: edge nhận `codeRefs`; webhook VCS của project hai đầu flag edge stale khi
+  code đổi; sửa `desc`/`codeRefs` (hoặc resolve) = reconcile.
+- **Validate**: `validate_org_board` — project/anchor dangling, contract rỗng, edge stale, node
+  cô lập, trùng tên board.
+- **Share & Present**: link read-only `/map/<token>` (bảng `org_board_shares`, cập nhật live qua
+  WS) + Present mode ẩn chrome. Realtime: mỗi sửa đổi phát frame `{type:'orgboard'}` riêng.
+- Hoạt động cả **local mode** (không server) — reducer chạy trong browser như mọi board khác.
+
 ## 5. Kiến trúc kỹ thuật
 - **Vite + React 18 + TypeScript**.
 - **@xyflow/react** (React Flow) — Mindmap & Swimlane (custom node/edge, vẽ edge, kéo node);

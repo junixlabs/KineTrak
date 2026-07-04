@@ -11,7 +11,8 @@ allowed-tools: >-
   mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__search,
   mcp__kinetrak__find_or_create_module, mcp__kinetrak__find_or_create_feature,
   mcp__kinetrak__update_feature, mcp__kinetrak__set_acceptance, mcp__kinetrak__append_note,
-  mcp__kinetrak__log_activity
+  mcp__kinetrak__log_activity, mcp__kinetrak__list_org_boards, mcp__kinetrak__get_org_board,
+  mcp__kinetrak__compute_org_impact, mcp__kinetrak__ask_human
 ---
 
 # kinetrak-specify
@@ -42,13 +43,19 @@ board you have not loaded.
    - When the spec changes later, **rewrite `desc`**, don't append; history goes below a `— log —`
      marker as terse dated notes (keep ~5).
 
-3. **Set status to reflect intent** — `must` for committed work, `nice` for optional. (Lifecycle
+3. **Check the system boundary.** If the feature touches another service/project, read the org
+   board first (`get_org_board`; `compute_org_impact` on the feature once it exists) — the
+   integration contracts there are constraints on this spec. A spec that **changes** a contract
+   other projects consume is a Tier-4 decision: raise it with `ask_human` before committing the
+   spec. (Full convention: `docs/AGENT_PLAYBOOK.md` §1.7.)
+
+4. **Set status to reflect intent** — `must` for committed work, `nice` for optional. (Lifecycle
    mapping: `docs/AGENT_PLAYBOOK.md` §5.)
 
-4. **Record assumptions** with `append_note` (dated) if you had to decide something the user did
+5. **Record assumptions** with `append_note` (dated) if you had to decide something the user did
    not specify.
 
-5. **Narrate** — `log_activity` a one-liner: which feature you specified and its goal.
+6. **Narrate** — `log_activity` a one-liner: which feature you specified and its goal.
 
 ## Human gate
 

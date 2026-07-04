@@ -146,10 +146,32 @@ Business logic / impact (what makes the board a source of truth, not just a task
 - `ask_human({question, nodeId?, options?})` / `answer_question` / `resolve_question` — the two-way
   human-decision channel (a structured alternative to one-way `log_activity`) for Tier-4 gates.
 
+Org boards (system maps — cross-system business logic at the org level; every tool is scoped to
+the key's workspace):
+- `list_org_boards` / `get_org_board({boardId?})` — the workspace's system maps: nodes = the org's
+  projects (or external systems), edges = integrations.
+- `create_org_board({name, seedFromProjects?})` — new map, seeded with one node per existing
+  project by default. `rename_org_board`, `delete_org_board` (Tier 4).
+- `add_org_board_node({boardId, label, projectId?})` / `update_org_board_node` /
+  `delete_org_board_node` — systems on the map; a node without `projectId` is an external system.
+- `add_org_board_edge({boardId, from, to, label?, kind?, desc?, fromFeatureId?, toFeatureId?})` /
+  `update_org_board_edge` / `delete_org_board_edge` — integrations. `desc` carries the CONTRACT;
+  `fromFeatureId`/`toFeatureId` anchor each end to a feature in that end's project (pass `""` to
+  clear). Anchors power cross-project impact and consumer-side alerts.
+- `compute_org_impact({featureId, projectId?})` — which integrations a feature provides/consumes,
+  the project/feature on the other end, and contract staleness. Alert-only: never gates shipping.
+- `link_org_edge_code` / `unlink_org_edge_code` / `resolve_org_edge_stale` — contract drift: link
+  the implementing files on both sides; a webhook push flags the edge stale; updating the edge
+  `desc`/`codeRefs` (or resolving) clears it.
+- `validate_org_board({boardId?})` — dangling projects/anchors, empty contracts, stale edges,
+  isolated systems, duplicate board names.
+
 VCS webhooks (drift detection): point your repo at
 `POST {endpoint-origin}/api/webhook/{github|gitlab}?projectId=<board id>`. A push whose files match a
 node's `codeRefs` flags that node **outdated** (a live alert), so the board never silently drifts from
-the code. Verify with a secret via `KINETRAK_WEBHOOK_SECRET` (or `…_GITHUB` / `…_GITLAB`): GitHub uses
+the code. The same push also scans the org's system maps: integration edges touching that project
+whose `codeRefs` match are flagged stale on both sides. Verify with a secret via
+`KINETRAK_WEBHOOK_SECRET` (or `…_GITHUB` / `…_GITLAB`): GitHub uses
 the HMAC `X-Hub-Signature-256`; GitLab uses the `X-Gitlab-Token`. Add a provider by dropping one
 adaptor into `server/integrations/vcs/`.
 

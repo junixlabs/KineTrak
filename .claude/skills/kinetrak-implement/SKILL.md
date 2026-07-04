@@ -9,7 +9,9 @@ description: >-
 allowed-tools: >-
   Read, Grep, Glob, mcp__kinetrak__get_board, mcp__kinetrak__get_changes_since,
   mcp__kinetrak__search, mcp__kinetrak__validate_board, mcp__kinetrak__update_swim_node,
-  mcp__kinetrak__append_note, mcp__kinetrak__log_activity, mcp__kinetrak__create_snapshot
+  mcp__kinetrak__append_note, mcp__kinetrak__log_activity, mcp__kinetrak__create_snapshot,
+  mcp__kinetrak__get_org_board, mcp__kinetrak__update_org_board_edge,
+  mcp__kinetrak__link_org_edge_code
 ---
 
 # kinetrak-implement
@@ -37,8 +39,12 @@ For each step in the plan, in order:
    the command run, the file(s) touched.
 4. **Advance status** — `update_swim_node` → `done` when the step's work is verified, or `blocked`
    (with a note saying why) if you are stuck.
-5. **Narrate** — `log_activity` so the human follows along live.
-6. **Checkpoint at milestones** — `create_snapshot` when a meaningful cluster completes, and always
+5. **Keep integration contracts true.** If the step changed how this project talks to another
+   system (endpoint, event, payload), update the org-board edge in the same pass:
+   `update_org_board_edge` with the new contract `desc`, and `link_org_edge_code` the implementing
+   file(s) so drift detection watches them. (Convention: `docs/AGENT_PLAYBOOK.md` §1.7.)
+6. **Narrate** — `log_activity` so the human follows along live.
+7. **Checkpoint at milestones** — `create_snapshot` when a meaningful cluster completes, and always
    before a wide or risky batch. Not after every single step.
 
 Stay in sync on long runs with `get_changes_since` rather than reloading the whole board.
