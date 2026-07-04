@@ -1,4 +1,4 @@
-import type { Alert, SwimEdge, WorkspaceData } from '../store/types'
+import type { Alert, OrgBoard, Project, SwimEdge, WorkspaceData } from '../store/types'
 
 // Relative imports only (no `@` alias) so this module runs unchanged under both
 // Vite and tsx — it is imported by the server's MCP layer as well as the client.
@@ -203,14 +203,78 @@ export function deriveDodAlerts(data: WorkspaceData): Alert[] {
   return alerts.sort((a, b) => a.id.localeCompare(b.id))
 }
 
-/** All live, derived alerts for a board (impact + outdated + DoD), plus the board's
- *  own stored non-derived alerts (e.g. pending human-decision 'question's). */
-export function deriveAllAlerts(data: WorkspaceData, threshold = DEFAULT_IMPACT_THRESHOLD): Alert[] {
+/** Org context for cross-project alerts — the caller's scoped root, narrowed. */
+export interface OrgAlertCtx {
+  orgBoards: OrgBoard[]
+  projects: Pick<Project, 'id' | 'name' | 'data'>[]
+  /** The project whose board is being viewed (alerts are for its audience). */
+  projectId: string
+}
+
+/**
+ * Cross-project alerts DERIVED from org boards (alert-only by design — they never
+ * gate shipping). Two sources, both anchored on integration edges:
+ * - impact: a provider feature this project consumes is being changed (must/progress)
+ * - outdated: an integration contract touching this project is flagged codeStale
+ * Ids are board-qualified (`org-impact:<boardId>:<from>:<to>`) so they can never
+ * collide with the single-project `impact:<featureId>` ids. Pure, deterministic.
+ */
+export function deriveOrgImpactAlerts(ctx: OrgAlertCtx): Alert[] {
+  const alerts: Alert[] = []
+  const projById = new Map(ctx.projects.map((p) => [p.id, p]))
+  for (const board of ctx.orgBoards) {
+    const nodeById = new Map(board.nodes.map((n) => [n.id, n]))
+    for (const e of board.edges) {
+      const fromNode = nodeById.get(e.from)
+      const toNode = nodeById.get(e.to)
+      if (!fromNode || !toNode) continue
+      const touchesProject = fromNode.projectId === ctx.projectId || toNode.projectId === ctx.projectId
+      const edgeName = e.label || `${fromNode.label} → ${toNode.label}`
+
+      // Consumer side: the provider feature behind an integration we consume is changing.
+      if (toNode.projectId === ctx.projectId && e.fromFeatureId && fromNode.projectId) {
+        const provider = projById.get(fromNode.projectId)
+        const feat = provider?.data.features.find((f) => f.id === e.fromFeatureId)
+        if (feat && (feat.status === 'must' || feat.status === 'progress'))
+          alerts.push({
+            id: `org-impact:${board.id}:${e.from}:${e.to}`,
+            kind: 'impact',
+            title: `Provider changing: ${edgeName}`,
+            detail: `“${feat.name}” in ${provider!.name} — the provider side of “${edgeName}” — is being changed. Re-check the contract before relying on it.`,
+            tags: ['@BA', '@Dev'],
+            time: 'live',
+            actionLabel: 'Open org board',
+            action: { view: 'orgboard', boardId: board.id, edge: { from: e.from, to: e.to } },
+          })
+      }
+
+      // Either side: the integration's linked code drifted from its contract.
+      if (touchesProject && e.codeStale)
+        alerts.push({
+          id: `org-outdated:${board.id}:${e.from}:${e.to}`,
+          kind: 'outdated',
+          title: `Contract outdated: ${edgeName}`,
+          detail: `Code implementing “${edgeName}” changed after the contract was last updated (org board “${board.name}”). Reconcile the contract, then resolve.`,
+          tags: ['@Dev', '@BA'],
+          time: 'live',
+          actionLabel: 'Open org board',
+          action: { view: 'orgboard', boardId: board.id, edge: { from: e.from, to: e.to } },
+        })
+    }
+  }
+  return alerts.sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/** All live, derived alerts for a board (impact + outdated + DoD + cross-project
+ *  org alerts when org context is provided), plus the board's own stored
+ *  non-derived alerts (e.g. pending human-decision 'question's). */
+export function deriveAllAlerts(data: WorkspaceData, threshold = DEFAULT_IMPACT_THRESHOLD, org?: OrgAlertCtx): Alert[] {
   const derivedKinds = new Set(['impact', 'outdated', 'dod'])
   return [
     ...deriveImpactAlerts(data, threshold),
     ...deriveOutdatedAlerts(data),
     ...deriveDodAlerts(data),
+    ...(org ? deriveOrgImpactAlerts(org) : []),
     ...data.alerts.filter((a) => !derivedKinds.has(a.kind)),
   ]
 }

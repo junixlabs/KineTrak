@@ -1,5 +1,5 @@
 import type { Alert, FeatureStatus, NodeStatus, WorkspaceData } from '../store/types'
-import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD } from './impact'
+import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD, type OrgAlertCtx } from './impact'
 import { isDescOverBudget, isSteeringFeature } from './descriptions'
 
 // A glanceable "state of the product" summary for the human — the read-only
@@ -35,13 +35,13 @@ export interface Overview {
 
 const committed = (s: FeatureStatus) => s === 'must' || s === 'progress'
 
-export function deriveOverview(data: WorkspaceData, threshold = DEFAULT_IMPACT_THRESHOLD): Overview {
+export function deriveOverview(data: WorkspaceData, threshold = DEFAULT_IMPACT_THRESHOLD, org?: OrgAlertCtx): Overview {
   const features = { total: data.features.length, must: 0, progress: 0, done: 0, nice: 0 } as Overview['features']
   for (const f of data.features) features[f.status]++
   const steps = { total: data.swimNodes.length, todo: 0, progress: 0, done: 0, blocked: 0 } as Overview['steps']
   for (const n of data.swimNodes) steps[n.status]++
 
-  const list = deriveAllAlerts(data, threshold)
+  const list = deriveAllAlerts(data, threshold, org)
   const by = (k: Alert['kind']) => list.filter((a) => a.kind === k).length
   const alerts = { impact: by('impact'), outdated: by('outdated'), dod: by('dod'), question: by('question'), total: list.length, list }
 

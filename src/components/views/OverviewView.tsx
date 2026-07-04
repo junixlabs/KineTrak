@@ -41,7 +41,18 @@ export default function OverviewView() {
   // Present mode & share links are stakeholder-facing: show the status rollups
   // (the executive summary) but hide the internal source-of-truth hygiene gaps.
   const presenting = useWorkspace((s) => s.present || s.isReadOnly())
-  const ov = useMemo(() => deriveOverview(data, data.settings?.impactThreshold ?? DEFAULT_IMPACT_THRESHOLD), [data])
+  const orgBoards = useWorkspace((s) => s.orgBoards)
+  const projects = useWorkspace((s) => s.projects)
+  const activeProjectId = useWorkspace((s) => s.activeProjectId)
+  const ov = useMemo(
+    () =>
+      deriveOverview(
+        data,
+        data.settings?.impactThreshold ?? DEFAULT_IMPACT_THRESHOLD,
+        activeProjectId ? { orgBoards, projects, projectId: activeProjectId } : undefined,
+      ),
+    [data, orgBoards, projects, activeProjectId],
+  )
 
   const goGap = (g: Gap) =>
     g.kind === 'feature'

@@ -19,12 +19,17 @@ export default function AlertsPanel() {
   const select = useWorkspace((s) => s.select)
   const openOrgBoard = useWorkspace((s) => s.openOrgBoard)
 
-  // Impact alerts are computed live from the board; other kinds come from the board's
-  // own alert list. Recomputed whenever the board changes.
+  const orgBoards = useWorkspace((s) => s.orgBoards)
+  const projects = useWorkspace((s) => s.projects)
+  const activeProjectId = useWorkspace((s) => s.activeProjectId)
+
+  // Impact alerts are computed live from the board (plus cross-project org-board
+  // alerts); other kinds come from the board's own alert list.
   const alerts = useMemo(() => {
     const threshold = data.settings?.impactThreshold ?? DEFAULT_IMPACT_THRESHOLD
-    return deriveAllAlerts(data, threshold)
-  }, [data])
+    const org = activeProjectId ? { orgBoards, projects, projectId: activeProjectId } : undefined
+    return deriveAllAlerts(data, threshold, org)
+  }, [data, orgBoards, projects, activeProjectId])
 
   return (
     <div className="relative">

@@ -357,6 +357,32 @@ export function buildMcpServer(key: ApiKey): McpServer {
     },
   )
   server.registerTool(
+    'compute_org_impact',
+    {
+      description:
+        'Cross-PROJECT impact of a feature via org-board integration edges: which integrations this feature provides or consumes, which project/feature sits on the other end, and whether the contract is flagged outdated. Run alongside compute_impact before changing a feature that touches a system boundary. Alert-only — nothing here gates shipping.',
+      inputSchema: { projectId: z.string().optional(), featureId: z.string() },
+    },
+    async ({ projectId, featureId }) => {
+      const p = await requireProj(projectId)
+      const headerName = (pid?: string) => orgHeaders().find((h) => h.id === pid)?.name
+      const hits: Record<string, unknown>[] = []
+      for (const b of getOrgBoards(orgId)) {
+        const nodeById = new Map(b.nodes.map((n) => [n.id, n]))
+        for (const e of b.edges) {
+          const fromNode = nodeById.get(e.from)
+          const toNode = nodeById.get(e.to)
+          const base = { boardId: b.id, boardName: b.name, edgeLabel: e.label ?? null, kind: e.kind ?? null, codeStale: !!e.codeStale, contract: e.desc ?? null }
+          if (e.fromFeatureId === featureId && fromNode?.projectId === p.id)
+            hits.push({ ...base, direction: 'provides', otherProjectId: toNode?.projectId ?? null, otherProjectName: headerName(toNode?.projectId) ?? toNode?.label ?? null, otherFeatureId: e.toFeatureId ?? null })
+          if (e.toFeatureId === featureId && toNode?.projectId === p.id)
+            hits.push({ ...base, direction: 'consumes', otherProjectId: fromNode?.projectId ?? null, otherProjectName: headerName(fromNode?.projectId) ?? fromNode?.label ?? null, otherFeatureId: e.fromFeatureId ?? null })
+        }
+      }
+      return json({ featureId, projectId: p.id, count: hits.length, hits })
+    },
+  )
+  server.registerTool(
     'set_impact_threshold',
     {
       description:

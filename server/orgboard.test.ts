@@ -2,7 +2,8 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { applyCommand, seedOrgBoardNodes, type Root } from '../src/shared/board'
 import { orgBoardIssues } from '../src/shared/orgboard'
-import type { Feature } from '../src/store/types'
+import { deriveOrgImpactAlerts } from '../src/lib/impact'
+import type { Feature, OrgBoard, Project } from '../src/store/types'
 import { authorizeCommand } from './scope'
 import type { Catalog } from './infra/store'
 import type { User } from './auth'
@@ -154,6 +155,42 @@ test('drift: linkOrgEdgeCode + markOrgEdgeStale + reconcile semantics', () => {
   r = applyCommand(r, { type: 'linkOrgEdgeCode', boardId: 'b1', from: 'n1', to: 'n2', ref: { path: 'src/api/orders.ts' }, op: 'link' })
   assert.equal(r.orgBoards![0].edges[0].codeStale, false)
   assert.equal(r.orgBoards![0].edges[0].codeRefs!.length, 1, 'same path+symbol replaces, not duplicates')
+})
+
+test('deriveOrgImpactAlerts: consumer sees provider changes + stale contracts, ids are board-qualified', () => {
+  const feat = (id: string, name: string, status: Feature['status']): Feature => ({ id, moduleId: 'm', name, status, releaseId: 'r' })
+  const mkProject = (id: string, name: string, features: Feature[]): Pick<Project, 'id' | 'name' | 'data'> => ({
+    id,
+    name,
+    data: { modules: [], features, releases: [], lanes: [], swimNodes: [], swimEdges: [], alerts: [] },
+  })
+  const provider = mkProject('pA', 'Order Service', [feat('fPub', 'Publish order events', 'progress')])
+  const consumer = mkProject('pB', 'Billing', [feat('fCharge', 'Charge on order', 'done')])
+  const board: OrgBoard = {
+    id: 'b1', orgId: 'oA', name: 'Map', createdAt: t0,
+    nodes: [
+      { id: 'n1', projectId: 'pA', label: 'Order Service', x: 0, y: 0 },
+      { id: 'n2', projectId: 'pB', label: 'Billing', x: 1, y: 0 },
+    ],
+    edges: [{ from: 'n1', to: 'n2', label: 'order.created', kind: 'event', fromFeatureId: 'fPub', toFeatureId: 'fCharge', codeStale: true }],
+  }
+  const ctx = { orgBoards: [board], projects: [provider, consumer] }
+
+  // Consumer project sees BOTH: provider-changing impact + stale contract.
+  const forConsumer = deriveOrgImpactAlerts({ ...ctx, projectId: 'pB' })
+  assert.deepEqual(forConsumer.map((a) => a.id), ['org-impact:b1:n1:n2', 'org-outdated:b1:n1:n2'])
+  assert.ok(forConsumer[0].detail.includes('Publish order events') && forConsumer[0].detail.includes('Order Service'))
+  const action = forConsumer[0].action
+  assert.ok(action.view === 'orgboard' && action.boardId === 'b1' && action.edge?.from === 'n1')
+
+  // Provider project sees only the stale contract (it IS the change source).
+  const forProvider = deriveOrgImpactAlerts({ ...ctx, projectId: 'pA' })
+  assert.deepEqual(forProvider.map((a) => a.id), ['org-outdated:b1:n1:n2'])
+
+  // Provider feature done + contract reconciled → silence.
+  provider.data.features[0].status = 'done'
+  board.edges[0].codeStale = false
+  assert.equal(deriveOrgImpactAlerts({ ...ctx, projectId: 'pB' }).length, 0)
 })
 
 test('deleteOrg removes its org boards', () => {
