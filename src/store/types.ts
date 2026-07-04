@@ -224,6 +224,10 @@ export interface OrgBoardEdge {
   desc?: string
   fromFeatureId?: string
   toFeatureId?: string
+  /** Code implementing this contract on either side (webhook watches these). */
+  codeRefs?: CodeRef[]
+  /** Set by a VCS webhook when linked code changed after the contract was last updated. */
+  codeStale?: boolean
 }
 
 /** Initial selection when opening an org board from elsewhere (alert, feature panel). */

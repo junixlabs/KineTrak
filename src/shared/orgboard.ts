@@ -57,6 +57,8 @@ export function orgBoardIssues(board: OrgBoard, ctx: OrgBoardIssueCtx): OrgBoard
       issues.push({ severity: 'error', kind: 'dangling_edge', message: 'An integration references a missing system', ids: [e.from, e.to] })
     if (!e.desc?.trim())
       issues.push({ severity: 'warning', kind: 'empty_contract', message: `Integration “${label}” has no contract (desc)`, ids: [e.from, e.to] })
+    if (e.codeStale)
+      issues.push({ severity: 'warning', kind: 'stale_contract', message: `Integration “${label}” — linked code changed after the contract was last updated (reconcile, then resolve)`, ids: [e.from, e.to] })
     checkAnchor(e, e.from, e.fromFeatureId, 'provider')
     checkAnchor(e, e.to, e.toFeatureId, 'consumer')
   })

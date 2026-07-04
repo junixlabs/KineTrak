@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express'
-import { applyAndBroadcast, getProject, projectHeader } from './state'
+import { applyAndBroadcast, getOrgBoards, getProject, projectHeader, projectOrgId } from './state'
 import { recordNote, type Actor } from './activity'
 import { getAdapter, listProviders, pathMatches } from './integrations/vcs'
 import { makeId } from '../src/store/ids'
@@ -63,6 +63,23 @@ export function registerWebhooks(app: Express) {
         `${provider} push ${change.headSha?.slice(0, 8) ?? ''} flagged ${targets.length} node(s) as outdated: ${change.changedPaths.slice(0, 5).join(', ')}${change.changedPaths.length > 5 ? '…' : ''}`,
       )
     }
-    return res.json({ ok: true, matched: targets.length, changedPaths: change.changedPaths.length, headSha: change.headSha, event: makeId('wh') })
+
+    // Cross-system contracts: the same push may invalidate org-board integration
+    // edges whose codeRefs live in this project's repo. Org boards are resident,
+    // so the scan is cheap; only boards with a node for this project qualify.
+    let staleEdges = 0
+    for (const board of getOrgBoards(projectOrgId(projectId))) {
+      const projectNodes = new Set(board.nodes.filter((n) => n.projectId === projectId).map((n) => n.id))
+      if (!projectNodes.size) continue
+      const edges = board.edges
+        .filter((e) => (projectNodes.has(e.from) || projectNodes.has(e.to)) && matched(e.codeRefs))
+        .map((e) => ({ from: e.from, to: e.to }))
+      if (!edges.length) continue
+      staleEdges += edges.length
+      await applyAndBroadcast({ type: 'markOrgEdgeStale', boardId: board.id, edges, stale: true }, actor)
+      recordNote(projectId, actor, `${provider} push flagged ${edges.length} integration contract(s) on org board “${board.name}” as outdated`)
+    }
+
+    return res.json({ ok: true, matched: targets.length, staleEdges, changedPaths: change.changedPaths.length, headSha: change.headSha, event: makeId('wh') })
   })
 }

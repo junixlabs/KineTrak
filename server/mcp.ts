@@ -1130,6 +1130,39 @@ export function buildMcpServer(key: ApiKey): McpServer {
     },
   )
   server.registerTool(
+    'link_org_edge_code',
+    {
+      description:
+        'Attach a code reference (repo path, optional symbol/url/sha) to an integration edge on an org board — the code implementing the contract on either side. A VCS webhook for either endpoint project then flags the edge outdated when that code changes. Re-linking clears any outdated flag (= reconciled).',
+      inputSchema: { boardId: z.string(), from: z.string(), to: z.string(), path: z.string(), symbol: z.string().optional(), url: z.string().optional(), sha: z.string().optional() },
+    },
+    async ({ boardId, from, to, path, symbol, url, sha }) => {
+      const b = requireOrgBoard(boardId)
+      if (!b.edges.some((e) => e.from === from && e.to === to)) return json({ error: 'edge not found on this board' })
+      const ref = { path, ...(symbol ? { symbol } : {}), ...(url ? { url } : {}), ...(sha ? { sha } : {}) }
+      await applyAndBroadcast({ type: 'linkOrgEdgeCode', boardId: b.id, from, to, ref, op: 'link' })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'unlink_org_edge_code',
+    { description: 'Remove a code reference (matched by path + symbol) from an integration edge.', inputSchema: { boardId: z.string(), from: z.string(), to: z.string(), path: z.string(), symbol: z.string().optional() } },
+    async ({ boardId, from, to, path, symbol }) => {
+      const b = requireOrgBoard(boardId)
+      await applyAndBroadcast({ type: 'linkOrgEdgeCode', boardId: b.id, from, to, ref: { path, ...(symbol ? { symbol } : {}) }, op: 'unlink' })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'resolve_org_edge_stale',
+    { description: 'Clear the "outdated" flag on an integration edge after re-checking its contract against the changed code (reconciled). Note: updating the edge desc or codeRefs also clears it.', inputSchema: { boardId: z.string(), from: z.string(), to: z.string() } },
+    async ({ boardId, from, to }) => {
+      const b = requireOrgBoard(boardId)
+      await applyAndBroadcast({ type: 'markOrgEdgeStale', boardId: b.id, edges: [{ from, to }], stale: false })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
     'delete_org_board_edge',
     { description: 'Remove an integration edge between two systems on an org board. Tier 4 — confirm with the human first.', inputSchema: { boardId: z.string(), from: z.string(), to: z.string() } },
     async ({ boardId, from, to }) => {

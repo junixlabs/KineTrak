@@ -72,7 +72,9 @@ export function authorizeCommand(
     case 'deleteOrgBoardNode':
     case 'addOrgBoardEdge':
     case 'updateOrgBoardEdge':
-    case 'deleteOrgBoardEdge': {
+    case 'deleteOrgBoardEdge':
+    case 'linkOrgEdgeCode':
+    case 'markOrgEdgeStale': {
       const org = boardOrg(cmd.boardId)
       if (!org || !userOwnsOrg(user.id, org, catalog)) deny()
       return cmd

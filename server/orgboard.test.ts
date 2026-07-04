@@ -132,6 +132,30 @@ test('orgBoardIssues: anchor on an external (projectless) node is an error', () 
   assert.ok(issues.some((i) => i.kind === 'anchor_without_project' && i.severity === 'error'))
 })
 
+test('drift: linkOrgEdgeCode + markOrgEdgeStale + reconcile semantics', () => {
+  let r = withBoard()
+  r = applyCommand(r, { type: 'addOrgBoardEdge', boardId: 'b1', from: 'n1', to: 'n2', desc: 'v1 contract' })
+  r = applyCommand(r, { type: 'linkOrgEdgeCode', boardId: 'b1', from: 'n1', to: 'n2', ref: { path: 'src/api/orders.ts' }, op: 'link' })
+  assert.equal(r.orgBoards![0].edges[0].codeRefs!.length, 1)
+
+  r = applyCommand(r, { type: 'markOrgEdgeStale', boardId: 'b1', edges: [{ from: 'n1', to: 'n2' }], stale: true })
+  assert.equal(r.orgBoards![0].edges[0].codeStale, true)
+
+  // a label tweak is NOT a reconciliation
+  r = applyCommand(r, { type: 'updateOrgBoardEdge', boardId: 'b1', from: 'n1', to: 'n2', patch: { label: 'renamed' } })
+  assert.equal(r.orgBoards![0].edges[0].codeStale, true, 'label change keeps stale')
+
+  // touching the contract (desc) IS a reconciliation
+  r = applyCommand(r, { type: 'updateOrgBoardEdge', boardId: 'b1', from: 'n1', to: 'n2', patch: { desc: 'v2 contract' } })
+  assert.equal(r.orgBoards![0].edges[0].codeStale, false, 'desc change clears stale')
+
+  // re-linking code also reconciles
+  r = applyCommand(r, { type: 'markOrgEdgeStale', boardId: 'b1', edges: [{ from: 'n1', to: 'n2' }], stale: true })
+  r = applyCommand(r, { type: 'linkOrgEdgeCode', boardId: 'b1', from: 'n1', to: 'n2', ref: { path: 'src/api/orders.ts' }, op: 'link' })
+  assert.equal(r.orgBoards![0].edges[0].codeStale, false)
+  assert.equal(r.orgBoards![0].edges[0].codeRefs!.length, 1, 'same path+symbol replaces, not duplicates')
+})
+
 test('deleteOrg removes its org boards', () => {
   let r = withBoard()
   r = applyCommand(r, { type: 'deleteOrg', id: 'oA' })

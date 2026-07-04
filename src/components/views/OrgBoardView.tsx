@@ -96,12 +96,13 @@ function OrgBoardInner() {
     () =>
       (board?.edges ?? []).map((e) => {
         const focused = sel?.type === 'edge' && sel.from === e.from && sel.to === e.to
-        const stroke = focused ? '#2f6fed' : EDGE_KIND_COLOR[e.kind ?? 'other'] + (focused ? '' : 'aa')
+        // Stale contract overrides the kind color — amber demands attention.
+        const stroke = e.codeStale ? '#f59e0b' : focused ? '#2f6fed' : EDGE_KIND_COLOR[e.kind ?? 'other'] + (focused ? '' : 'aa')
         return {
           id: `${e.from}-${e.to}`,
           source: e.from,
           target: e.to,
-          label: e.label,
+          label: e.codeStale ? `⚠ ${e.label ?? ''}`.trim() : e.label,
           animated: focused,
           style: { stroke, strokeWidth: focused ? 2.4 : 1.6 },
           labelStyle: { fontSize: 11, fontWeight: 700, fill: '#14181f' },
@@ -304,6 +305,21 @@ function OrgBoardInner() {
             {selEdge && (
               <>
                 <div className="mb-1 text-[10.5px] font-bold tracking-wide text-faint">INTEGRATION</div>
+                {selEdge.codeStale && (
+                  <div className="mb-2 rounded-lg border border-[#f5d99a] bg-[#fef6e7] px-2.5 py-2">
+                    <div className="text-[11px] leading-[1.45] text-[#8a5a00]">
+                      Linked code changed after this contract was last updated — re-check the contract, then resolve.
+                    </div>
+                    {editable && (
+                      <button
+                        onClick={() => updateOrgBoardEdge(selEdge.from, selEdge.to, { codeStale: false })}
+                        className="mt-1.5 h-6 rounded-md border border-[#f5d99a] bg-white px-2 text-[11px] font-bold text-[#8a5a00] hover:bg-[#fdf1dc]"
+                      >
+                        Mark reconciled
+                      </button>
+                    )}
+                  </div>
+                )}
                 <input
                   value={selEdge.label ?? ''}
                   disabled={!editable}
@@ -383,6 +399,16 @@ function OrgBoardInner() {
                     </div>
                   )
                 })}
+                {(selEdge.codeRefs?.length ?? 0) > 0 && (
+                  <div className="mb-3">
+                    <div className="mb-1 text-[10px] font-bold tracking-wide text-faint">CODE REFERENCES</div>
+                    {selEdge.codeRefs!.map((r, i) => (
+                      <div key={i} className="mb-1 truncate rounded-md border border-line bg-[#fbfcfd] px-2 py-1 font-mono text-[10.5px] text-muted">
+                        {r.symbol ? `${r.path} · ${r.symbol}` : r.path}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {editable && (
                   <button
                     onClick={() => {

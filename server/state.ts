@@ -108,6 +108,7 @@ const ORG_BOARD_CMDS = new Set([
   'createOrgBoard', 'renameOrgBoard', 'deleteOrgBoard',
   'addOrgBoardNode', 'updateOrgBoardNode', 'deleteOrgBoardNode',
   'addOrgBoardEdge', 'updateOrgBoardEdge', 'deleteOrgBoardEdge',
+  'linkOrgEdgeCode', 'markOrgEdgeStale',
 ])
 
 /**

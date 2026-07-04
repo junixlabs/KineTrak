@@ -88,6 +88,8 @@ export type Command =
   | { type: 'addOrgBoardEdge'; boardId: string; from: string; to: string; label?: string; kind?: OrgBoardEdgeKind; desc?: string; fromFeatureId?: string; toFeatureId?: string }
   | { type: 'updateOrgBoardEdge'; boardId: string; from: string; to: string; patch: Partial<OrgBoardEdge> }
   | { type: 'deleteOrgBoardEdge'; boardId: string; from: string; to: string }
+  | { type: 'linkOrgEdgeCode'; boardId: string; from: string; to: string; ref: CodeRef; op: 'link' | 'unlink' }
+  | { type: 'markOrgEdgeStale'; boardId: string; edges: { from: string; to: string }[]; stale: boolean }
 
 const mapOrgBoard = (root: Root, boardId: string, fn: (b: OrgBoard) => OrgBoard): Root => ({
   ...root,
@@ -482,11 +484,36 @@ export function applyCommand(root: Root, cmd: Command): Root {
           const patch = { ...cmd.patch }
           if (patch.fromFeatureId === '') patch.fromFeatureId = undefined
           if (patch.toFeatureId === '') patch.toFeatureId = undefined
-          return { ...e, ...patch }
+          // Touching the contract itself (desc/codeRefs) = reconciling → clear the
+          // stale flag; a label/kind/anchor tweak is not a reconciliation.
+          const reconciles = 'desc' in cmd.patch || 'codeRefs' in cmd.patch
+          return { ...e, ...patch, ...(reconciles && !('codeStale' in cmd.patch) ? { codeStale: false } : {}) }
         }),
       }))
     case 'deleteOrgBoardEdge':
       return mapOrgBoard(root, cmd.boardId, (b) => ({ ...b, edges: b.edges.filter((e) => !(e.from === cmd.from && e.to === cmd.to)) }))
+
+    case 'linkOrgEdgeCode':
+      return mapOrgBoard(root, cmd.boardId, (b) => {
+        const same = (a: CodeRef, x: CodeRef) => a.path === x.path && (a.symbol ?? '') === (x.symbol ?? '')
+        return {
+          ...b,
+          edges: b.edges.map((e) => {
+            if (!(e.from === cmd.from && e.to === cmd.to)) return e
+            return cmd.op === 'unlink'
+              ? { ...e, codeRefs: (e.codeRefs ?? []).filter((r) => !same(r, cmd.ref)) }
+              : // re-linking = reconciling → clear the stale flag (mirrors linkCode)
+                { ...e, codeStale: false, codeRefs: [...(e.codeRefs ?? []).filter((r) => !same(r, cmd.ref)), cmd.ref] }
+          }),
+        }
+      })
+    case 'markOrgEdgeStale': {
+      const keys = new Set(cmd.edges.map((e) => `${e.from}→${e.to}`))
+      return mapOrgBoard(root, cmd.boardId, (b) => ({
+        ...b,
+        edges: b.edges.map((e) => (keys.has(`${e.from}→${e.to}`) ? { ...e, codeStale: cmd.stale } : e)),
+      }))
+    }
 
     default:
       return root
