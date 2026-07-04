@@ -1,5 +1,5 @@
 import { applyCommand, type Command, type Root } from '../src/shared/board'
-import type { Org, Project, ProjectHeader } from '../src/store/types'
+import type { Org, OrgBoard, Project, ProjectHeader } from '../src/store/types'
 import { recordChange, type Actor } from './activity'
 import { getStore, type Catalog } from './infra/store'
 import { searchRepo } from './infra/repositories'
@@ -17,6 +17,8 @@ const store = getStore()
 const registry = new ProjectRegistry(store)
 
 let catalog: Catalog = { orgs: [], headers: [] }
+// Org-level system maps — small documents, resident like the catalog.
+let orgBoards: OrgBoard[] = []
 
 /** What changed, so the broadcast layer can scope frames: one project's board,
  *  or the catalog (org/project lifecycle → clients resync their list). */
@@ -27,7 +29,7 @@ const header = (p: Project): ProjectHeader => ({ id: p.id, orgId: p.orgId, name:
 
 /** Load the resident catalog from the store. Called once at boot (both modes). */
 export async function hydrateState(): Promise<void> {
-  catalog = await store.loadCatalog()
+  ;[catalog, orgBoards] = await Promise.all([store.loadCatalog(), store.loadOrgBoards()])
 }
 
 /** One-time backfill of the search projection for pre-existing projects (runs
@@ -42,6 +44,14 @@ export async function backfillSearchIfEmpty(): Promise<void> {
 
 export function getCatalog(): Catalog {
   return catalog
+}
+
+export function getOrgBoards(orgId?: string): OrgBoard[] {
+  return orgId ? orgBoards.filter((b) => b.orgId === orgId) : orgBoards
+}
+
+export function orgBoardOrgId(boardId: string): string | undefined {
+  return orgBoards.find((b) => b.id === boardId)?.orgId
 }
 
 /** The live board for a project, loaded on demand. null if it doesn't exist. */
@@ -80,8 +90,9 @@ export function scopeCatalogForUser(userId: string): Catalog {
  *  current whole-root web client + WS; Phase 3 replaces this with per-project rooms. */
 export async function scopedRootForUser(userId: string): Promise<Root> {
   const { orgs, headers } = scopeCatalogForUser(userId)
+  const own = new Set(orgs.map((o) => o.id))
   const projects = (await Promise.all(headers.map((h) => getProject(h.id)))).filter((p): p is Project => !!p)
-  return { orgs, projects }
+  return { orgs, projects, orgBoards: orgBoards.filter((b) => own.has(b.orgId)) }
 }
 
 /** A single project's board, scoped to a share view ({orgs:[], projects:[p]}). */
@@ -93,17 +104,24 @@ export async function projectRoot(projectId: string): Promise<Root | null> {
 // ── Mutations ──────────────────────────────────────────────────────────────────
 
 const CATALOG_CMDS = new Set(['createOrg', 'renameOrg', 'deleteOrg', 'createProject', 'importProject', 'renameProject', 'deleteProject'])
+const ORG_BOARD_CMDS = new Set([
+  'createOrgBoard', 'renameOrgBoard', 'deleteOrgBoard',
+  'addOrgBoardNode', 'updateOrgBoardNode', 'deleteOrgBoardNode',
+  'addOrgBoardEdge', 'updateOrgBoardEdge', 'deleteOrgBoardEdge',
+])
 
 /**
  * Apply a command, persist it durably, log the change, and notify listeners.
  * Board commands flow through the project aggregate; catalog commands mutate the
- * resident catalog + store.
+ * resident catalog + store; org-board commands mutate the resident maps + store.
  */
 export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<void> {
   let affected: Project | undefined
 
   if (CATALOG_CMDS.has(cmd.type)) {
     affected = await applyCatalog(cmd)
+  } else if (ORG_BOARD_CMDS.has(cmd.type)) {
+    await applyOrgBoard(cmd)
   } else {
     const pid = (cmd as { projectId?: string }).projectId
     const lp = pid ? await registry.acquire(pid) : null
@@ -114,6 +132,22 @@ export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<vo
   recordChange(actor, cmd, affected)
   const event: ChangeEvent = CATALOG_CMDS.has(cmd.type) || !affected ? { kind: 'catalog' } : { kind: 'project', project: affected }
   listeners.forEach((l) => l(event))
+}
+
+// Same durable-write-first invariant as applyCatalog: persist, then swap the
+// resident array — a failed write leaves nothing observable.
+async function applyOrgBoard(cmd: Command): Promise<void> {
+  const next = applyCommand({ orgs: [], projects: [], orgBoards }, cmd).orgBoards ?? []
+  if (cmd.type === 'deleteOrgBoard') {
+    await store.deleteOrgBoard(cmd.id)
+  } else {
+    const boardId = (cmd as { boardId?: string; id?: string }).boardId ?? (cmd as { id?: string }).id
+    const changed = next.find((b) => b.id === boardId)
+    if (!changed) throw new Error('org board not found')
+    if (cmd.type === 'createOrgBoard' && !catalog.orgs.some((o) => o.id === changed.orgId)) throw new Error('org not found')
+    await store.saveOrgBoard(changed)
+  }
+  orgBoards = next
 }
 
 // Invariant: persist to the store FIRST, then update the resident catalog /
@@ -134,7 +168,8 @@ async function applyCatalog(cmd: Command): Promise<Project | undefined> {
       return undefined
     }
     case 'deleteOrg': {
-      await store.deleteOrg(cmd.id) // FK cascade removes projects/keys/shares/activity
+      await store.deleteOrg(cmd.id) // FK cascade removes projects/org_boards/keys/shares/activity
+      orgBoards = orgBoards.filter((b) => b.orgId !== cmd.id)
       catalog.orgs = catalog.orgs.filter((o) => o.id !== cmd.id)
       catalog.headers
         .filter((h) => h.orgId === cmd.id)

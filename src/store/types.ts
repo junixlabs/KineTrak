@@ -134,6 +134,12 @@ export interface Snapshot {
 
 export type AlertKind = 'impact' | 'outdated' | 'dod' | 'question'
 
+/** Where an alert's action button navigates: a project view + selection, or an
+ *  org board (optionally focusing one integration edge). */
+export type AlertAction =
+  | { view: ViewId; selection: Selection | null }
+  | { view: 'orgboard'; boardId: string; edge?: { from: string; to: string } }
+
 export interface Alert {
   id: string
   kind: AlertKind
@@ -142,7 +148,7 @@ export interface Alert {
   tags: string[]
   time: string
   actionLabel: string
-  action: { view: ViewId; selection: Selection | null }
+  action: AlertAction
   /** For kind 'question' (async human-decision channel). */
   options?: string[]
   /** The human's answer to a 'question' alert; unset while pending. */
@@ -187,6 +193,51 @@ export interface WorkspaceData {
   swimEdges: SwimEdge[]
   alerts: Alert[]
   settings?: WorkspaceSettings
+}
+
+// ── Org boards (system maps) ─────────────────────────────────────────────────
+
+export type OrgBoardEdgeKind = 'api' | 'event' | 'data' | 'other'
+
+/** A system on an org board — usually one of the org's projects; without a
+ *  projectId it is an external/third-party system drawn for context. */
+export interface OrgBoardNode {
+  id: string
+  projectId?: string
+  label: string
+  x: number
+  y: number
+  desc?: string
+}
+
+/** An integration between two systems. `desc` holds the contract detail
+ *  (endpoints, events, payloads) — context-in-card, hidden until clicked.
+ *  `fromFeatureId`/`toFeatureId` anchor each end to a feature inside the
+ *  project of the node at that end — the joint that lets impact and drift
+ *  reason across projects. Anchors may dangle (feature deleted later);
+ *  validation reports them, deletes never cascade across boards. */
+export interface OrgBoardEdge {
+  from: string
+  to: string
+  label?: string
+  kind?: OrgBoardEdgeKind
+  desc?: string
+  fromFeatureId?: string
+  toFeatureId?: string
+}
+
+/** Initial selection when opening an org board from elsewhere (alert, feature panel). */
+export type OrgBoardSel = { type: 'node'; id: string } | { type: 'edge'; from: string; to: string }
+
+/** An org-level system map: how the org's projects/services work together.
+ *  An org can hold any number of boards (one per domain slice, env, …). */
+export interface OrgBoard {
+  id: string
+  orgId: string
+  name: string
+  createdAt: string
+  nodes: OrgBoardNode[]
+  edges: OrgBoardEdge[]
 }
 
 // ── Multi-project / org ──────────────────────────────────────────────────────

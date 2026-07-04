@@ -1,6 +1,6 @@
 import type { Command } from '../src/shared/board'
 import type { User } from './auth'
-import { getCatalog } from './state'
+import { getCatalog, orgBoardOrgId } from './state'
 import type { Catalog } from './infra/store'
 
 // ── Per-user scoping over the resident catalog ───────────────────────────────
@@ -23,8 +23,14 @@ function projectOrg(projectId: string, catalog: Catalog): string | undefined {
 /**
  * Authorize a command against a user. Returns the command to apply (possibly
  * stamped with ownerId), or throws if the user may not perform it.
+ * `boardOrg` resolves an org-board id to its org (injectable for tests).
  */
-export function authorizeCommand(user: User, cmd: Command, catalog: Catalog = getCatalog()): Command {
+export function authorizeCommand(
+  user: User,
+  cmd: Command,
+  catalog: Catalog = getCatalog(),
+  boardOrg: (boardId: string) => string | undefined = orgBoardOrgId,
+): Command {
   const deny = () => {
     throw new Error('forbidden: command targets data outside your account')
   }
@@ -46,6 +52,28 @@ export function authorizeCommand(user: User, cmd: Command, catalog: Catalog = ge
     case 'renameProject':
     case 'deleteProject': {
       const org = projectOrg(cmd.id, catalog)
+      if (!org || !userOwnsOrg(user.id, org, catalog)) deny()
+      return cmd
+    }
+
+    case 'createOrgBoard':
+      if (!userOwnsOrg(user.id, cmd.orgId, catalog)) deny()
+      return cmd
+
+    case 'renameOrgBoard':
+    case 'deleteOrgBoard': {
+      const org = boardOrg(cmd.id)
+      if (!org || !userOwnsOrg(user.id, org, catalog)) deny()
+      return cmd
+    }
+
+    case 'addOrgBoardNode':
+    case 'updateOrgBoardNode':
+    case 'deleteOrgBoardNode':
+    case 'addOrgBoardEdge':
+    case 'updateOrgBoardEdge':
+    case 'deleteOrgBoardEdge': {
+      const org = boardOrg(cmd.boardId)
       if (!org || !userOwnsOrg(user.id, org, catalog)) deny()
       return cmd
     }

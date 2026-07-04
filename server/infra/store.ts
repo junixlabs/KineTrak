@@ -1,6 +1,6 @@
 import type { SearchHit } from '../../src/shared/board'
-import type { Org, Project, ProjectHeader } from '../../src/store/types'
-import { orgRepo, projectRepo, searchRepo } from './repositories'
+import type { Org, OrgBoard, Project, ProjectHeader } from '../../src/store/types'
+import { orgBoardRepo, orgRepo, projectRepo, searchRepo } from './repositories'
 
 // ── Storage port (Ports & Adapters) ──────────────────────────────────────────
 // The orchestrator (server/state.ts) talks only to this interface. Postgres is
@@ -21,6 +21,10 @@ export interface Store {
   deleteOrg(id: string): Promise<void>
   renameProject(id: string, name: string): Promise<void>
   deleteProject(id: string): Promise<void>
+  /** Org-level system maps — small documents, kept resident like the catalog. */
+  loadOrgBoards(): Promise<OrgBoard[]>
+  saveOrgBoard(b: OrgBoard): Promise<void>
+  deleteOrgBoard(id: string): Promise<void>
   /** Memory recall across an org's boards (SQL over the search projection). */
   search(orgId: string, query: string, projectId?: string): Promise<SearchHit[]>
 }
@@ -41,6 +45,9 @@ const pgStore: Store = {
   deleteOrg: (id) => orgRepo.delete(id),
   renameProject: (id, name) => projectRepo.rename(id, name),
   deleteProject: (id) => projectRepo.delete(id),
+  loadOrgBoards: () => orgBoardRepo.all(),
+  saveOrgBoard: (b) => orgBoardRepo.save(b),
+  deleteOrgBoard: (id) => orgBoardRepo.delete(id),
   search: (orgId, query, projectId) => searchRepo.search(orgId, query, projectId),
 }
 

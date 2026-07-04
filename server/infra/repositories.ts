@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, ilike, inArray, lte, or, sql } from 'drizzle-or
 import { requireDb } from './db'
 import * as t from './schema'
 import { searchableItems, type SearchHit } from '../../src/shared/board'
-import type { Org, Project, ProjectHeader } from '../../src/store/types'
+import type { Org, OrgBoard, Project, ProjectHeader } from '../../src/store/types'
 import type { User } from '../auth'
 import type { ApiKey } from '../keys'
 import type { Share } from '../shares'
@@ -133,6 +133,27 @@ export const projectRepo = {
 // version = version + 1 on every board write (optimistic-concurrency groundwork).
 function sqlIncrementVersion() {
   return sql`${t.projects.version} + 1`
+}
+
+// ── Org boards (system maps) ─────────────────────────────────────────────────
+export const orgBoardRepo = {
+  async all(): Promise<OrgBoard[]> {
+    const rows = await requireDb().select().from(t.orgBoards)
+    return rows.map((r) => ({ id: r.id, orgId: r.orgId, name: r.name, createdAt: iso(r.createdAt), nodes: r.nodes, edges: r.edges }))
+  },
+  /** Insert or overwrite a board's full state (small JSONB document). */
+  async save(b: OrgBoard): Promise<void> {
+    await requireDb()
+      .insert(t.orgBoards)
+      .values({ id: b.id, orgId: b.orgId, name: b.name, createdAt: new Date(b.createdAt), nodes: b.nodes, edges: b.edges })
+      .onConflictDoUpdate({
+        target: t.orgBoards.id,
+        set: { name: b.name, nodes: b.nodes, edges: b.edges, version: sql`${t.orgBoards.version} + 1` },
+      })
+  },
+  async delete(id: string): Promise<void> {
+    await requireDb().delete(t.orgBoards).where(eq(t.orgBoards.id, id))
+  },
 }
 
 // ── API keys (hashed at rest) ────────────────────────────────────────────────

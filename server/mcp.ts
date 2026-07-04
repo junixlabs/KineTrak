@@ -5,7 +5,10 @@ import type { Express, Request, Response } from 'express'
 import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { applyAndBroadcast as applyRaw, getCatalog, getProject, searchOrg } from './state'
+import { applyAndBroadcast as applyRaw, getCatalog, getOrgBoards, getProject, searchOrg } from './state'
+import { seedOrgBoardNodes } from '../src/shared/board'
+import { orgBoardIssues } from '../src/shared/orgboard'
+import type { Feature, OrgBoard } from '../src/store/types'
 import { bearerFrom, verifyKey, type ApiKey } from './keys'
 import { recordNote, type Actor } from './activity'
 import { activityRepo } from './infra/repositories'
@@ -38,6 +41,7 @@ function arrangeSwimlane(data: import('../src/shared/board').Root['projects'][nu
 const featureStatus = z.enum(['must', 'progress', 'done', 'nice'])
 const nodeStatus = z.enum(['todo', 'progress', 'done', 'blocked'])
 const nodeKind = z.enum(['start', 'process', 'decision', 'end'])
+const orgEdgeKind = z.enum(['api', 'event', 'data', 'other'])
 
 /** Depth-1 sub-feature guard shared by update_feature and bulk_apply.
  *  Returns an error string, or null when the parent assignment is legal. */
@@ -64,6 +68,8 @@ PER-FEATURE LIFECYCLE: write the spec (goal, non-goals, acceptance criteria) int
 EXISTING CODEBASE not yet on the board? Do NOT restructure. Scan the code with your own tools, draft an ADDITIVE map (find_or_create_module / find_or_create_feature) plus the "Project Context" node, then STOP for the human to confirm it, then create_snapshot("v0: as-is") before changing anything.
 
 STOP AND GET HUMAN APPROVAL before any irreversible or high-blast-radius action: delete_module / delete_feature / delete_swim_node / delete_swim_edge, shipping a feature, restructuring many items at once, or creating/deleting a project. Gates are hard — do not bypass one because you judge it safe.
+
+CROSS-SYSTEM VIEW: org boards (list_org_boards / get_org_board / create_org_board) map how this workspace's projects work together — one node per project (or external system), edges = integrations whose desc carries the contract. Use them when a feature spans services; keep standing architecture docs elsewhere.
 
 AT SESSION END, append_note your summary + next step + the latest cursor onto "Project Context", and snapshot if you did significant work.`
 
@@ -949,6 +955,186 @@ export function buildMcpServer(key: ApiKey): McpServer {
     async ({ projectId, target, id, text }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'appendNote', projectId: p.id, target, id, text })
+      return json({ ok: true })
+    },
+  )
+
+  // ── Org boards (system maps) — how this workspace's projects work together ──
+  const requireOrgBoard = (boardId?: string): OrgBoard => {
+    const boards = getOrgBoards(orgId)
+    const b = boardId ? boards.find((x) => x.id === boardId) : boards[0]
+    if (!b) throw new Error('org board not found in this workspace')
+    return b
+  }
+  /** Validate a feature anchor for one edge end. "" (= clear) and undefined pass. */
+  const anchorError = async (b: OrgBoard, nodeId: string, featureId: string | undefined, side: 'from' | 'to'): Promise<string | null> => {
+    if (!featureId) return null
+    const node = b.nodes.find((n) => n.id === nodeId)
+    if (!node) return `${side} node not found on this board`
+    if (!node.projectId) return `the ${side} end is an external system — feature anchors need a project node`
+    const p = await getProject(node.projectId)
+    if (!p?.data.features.some((f) => f.id === featureId)) return `${side}FeatureId does not reference a feature in that end's project`
+    return null
+  }
+
+  server.registerTool(
+    'list_org_boards',
+    { description: 'List this workspace\'s org boards (system maps): org-level diagrams of how the projects/services work together. Each node is a project (or an external system); each edge is an integration with its contract.' },
+    async () =>
+      json(getOrgBoards(orgId).map((b) => ({ id: b.id, name: b.name, createdAt: b.createdAt, nodes: b.nodes.length, edges: b.edges.length }))),
+  )
+  server.registerTool(
+    'get_org_board',
+    { description: 'Read one org board (system map) in full: nodes (systems, with the projectId they represent) and edges (integrations with label/kind/desc contract). Omit boardId for the first board.', inputSchema: { boardId: z.string().optional() } },
+    async ({ boardId }) => {
+      const b = requireOrgBoard(boardId)
+      return json(b)
+    },
+  )
+  server.registerTool(
+    'create_org_board',
+    {
+      description:
+        'Create an org board (system map). By default it is seeded from the workspace\'s existing context: one node per project, laid out on a grid — then draw the integrations with add_org_board_edge. Pass seedFromProjects=false for an empty canvas. A workspace can hold any number of boards.',
+      inputSchema: { name: z.string(), seedFromProjects: z.boolean().optional() },
+    },
+    async ({ name, seedFromProjects }) => {
+      const id = makeId('ob')
+      const nodes = seedFromProjects === false ? [] : seedOrgBoardNodes(orgHeaders(), () => makeId('obn'))
+      await applyAndBroadcast({ type: 'createOrgBoard', id, orgId, name, createdAt: new Date().toISOString(), nodes })
+      return json({ id, name, seededNodes: nodes.map((n) => ({ id: n.id, projectId: n.projectId, label: n.label })) })
+    },
+  )
+  server.registerTool(
+    'rename_org_board',
+    { description: 'Rename an org board.', inputSchema: { boardId: z.string(), name: z.string() } },
+    async ({ boardId, name }) => {
+      requireOrgBoard(boardId)
+      await applyAndBroadcast({ type: 'renameOrgBoard', id: boardId, name })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'delete_org_board',
+    { description: 'Delete an org board and everything on it. Tier 4 — irreversible; confirm with the human first.', inputSchema: { boardId: z.string() } },
+    async ({ boardId }) => {
+      requireOrgBoard(boardId)
+      await applyAndBroadcast({ type: 'deleteOrgBoard', id: boardId })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'add_org_board_node',
+    {
+      description:
+        'Add a system to an org board. Pass projectId to represent one of this workspace\'s projects (clickable through to its board); omit it for an external/third-party system. Position defaults to the next grid slot.',
+      inputSchema: { boardId: z.string(), label: z.string(), projectId: z.string().optional(), desc: z.string().optional(), x: z.number().optional(), y: z.number().optional() },
+    },
+    async ({ boardId, label, projectId, desc, x, y }) => {
+      const b = requireOrgBoard(boardId)
+      if (projectId && !orgHeaders().some((h) => h.id === projectId)) return json({ error: 'projectId does not reference a project in this workspace' })
+      const i = b.nodes.length
+      const id = makeId('obn')
+      await applyAndBroadcast({ type: 'addOrgBoardNode', boardId: b.id, id, label, projectId, x: x ?? 120 + (i % 3) * 300, y: y ?? 100 + Math.floor(i / 3) * 160 })
+      if (desc) await applyAndBroadcast({ type: 'updateOrgBoardNode', boardId: b.id, id, patch: { desc } })
+      return json({ id })
+    },
+  )
+  server.registerTool(
+    'update_org_board_node',
+    { description: 'Update a system node on an org board (label, desc, position, projectId — pass projectId "" to detach it into an external system).', inputSchema: { boardId: z.string(), id: z.string(), label: z.string().optional(), desc: z.string().optional(), projectId: z.string().optional(), x: z.number().optional(), y: z.number().optional() } },
+    async ({ boardId, id, projectId, ...rest }) => {
+      const b = requireOrgBoard(boardId)
+      if (!b.nodes.some((n) => n.id === id)) return json({ error: 'node not found on this board' })
+      if (projectId && !orgHeaders().some((h) => h.id === projectId)) return json({ error: 'projectId does not reference a project in this workspace' })
+      const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+      if (projectId !== undefined) patch.projectId = projectId === '' ? undefined : projectId
+      await applyAndBroadcast({ type: 'updateOrgBoardNode', boardId: b.id, id, patch })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'delete_org_board_node',
+    { description: 'Remove a system from an org board (its edges go with it). Tier 4 — confirm with the human first.', inputSchema: { boardId: z.string(), id: z.string() } },
+    async ({ boardId, id }) => {
+      const b = requireOrgBoard(boardId)
+      await applyAndBroadcast({ type: 'deleteOrgBoardNode', boardId: b.id, id })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'add_org_board_edge',
+    {
+      description:
+        'Connect two systems on an org board with an integration edge. label = short name shown on the arrow; kind = api/event/data/other; desc = the CONTRACT detail (endpoints, events, payloads) — context-in-card, this is where the cross-system business logic lives. fromFeatureId/toFeatureId ANCHOR each end to a feature inside that end\'s project — the joint that makes cross-project impact and drift reasoning possible; set them whenever you know which features own the integration.',
+      inputSchema: { boardId: z.string(), from: z.string(), to: z.string(), label: z.string().optional(), kind: orgEdgeKind.optional(), desc: z.string().optional(), fromFeatureId: z.string().optional(), toFeatureId: z.string().optional() },
+    },
+    async ({ boardId, from, to, label, kind, desc, fromFeatureId, toFeatureId }) => {
+      const b = requireOrgBoard(boardId)
+      if (!b.nodes.some((n) => n.id === from) || !b.nodes.some((n) => n.id === to)) return json({ error: 'node not found on this board' })
+      const err = (await anchorError(b, from, fromFeatureId, 'from')) ?? (await anchorError(b, to, toFeatureId, 'to'))
+      if (err) return json({ error: err })
+      await applyAndBroadcast({ type: 'addOrgBoardEdge', boardId: b.id, from, to, label, kind, desc, fromFeatureId, toFeatureId })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'update_org_board_edge',
+    { description: 'Update an integration edge (label, kind, desc contract, feature anchors) between two systems on an org board. Pass fromFeatureId/toFeatureId "" to clear an anchor.', inputSchema: { boardId: z.string(), from: z.string(), to: z.string(), label: z.string().optional(), kind: orgEdgeKind.optional(), desc: z.string().optional(), fromFeatureId: z.string().optional(), toFeatureId: z.string().optional() } },
+    async ({ boardId, from, to, fromFeatureId, toFeatureId, ...rest }) => {
+      const b = requireOrgBoard(boardId)
+      if (!b.edges.some((e) => e.from === from && e.to === to)) return json({ error: 'edge not found on this board' })
+      const err = (await anchorError(b, from, fromFeatureId || undefined, 'from')) ?? (await anchorError(b, to, toFeatureId || undefined, 'to'))
+      if (err) return json({ error: err })
+      const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined))
+      // "" is the clear sentinel — pass it through, the reducer normalizes it.
+      if (fromFeatureId !== undefined) patch.fromFeatureId = fromFeatureId
+      if (toFeatureId !== undefined) patch.toFeatureId = toFeatureId
+      await applyAndBroadcast({ type: 'updateOrgBoardEdge', boardId: b.id, from, to, patch })
+      return json({ ok: true })
+    },
+  )
+  server.registerTool(
+    'validate_org_board',
+    {
+      description:
+        'Self-check an org board: dangling project references, feature anchors pointing at deleted features, integrations with no contract, isolated systems, duplicate board names. Run after wiring anchors and before relying on the board for impact.',
+      inputSchema: { boardId: z.string().optional() },
+    },
+    async ({ boardId }) => {
+      const b = requireOrgBoard(boardId)
+      const headers = orgHeaders()
+      // Load only the projects that anchored edges actually reference.
+      const anchoredProjects = new Set<string>()
+      for (const e of b.edges) {
+        if (e.fromFeatureId) {
+          const pid = b.nodes.find((n) => n.id === e.from)?.projectId
+          if (pid) anchoredProjects.add(pid)
+        }
+        if (e.toFeatureId) {
+          const pid = b.nodes.find((n) => n.id === e.to)?.projectId
+          if (pid) anchoredProjects.add(pid)
+        }
+      }
+      const features = new Map<string, Feature[]>()
+      for (const pid of anchoredProjects) {
+        const p = await proj(pid)
+        if (p) features.set(pid, p.data.features)
+      }
+      const issues = orgBoardIssues(b, {
+        knownProjectIds: new Set(headers.map((h) => h.id)),
+        featureLookup: (pid) => features.get(pid),
+        siblingNames: getOrgBoards(orgId).filter((x) => x.id !== b.id).map((x) => x.name),
+      })
+      return json({ ok: issues.every((i) => i.severity !== 'error'), errors: issues.filter((i) => i.severity === 'error').length, warnings: issues.filter((i) => i.severity === 'warning').length, issues })
+    },
+  )
+  server.registerTool(
+    'delete_org_board_edge',
+    { description: 'Remove an integration edge between two systems on an org board. Tier 4 — confirm with the human first.', inputSchema: { boardId: z.string(), from: z.string(), to: z.string() } },
+    async ({ boardId, from, to }) => {
+      const b = requireOrgBoard(boardId)
+      await applyAndBroadcast({ type: 'deleteOrgBoardEdge', boardId: b.id, from, to })
       return json({ ok: true })
     },
   )

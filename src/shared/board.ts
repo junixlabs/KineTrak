@@ -11,6 +11,10 @@ import type {
   Module,
   NodeKind,
   Org,
+  OrgBoard,
+  OrgBoardEdge,
+  OrgBoardEdgeKind,
+  OrgBoardNode,
   Project,
   ProjectTemplate,
   Release,
@@ -25,6 +29,8 @@ import { templateData, cloneData } from '../store/seed'
 export interface Root {
   orgs: Org[]
   projects: Project[]
+  /** Org-level system maps. Optional so legacy roots/payloads stay valid. */
+  orgBoards?: OrgBoard[]
 }
 
 export const MODULE_PALETTE = ['#2f6fed', '#0d9488', '#7c5cff', '#f59e0b', '#16a34a', '#e5484d', '#6e8bff']
@@ -72,6 +78,21 @@ export type Command =
   | { type: 'askHuman'; projectId: string; id: string; question: string; nodeId?: string; view?: 'mindmap' | 'story' | 'swimlane'; options?: string[] }
   | { type: 'answerQuestion'; projectId: string; id: string; answer: string }
   | { type: 'resolveQuestion'; projectId: string; id: string }
+  // ── Org boards (system maps) ─────────────────────────────────────────────
+  | { type: 'createOrgBoard'; id: string; orgId: string; name: string; createdAt: string; nodes?: OrgBoardNode[] }
+  | { type: 'renameOrgBoard'; id: string; name: string }
+  | { type: 'deleteOrgBoard'; id: string }
+  | { type: 'addOrgBoardNode'; boardId: string; id: string; label?: string; projectId?: string; x: number; y: number }
+  | { type: 'updateOrgBoardNode'; boardId: string; id: string; patch: Partial<OrgBoardNode> }
+  | { type: 'deleteOrgBoardNode'; boardId: string; id: string }
+  | { type: 'addOrgBoardEdge'; boardId: string; from: string; to: string; label?: string; kind?: OrgBoardEdgeKind; desc?: string; fromFeatureId?: string; toFeatureId?: string }
+  | { type: 'updateOrgBoardEdge'; boardId: string; from: string; to: string; patch: Partial<OrgBoardEdge> }
+  | { type: 'deleteOrgBoardEdge'; boardId: string; from: string; to: string }
+
+const mapOrgBoard = (root: Root, boardId: string, fn: (b: OrgBoard) => OrgBoard): Root => ({
+  ...root,
+  orgBoards: (root.orgBoards ?? []).map((b) => (b.id === boardId ? fn(b) : b)),
+})
 
 const mapData = (root: Root, projectId: string, fn: (d: WorkspaceData) => WorkspaceData): Root => ({
   ...root,
@@ -90,7 +111,11 @@ export function applyCommand(root: Root, cmd: Command): Root {
     case 'renameOrg':
       return { ...root, orgs: root.orgs.map((o) => (o.id === cmd.id ? { ...o, name: cmd.name } : o)) }
     case 'deleteOrg':
-      return { orgs: root.orgs.filter((o) => o.id !== cmd.id), projects: root.projects.filter((p) => p.orgId !== cmd.id) }
+      return {
+        orgs: root.orgs.filter((o) => o.id !== cmd.id),
+        projects: root.projects.filter((p) => p.orgId !== cmd.id),
+        orgBoards: (root.orgBoards ?? []).filter((b) => b.orgId !== cmd.id),
+      }
 
     case 'createProject': {
       const proj: Project = {
@@ -385,9 +410,103 @@ export function applyCommand(root: Root, cmd: Command): Root {
     case 'resolveQuestion':
       return mapData(root, cmd.projectId, (d) => ({ ...d, alerts: d.alerts.filter((a) => a.id !== cmd.id) }))
 
+    // ── Org boards (system maps) ───────────────────────────────────────────────
+    case 'createOrgBoard':
+      return {
+        ...root,
+        orgBoards: [
+          ...(root.orgBoards ?? []),
+          { id: cmd.id, orgId: cmd.orgId, name: cmd.name.trim() || 'System map', createdAt: cmd.createdAt, nodes: cmd.nodes ?? [], edges: [] },
+        ],
+      }
+    case 'renameOrgBoard':
+      return { ...root, orgBoards: (root.orgBoards ?? []).map((b) => (b.id === cmd.id ? { ...b, name: cmd.name } : b)) }
+    case 'deleteOrgBoard':
+      return { ...root, orgBoards: (root.orgBoards ?? []).filter((b) => b.id !== cmd.id) }
+
+    case 'addOrgBoardNode':
+      return mapOrgBoard(root, cmd.boardId, (b) => ({
+        ...b,
+        nodes: [...b.nodes, { id: cmd.id, label: cmd.label ?? 'New system', x: cmd.x, y: cmd.y, ...(cmd.projectId ? { projectId: cmd.projectId } : {}) }],
+      }))
+    case 'updateOrgBoardNode':
+      return mapOrgBoard(root, cmd.boardId, (b) => {
+        const prev = b.nodes.find((n) => n.id === cmd.id)
+        if (!prev) return b
+        // "" clears projectId (a plain undefined would be dropped by the JSON
+        // command transport, so clients send the empty-string sentinel).
+        const patch = { ...cmd.patch }
+        if (patch.projectId === '') patch.projectId = undefined
+        const nodes = b.nodes.map((n) => (n.id === cmd.id ? { ...n, ...patch } : n))
+        // Re-pointing (or detaching) the node's project strands feature anchors
+        // from the old project on touching edges — clear them, never dangle silently.
+        const projectChanged = 'projectId' in cmd.patch && patch.projectId !== prev.projectId
+        const edges = projectChanged
+          ? b.edges.map((e) => (e.from === cmd.id ? { ...e, fromFeatureId: undefined } : e.to === cmd.id ? { ...e, toFeatureId: undefined } : e))
+          : b.edges
+        return { ...b, nodes, edges }
+      })
+    case 'deleteOrgBoardNode':
+      return mapOrgBoard(root, cmd.boardId, (b) => ({
+        ...b,
+        nodes: b.nodes.filter((n) => n.id !== cmd.id),
+        edges: b.edges.filter((e) => e.from !== cmd.id && e.to !== cmd.id),
+      }))
+    case 'addOrgBoardEdge':
+      if (cmd.from === cmd.to) return root
+      return mapOrgBoard(root, cmd.boardId, (b) =>
+        b.edges.some((e) => e.from === cmd.from && e.to === cmd.to)
+          ? b
+          : {
+              ...b,
+              edges: [
+                ...b.edges,
+                {
+                  from: cmd.from,
+                  to: cmd.to,
+                  ...(cmd.label ? { label: cmd.label } : {}),
+                  ...(cmd.kind ? { kind: cmd.kind } : {}),
+                  ...(cmd.desc ? { desc: cmd.desc } : {}),
+                  ...(cmd.fromFeatureId ? { fromFeatureId: cmd.fromFeatureId } : {}),
+                  ...(cmd.toFeatureId ? { toFeatureId: cmd.toFeatureId } : {}),
+                },
+              ],
+            },
+      )
+    case 'updateOrgBoardEdge':
+      return mapOrgBoard(root, cmd.boardId, (b) => ({
+        ...b,
+        edges: b.edges.map((e) => {
+          if (!(e.from === cmd.from && e.to === cmd.to)) return e
+          // "" clears an anchor (undefined would be dropped by the JSON transport).
+          const patch = { ...cmd.patch }
+          if (patch.fromFeatureId === '') patch.fromFeatureId = undefined
+          if (patch.toFeatureId === '') patch.toFeatureId = undefined
+          return { ...e, ...patch }
+        }),
+      }))
+    case 'deleteOrgBoardEdge':
+      return mapOrgBoard(root, cmd.boardId, (b) => ({ ...b, edges: b.edges.filter((e) => !(e.from === cmd.from && e.to === cmd.to)) }))
+
     default:
       return root
   }
+}
+
+// ── Org-board helpers ─────────────────────────────────────────────────────────
+
+/** Seed a new org board from the org's existing projects: one node per project,
+ *  laid out on a grid. Deterministic given the same (ordered) project list; ids
+ *  are minted by the caller via `makeNodeId` so the command stays replayable. */
+export function seedOrgBoardNodes(projects: { id: string; name: string }[], makeNodeId: () => string): OrgBoardNode[] {
+  const PER_ROW = 3
+  return projects.map((p, i) => ({
+    id: makeNodeId(),
+    projectId: p.id,
+    label: p.name,
+    x: 120 + (i % PER_ROW) * 300,
+    y: 100 + Math.floor(i / PER_ROW) * 160,
+  }))
 }
 
 // ── Read helpers (used by MCP read/search tools) ─────────────────────────────

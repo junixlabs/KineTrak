@@ -29,6 +29,11 @@ function fakeStore(projects: Project[]): { store: Store; loads: () => number } {
     async deleteOrg() {},
     async renameProject() {},
     async deleteProject() {},
+    async loadOrgBoards() {
+      return []
+    },
+    async saveOrgBoard() {},
+    async deleteOrgBoard() {},
     async search() {
       return []
     },
@@ -118,6 +123,11 @@ test('apply rolls back the in-RAM board and does NOT poison the queue on save fa
     async deleteOrg() {},
     async renameProject() {},
     async deleteProject() {},
+    async loadOrgBoards() {
+      return []
+    },
+    async saveOrgBoard() {},
+    async deleteOrgBoard() {},
     async search() {
       return []
     },

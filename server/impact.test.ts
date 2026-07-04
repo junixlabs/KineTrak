@@ -34,7 +34,8 @@ test('deriveImpactAlerts flags only committed features above the threshold', () 
   assert.equal(alerts.length, 1)
   assert.equal(alerts[0].id, 'impact:f6')
   assert.equal(alerts[0].kind, 'impact')
-  assert.equal(alerts[0].action.selection?.id, 'E', 'action navigates to the entry node')
+  const action = alerts[0].action
+  assert.ok('selection' in action && action.selection?.id === 'E', 'action navigates to the entry node')
 })
 
 test('a high threshold suppresses all impact alerts', () => {

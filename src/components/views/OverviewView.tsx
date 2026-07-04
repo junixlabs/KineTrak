@@ -37,6 +37,7 @@ export default function OverviewView() {
   const data = useWorkspace((s) => s.currentData())
   const setView = useWorkspace((s) => s.setView)
   const select = useWorkspace((s) => s.select)
+  const openOrgBoard = useWorkspace((s) => s.openOrgBoard)
   // Present mode & share links are stakeholder-facing: show the status rollups
   // (the executive summary) but hide the internal source-of-truth hygiene gaps.
   const presenting = useWorkspace((s) => s.present || s.isReadOnly())
@@ -117,7 +118,7 @@ export default function OverviewView() {
               {ov.alerts.list.map((a) => {
                 const m = ALERT_META[a.kind]
                 return (
-                  <button key={a.id} onClick={() => { setView(a.action.view); select(a.action.selection) }} className="flex w-full items-start gap-3 border-b border-[#f3f5f7] px-4 py-3 text-left last:border-0 hover:bg-[#f9fbfd]">
+                  <button key={a.id} onClick={() => { if (a.action.view === 'orgboard') openOrgBoard(a.action.boardId, a.action.edge ? { type: 'edge', ...a.action.edge } : undefined); else { setView(a.action.view); select(a.action.selection) } }} className="flex w-full items-start gap-3 border-b border-[#f3f5f7] px-4 py-3 text-left last:border-0 hover:bg-[#f9fbfd]">
                     <span className="mt-0.5 flex-none rounded-md px-1.5 py-0.5 text-[9.5px] font-bold" style={{ color: m.c, background: m.bg }}>{m.label}</span>
                     <div className="flex-1">
                       <div className="text-[13px] font-semibold text-ink">{a.title}</div>

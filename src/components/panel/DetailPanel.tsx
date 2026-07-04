@@ -1,4 +1,4 @@
-import { X, Link2, ChevronRight, Trash2, FileCode2, GitBranch, AlertTriangle } from 'lucide-react'
+import { X, Link2, ChevronRight, Trash2, FileCode2, GitBranch, AlertTriangle, Boxes } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor, hexA } from '@/theme/tokens'
 import { FieldLabel, TextField, SelectField, ListEditor, ChecklistEditor, RoleChips } from './fields'
@@ -215,6 +215,50 @@ function Dependencies({ ids }: { ids: string[] }) {
   )
 }
 
+/** Org-board integrations anchored to this feature (cross-project joints).
+ *  Read-only here; click through to the org board with the edge focused. */
+function OrgIntegrations({ featureId }: { featureId: string }) {
+  const orgBoards = useWorkspace((s) => s.orgBoards)
+  const activeProjectId = useWorkspace((s) => s.activeProjectId)
+  const openOrgBoard = useWorkspace((s) => s.openOrgBoard)
+  const hits = orgBoards.flatMap((b) =>
+    b.edges
+      .map((e) => {
+        // Anchor must sit on a node that represents THIS project (feature ids are
+        // uuids, but the project check keeps a stale anchor from leaking through).
+        const nodeOf = (id: string) => b.nodes.find((n) => n.id === id)
+        if (e.fromFeatureId === featureId && nodeOf(e.from)?.projectId === activeProjectId)
+          return { board: b, edge: e, role: 'provides', other: nodeOf(e.to)?.label ?? '?' }
+        if (e.toFeatureId === featureId && nodeOf(e.to)?.projectId === activeProjectId)
+          return { board: b, edge: e, role: 'consumes', other: nodeOf(e.from)?.label ?? '?' }
+        return null
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x),
+  )
+  if (!hits.length) return null
+  return (
+    <div className="mt-4">
+      <FieldLabel>INTEGRATIONS · ORG BOARD</FieldLabel>
+      {hits.map(({ board, edge, role, other }, i) => (
+        <button
+          key={i}
+          onClick={() => openOrgBoard(board.id, { type: 'edge', from: edge.from, to: edge.to })}
+          className="mb-1.5 flex w-full items-center gap-2 rounded-lg border border-line bg-[#fbfcfd] px-[11px] py-[9px] text-left hover:border-[#c9d8ff] hover:bg-[#f1f5ff]"
+        >
+          <Boxes size={14} className="flex-none text-brand" strokeWidth={1.8} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12px] font-semibold text-[#2a4a8f]">
+              {edge.label || edge.kind || 'integration'} · {role === 'provides' ? `→ ${other}` : `← ${other}`}
+            </span>
+            <span className="block truncate text-[10.5px] text-faint">{board.name} · {role}</span>
+          </span>
+          <ChevronRight size={13} className="flex-none text-faint" strokeWidth={2} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /** Amber banner shown when a VCS webhook flagged the node's linked code as changed. */
 function StaleBanner({ stale }: { stale?: boolean }) {
   if (!stale) return null
@@ -292,6 +336,7 @@ function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: strin
       <Dependencies ids={f.dependsOn ?? []} />
       <CodeRefs refs={f.codeRefs ?? []} />
       <CrossLinks links={f.crossLinks ?? []} onGo={goLink} />
+      <OrgIntegrations featureId={f.id} />
       {!readOnly && <DeleteButton label="feature" onDelete={() => deleteFeature(id)} />}
     </>
   )

@@ -1,5 +1,5 @@
 import { bigserial, index, integer, jsonb, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core'
-import type { Snapshot, WorkspaceData } from '../../src/store/types'
+import type { OrgBoardEdge, OrgBoardNode, Snapshot, WorkspaceData } from '../../src/store/types'
 import type { Actor } from '../activity'
 
 // ── Drizzle schema — the durable store behind KineTrak ───────────────────────
@@ -59,6 +59,24 @@ export const projects = pgTable(
     version: integer('version').notNull().default(0),
   },
   (t) => [index('projects_org_idx').on(t.orgId)],
+)
+
+// Org-level system maps (how the org's projects work together). Small documents,
+// kept resident on the server like the catalog; nodes/edges live as JSONB.
+export const orgBoards = pgTable(
+  'org_boards',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id')
+      .notNull()
+      .references(() => orgs.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    nodes: jsonb('nodes').$type<OrgBoardNode[]>().notNull().default([]),
+    edges: jsonb('edges').$type<OrgBoardEdge[]>().notNull().default([]),
+    version: integer('version').notNull().default(0),
+  },
+  (t) => [index('org_boards_org_idx').on(t.orgId)],
 )
 
 export const apiKeys = pgTable(

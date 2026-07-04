@@ -4,6 +4,10 @@ import type {
   FeatureStatus,
   NodeStatus,
   Org,
+  OrgBoard,
+  OrgBoardEdge,
+  OrgBoardNode,
+  OrgBoardSel,
   Project,
   ProjectTemplate,
   Role,
@@ -17,7 +21,7 @@ import type {
 } from './types'
 import { cloneData, sampleTemplate, blankTemplate } from './seed'
 import { makeId, nextNodeCode } from './ids'
-import { applyCommand, type Command, type Root } from '@/shared/board'
+import { applyCommand, seedOrgBoardNodes, type Command, type Root } from '@/shared/board'
 import { autoArrangeSwimlane } from '@/lib/swimlayout'
 
 /** UI-only view selector: the three diagram views plus the derived Overview.
@@ -44,7 +48,7 @@ function makeDefaultRoot() {
     data: cloneData(sampleTemplate),
     snapshots: [],
   }
-  return { orgs: [org], projects: [proj], activeProjectId: proj.id as string | null }
+  return { orgs: [org], projects: [proj], orgBoards: [] as OrgBoard[], activeProjectId: proj.id as string | null, activeOrgBoardId: null as string | null }
 }
 
 // Sync seam — Phase 3 (client sync layer) installs a real pusher; no-op in local mode.
@@ -58,10 +62,14 @@ export type SyncStatus = 'local' | 'connecting' | 'live'
 interface WorkspaceState {
   orgs: Org[]
   projects: Project[]
+  orgBoards: OrgBoard[]
   activeProjectId: string | null
+  activeOrgBoardId: string | null
+  /** One-shot selection consumed by OrgBoardView on mount (alert/panel deep-link). */
+  orgBoardInitialSel: OrgBoardSel | null
 
   // UI
-  screen: 'home' | 'workspace' | 'connect' | 'guide'
+  screen: 'home' | 'workspace' | 'connect' | 'guide' | 'orgboard'
   present: boolean
   activeView: WorkView
   activeSnapshotId: string | null
@@ -83,6 +91,7 @@ interface WorkspaceState {
 
   // Derived
   activeProject: () => Project | undefined
+  activeOrgBoard: () => OrgBoard | undefined
   currentData: () => WorkspaceData
   isReadOnly: () => boolean
 
@@ -128,6 +137,19 @@ interface WorkspaceState {
   importProjectData: (json: string) => string | null
   resetAll: () => void
 
+  // Org boards (system maps)
+  createOrgBoard: (orgId: string, name: string, seedFromProjects?: boolean) => string
+  renameOrgBoard: (id: string, name: string) => void
+  deleteOrgBoard: (id: string) => void
+  openOrgBoard: (id: string, sel?: OrgBoardSel) => void
+  consumeOrgBoardSel: () => OrgBoardSel | null
+  addOrgBoardNode: (label: string, projectId?: string) => void
+  updateOrgBoardNode: (id: string, patch: Partial<OrgBoardNode>) => void
+  deleteOrgBoardNode: (id: string) => void
+  addOrgBoardEdge: (from: string, to: string) => void
+  updateOrgBoardEdge: (from: string, to: string, patch: Partial<OrgBoardEdge>) => void
+  deleteOrgBoardEdge: (from: string, to: string) => void
+
   // Entity CRUD
   addModule: () => void
   updateModule: (id: string, patch: Partial<Module>) => void
@@ -154,7 +176,7 @@ export const useWorkspace = create<WorkspaceState>()(
     (set, get) => {
       /** Apply a command locally (optimistic) and push it to the server when synced. */
       const dispatch = (cmd: Command) => {
-        set((s) => applyCommand({ orgs: s.orgs, projects: s.projects }, cmd))
+        set((s) => applyCommand({ orgs: s.orgs, projects: s.projects, orgBoards: s.orgBoards }, cmd))
         pushCommand(cmd)
       }
       const editable = () => !get().isReadOnly() && !!get().activeProjectId
@@ -167,6 +189,7 @@ export const useWorkspace = create<WorkspaceState>()(
 
       return {
         ...makeDefaultRoot(),
+        orgBoardInitialSel: null,
         screen: 'home',
         present: false,
         activeView: 'swimlane',
@@ -183,6 +206,7 @@ export const useWorkspace = create<WorkspaceState>()(
         shareMode: false,
 
         activeProject: () => get().projects.find((p) => p.id === get().activeProjectId),
+        activeOrgBoard: () => get().orgBoards.find((b) => b.id === get().activeOrgBoardId),
         currentData: () => {
           const p = get().activeProject()
           if (!p) return EMPTY_DATA
@@ -211,13 +235,23 @@ export const useWorkspace = create<WorkspaceState>()(
         setAuthChecked: (v) => set({ authChecked: v }),
         setShareMode: (v) => set({ shareMode: v }),
         resetForLogout: () =>
-          set({ currentUser: null, orgs: [], projects: [], activeProjectId: null, screen: 'home', present: false, activeSnapshotId: null, selected: null, hoveredId: null }),
+          set({ currentUser: null, orgs: [], projects: [], orgBoards: [], activeProjectId: null, activeOrgBoardId: null, screen: 'home', present: false, activeSnapshotId: null, selected: null, hoveredId: null }),
         applyServerRoot: (root) =>
           set((s) => {
             const activeProjectId = root.projects.some((p) => p.id === s.activeProjectId)
               ? s.activeProjectId
               : root.projects[0]?.id ?? null
-            return { orgs: root.orgs, projects: root.projects, activeProjectId }
+            const orgBoards = root.orgBoards ?? []
+            const activeOrgBoardId = orgBoards.some((b) => b.id === s.activeOrgBoardId) ? s.activeOrgBoardId : null
+            return {
+              orgs: root.orgs,
+              projects: root.projects,
+              orgBoards,
+              activeProjectId,
+              activeOrgBoardId,
+              // The open board was deleted elsewhere — fall back Home instead of a blank canvas.
+              ...(s.screen === 'orgboard' && !activeOrgBoardId ? { screen: 'home' as const } : {}),
+            }
           }),
 
         // Merge a single project pushed by the server (per-project live delta).
@@ -281,6 +315,60 @@ export const useWorkspace = create<WorkspaceState>()(
         },
         resetAll: () =>
           set({ ...makeDefaultRoot(), screen: 'home', present: false, activeSnapshotId: null, selected: null, hoveredId: null, roleFilter: null }),
+
+        // ── Org boards (system maps) ───────────────────────────────────────
+        createOrgBoard: (orgId, name, seedFromProjects = true) => {
+          const id = makeId('ob')
+          const nodes = seedFromProjects
+            ? seedOrgBoardNodes(get().projects.filter((p) => p.orgId === orgId), () => makeId('obn'))
+            : []
+          dispatch({ type: 'createOrgBoard', id, orgId, name, createdAt: nowISO(), nodes })
+          set({ screen: 'orgboard', activeOrgBoardId: id })
+          return id
+        },
+        renameOrgBoard: (id, name) => dispatch({ type: 'renameOrgBoard', id, name }),
+        deleteOrgBoard: (id) => {
+          const wasActive = get().activeOrgBoardId === id
+          dispatch({ type: 'deleteOrgBoard', id })
+          if (wasActive) set({ activeOrgBoardId: null, ...(get().screen === 'orgboard' ? { screen: 'home' as const } : {}) })
+        },
+        openOrgBoard: (id, sel) => set({ screen: 'orgboard', activeOrgBoardId: id, orgBoardInitialSel: sel ?? null, selected: null, hoveredId: null }),
+        consumeOrgBoardSel: () => {
+          const sel = get().orgBoardInitialSel
+          if (sel) set({ orgBoardInitialSel: null })
+          return sel
+        },
+        addOrgBoardNode: (label, projectId) => {
+          const b = get().activeOrgBoard()
+          if (!b || get().shareMode) return
+          const i = b.nodes.length
+          dispatch({ type: 'addOrgBoardNode', boardId: b.id, id: makeId('obn'), label, projectId, x: 120 + (i % 3) * 300, y: 100 + Math.floor(i / 3) * 160 })
+        },
+        updateOrgBoardNode: (id, patch) => {
+          const b = get().activeOrgBoard()
+          if (!b || get().shareMode) return
+          dispatch({ type: 'updateOrgBoardNode', boardId: b.id, id, patch })
+        },
+        deleteOrgBoardNode: (id) => {
+          const b = get().activeOrgBoard()
+          if (!b || get().shareMode) return
+          dispatch({ type: 'deleteOrgBoardNode', boardId: b.id, id })
+        },
+        addOrgBoardEdge: (from, to) => {
+          const b = get().activeOrgBoard()
+          if (!b || get().shareMode) return
+          dispatch({ type: 'addOrgBoardEdge', boardId: b.id, from, to })
+        },
+        updateOrgBoardEdge: (from, to, patch) => {
+          const b = get().activeOrgBoard()
+          if (!b || get().shareMode) return
+          dispatch({ type: 'updateOrgBoardEdge', boardId: b.id, from, to, patch })
+        },
+        deleteOrgBoardEdge: (from, to) => {
+          const b = get().activeOrgBoard()
+          if (!b || get().shareMode) return
+          dispatch({ type: 'deleteOrgBoardEdge', boardId: b.id, from, to })
+        },
 
         // ── Entity CRUD ────────────────────────────────────────────────────
         addModule: () => {
@@ -385,7 +473,9 @@ export const useWorkspace = create<WorkspaceState>()(
       partialize: (s) => ({
         orgs: s.orgs,
         projects: s.projects,
+        orgBoards: s.orgBoards,
         activeProjectId: s.activeProjectId,
+        activeOrgBoardId: s.activeOrgBoardId,
         screen: s.screen,
         activeView: s.activeView,
         roleFilter: s.roleFilter,

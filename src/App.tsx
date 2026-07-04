@@ -4,6 +4,7 @@ import MindmapView from '@/components/views/MindmapView'
 import StoryMapView from '@/components/views/StoryMapView'
 import SwimlaneView from '@/components/views/SwimlaneView'
 import OverviewView from '@/components/views/OverviewView'
+import OrgBoardView from '@/components/views/OrgBoardView'
 import DetailPanel from '@/components/panel/DetailPanel'
 import Home from '@/components/home/Home'
 import ConnectPage from '@/components/connect/ConnectPage'
@@ -55,6 +56,8 @@ export default function App() {
         <ConnectPage />
       ) : screen === 'guide' ? (
         <GuidePage />
+      ) : screen === 'orgboard' ? (
+        <OrgBoardView />
       ) : (
         <div className="flex h-full flex-col overflow-hidden">
           <Header />

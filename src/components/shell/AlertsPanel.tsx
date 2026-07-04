@@ -17,6 +17,7 @@ export default function AlertsPanel() {
   const toggleAlerts = useWorkspace((s) => s.toggleAlerts)
   const setView = useWorkspace((s) => s.setView)
   const select = useWorkspace((s) => s.select)
+  const openOrgBoard = useWorkspace((s) => s.openOrgBoard)
 
   // Impact alerts are computed live from the board; other kinds come from the board's
   // own alert list. Recomputed whenever the board changes.
@@ -81,8 +82,14 @@ export default function AlertsPanel() {
                         </div>
                         <button
                           onClick={() => {
-                            setView(a.action.view)
-                            select(a.action.selection)
+                            if (a.action.view === 'orgboard') {
+                              // Cross-project alert — jump to the org board, focusing the edge.
+                              openOrgBoard(a.action.boardId, a.action.edge ? { type: 'edge', ...a.action.edge } : undefined)
+                              toggleAlerts(false)
+                            } else {
+                              setView(a.action.view)
+                              select(a.action.selection)
+                            }
                           }}
                           className="flex h-[26px] items-center gap-[5px] rounded-[7px] border border-[#d3deff] bg-[#f1f5ff] px-2.5 text-[11.5px] font-bold text-brand hover:bg-[#e3ecff]"
                         >

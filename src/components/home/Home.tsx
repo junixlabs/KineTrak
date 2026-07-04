@@ -12,6 +12,7 @@ import {
   Network,
   LayoutGrid,
   Workflow,
+  Boxes,
   UserPlus,
   Sparkles,
   Gift,
@@ -42,6 +43,11 @@ export default function Home() {
   const renameOrg = useWorkspace((s) => s.renameOrg)
   const deleteOrg = useWorkspace((s) => s.deleteOrg)
   const importProjectData = useWorkspace((s) => s.importProjectData)
+  const orgBoards = useWorkspace((s) => s.orgBoards)
+  const openOrgBoard = useWorkspace((s) => s.openOrgBoard)
+  const createOrgBoard = useWorkspace((s) => s.createOrgBoard)
+  const renameOrgBoard = useWorkspace((s) => s.renameOrgBoard)
+  const deleteOrgBoard = useWorkspace((s) => s.deleteOrgBoard)
   const goConnect = useWorkspace((s) => s.goConnect)
   const goGuide = useWorkspace((s) => s.goGuide)
   const resetAll = useWorkspace((s) => s.resetAll)
@@ -73,12 +79,25 @@ export default function Home() {
   const [orgFilter, setOrgFilter] = useState<string | null>(null)
   const [editOrg, setEditOrg] = useState<{ id: string; val: string } | null>(null)
   const [editProj, setEditProj] = useState<{ id: string; val: string } | null>(null)
+  const [editBoard, setEditBoard] = useState<{ id: string; val: string } | null>(null)
 
   const create = (template: ProjectTemplate) => {
     let orgId = orgFilter ?? orgs[0]?.id
     if (!orgId) orgId = createOrg('My workspace')
     createProject(orgId, '', template)
   }
+
+  // New system map, pre-seeded with one node per project already in the space.
+  const createMap = () => {
+    let orgId = orgFilter ?? orgs[0]?.id
+    if (!orgId) orgId = createOrg('My workspace')
+    createOrgBoard(orgId, 'System map')
+  }
+
+  const visibleBoards = useMemo(
+    () => (orgFilter ? orgBoards.filter((b) => b.orgId === orgFilter) : orgBoards),
+    [orgBoards, orgFilter],
+  )
 
   const visible = useMemo(() => {
     let list = projects
@@ -257,6 +276,64 @@ export default function Home() {
                 </div>
               </TemplateCard>
             </div>
+          </div>
+
+          {/* System maps — how this space's projects work together */}
+          <div className="mb-8">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-[15px] font-bold text-ink">
+                System maps {orgFilter && <span className="text-faint">· {orgs.find((o) => o.id === orgFilter)?.name}</span>}
+              </h2>
+              <button
+                onClick={createMap}
+                title="Create a system map seeded from this space's projects"
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[12.5px] font-bold text-brand hover:bg-[#eef1ff]"
+              >
+                <Plus size={14} strokeWidth={2.5} /> System map
+              </button>
+            </div>
+            {visibleBoards.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-line px-4 py-5 text-[12.5px] text-faint">
+                No system maps yet. Create one to see how this space's projects work together — it starts from the projects you already have.
+              </div>
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4">
+                {visibleBoards.map((b) => {
+                  const bOrg = orgs.find((o) => o.id === b.orgId)
+                  return (
+                    <div key={b.id} className="group flex items-start gap-1 rounded-xl border border-line bg-white p-3 shadow-card transition-shadow hover:shadow-pop">
+                      <button onClick={() => openOrgBoard(b.id)} className="flex flex-1 items-start gap-2.5 text-left">
+                        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#eef1ff] text-brand">
+                          <Boxes size={17} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          {editBoard?.id === b.id ? (
+                            <InlineEdit
+                              value={editBoard.val}
+                              onChange={(v) => setEditBoard({ id: b.id, val: v })}
+                              onCommit={() => {
+                                if (editBoard.val.trim()) renameOrgBoard(b.id, editBoard.val.trim())
+                                setEditBoard(null)
+                              }}
+                              onCancel={() => setEditBoard(null)}
+                            />
+                          ) : (
+                            <span className="block truncate text-[13.5px] font-bold text-ink">{b.name}</span>
+                          )}
+                          <span className="mt-0.5 block text-[11px] text-faint">
+                            {bOrg?.name} · {b.nodes.length} systems · {b.edges.length} integrations
+                          </span>
+                        </span>
+                      </button>
+                      <div className="flex flex-none flex-col gap-0.5">
+                        <IconBtn title="Rename" onClick={() => setEditBoard({ id: b.id, val: b.name })}><Pencil size={12} /></IconBtn>
+                        <IconBtn title="Delete" danger onClick={() => confirm(`Delete system map "${b.name}"?`) && deleteOrgBoard(b.id)}><Trash2 size={12} /></IconBtn>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* Projects */}
