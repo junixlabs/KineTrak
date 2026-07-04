@@ -25,10 +25,12 @@ export default function App() {
   const shareMode = useWorkspace((s) => s.shareMode)
 
   // Anonymous read-only share link — no login, present-style viewer.
+  // A system-map link opens the org-board view itself (read-only via shareMode);
+  // project links keep the per-project ShareViewer.
   if (shareMode) {
     return (
       <>
-        <ShareViewer />
+        {screen === 'orgboard' ? <OrgBoardView /> : <ShareViewer />}
         <Toaster />
       </>
     )
@@ -48,7 +50,10 @@ export default function App() {
 
   return (
     <>
-      {present ? (
+      {present && screen === 'orgboard' ? (
+        // Org boards present themselves (PresentMode assumes a per-project view).
+        <OrgBoardView />
+      ) : present ? (
         <PresentMode />
       ) : screen === 'home' ? (
         <Home />

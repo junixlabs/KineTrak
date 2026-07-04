@@ -215,6 +215,25 @@ export const shareRepo = {
   },
 }
 
+// ── Org-board shares (public read-only map links) ────────────────────────────
+export interface OrgBoardShareRow {
+  token: string
+  orgBoardId: string
+  createdAt: string
+}
+export const orgBoardShareRepo = {
+  async all(): Promise<OrgBoardShareRow[]> {
+    const rows = await requireDb().select().from(t.orgBoardShares)
+    return rows.map((r) => ({ token: r.token, orgBoardId: r.orgBoardId, createdAt: iso(r.createdAt) }))
+  },
+  async insert(s: OrgBoardShareRow): Promise<void> {
+    await requireDb().insert(t.orgBoardShares).values({ token: s.token, orgBoardId: s.orgBoardId, createdAt: new Date(s.createdAt) })
+  },
+  async deleteByBoard(orgBoardId: string): Promise<void> {
+    await requireDb().delete(t.orgBoardShares).where(eq(t.orgBoardShares.orgBoardId, orgBoardId))
+  },
+}
+
 // ── Activity (append-only) ───────────────────────────────────────────────────
 export const activityRepo = {
   /** The newest `limit` entries (any project), returned oldest→newest to warm

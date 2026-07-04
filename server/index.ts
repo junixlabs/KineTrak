@@ -7,13 +7,17 @@ import { WebSocketServer, WebSocket } from 'ws'
 import {
   applyAndBroadcast,
   backfillSearchIfEmpty,
+  getCatalog,
+  getOrgBoards,
   getProject,
   hydrateState,
   onChange,
+  orgBoardOrgId,
   projectHeader,
   projectRoot,
   scopedRootForUser,
 } from './state'
+import { createOrgBoardShare, hydrateOrgBoardShares, orgBoardIdForToken, revokeOrgBoardShare, shareForOrgBoard } from './orgBoardShares'
 import { registerMcp } from './mcp'
 import { registerWebhooks } from './webhook'
 import { createKey, hydrateKeys, listKeys, revokeKey } from './keys'
@@ -174,6 +178,37 @@ app.delete('/api/projects/:id/share', requireUser, async (req: AuthedRequest, re
   res.json({ ok: await revokeShare(id) })
 })
 
+// ── Public read-only share links for org boards (system maps) ───────────────
+const ownsOrgBoard = (userId: string, boardId: string): boolean => {
+  const orgId = orgBoardOrgId(boardId)
+  return !!orgId && userOwnsOrg(userId, orgId)
+}
+
+app.get('/api/org-boards/:id/share', requireUser, (req: AuthedRequest, res) => {
+  const id = req.params.id as string
+  if (!ownsOrgBoard(req.user!.id, id)) return res.status(404).json({ ok: false })
+  res.json({ ok: true, token: shareForOrgBoard(id)?.token ?? null })
+})
+app.post('/api/org-boards/:id/share', requireUser, async (req: AuthedRequest, res) => {
+  const id = req.params.id as string
+  if (!ownsOrgBoard(req.user!.id, id)) return res.status(403).json({ ok: false, error: 'Not your board' })
+  res.json({ ok: true, token: (await createOrgBoardShare(id)).token })
+})
+app.delete('/api/org-boards/:id/share', requireUser, async (req: AuthedRequest, res) => {
+  const id = req.params.id as string
+  if (!ownsOrgBoard(req.user!.id, id)) return res.status(403).json({ ok: false })
+  res.json({ ok: await revokeOrgBoardShare(id) })
+})
+
+// Anonymous, read-only system map for a share token.
+app.get('/api/shared-map/:token', (req, res) => {
+  const boardId = orgBoardIdForToken(req.params.token as string)
+  const board = boardId ? getOrgBoards().find((b) => b.id === boardId) : undefined
+  if (!board) return res.status(404).json({ ok: false, error: 'Link not found or revoked' })
+  const orgName = getCatalog().orgs.find((o) => o.id === board.orgId)?.name ?? ''
+  res.json({ board, orgName })
+})
+
 // Anonymous, read-only board for a share token.
 app.get('/api/shared/:token', async (req, res) => {
   const pid = projectIdForToken(req.params.token as string)
@@ -215,6 +250,8 @@ interface AuthedSocket extends WebSocket {
   userId?: string
   /** Read-only share viewer bound to one project. */
   shareProjectId?: string
+  /** Read-only share viewer bound to one org board (system map). */
+  shareOrgBoardId?: string
 }
 const wss = new WebSocketServer({ server, path: '/ws' })
 const sendScoped = async (ws: AuthedSocket) => {
@@ -231,8 +268,14 @@ const sendScoped = async (ws: AuthedSocket) => {
 wss.on('connection', (ws: AuthedSocket, req) => {
   const params = new URL(req.url ?? '', 'http://x').searchParams
   const share = projectIdForToken(params.get('share') ?? undefined)
+  const mapShare = orgBoardIdForToken(params.get('map') ?? undefined)
   if (share) {
     ws.shareProjectId = share // anonymous read-only viewer
+  } else if (mapShare) {
+    ws.shareOrgBoardId = mapShare // anonymous read-only system-map viewer
+    const board = getOrgBoards().find((b) => b.id === mapShare)
+    if (board && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'orgboard', board }))
+    return
   } else {
     const user = userByToken(params.get('token') ?? undefined)
     if (!user) {
@@ -262,7 +305,8 @@ function sendOrgBoardFrame(board: import('../src/store/types').OrgBoard) {
   const frame = JSON.stringify({ type: 'orgboard', board })
   wss.clients.forEach((c) => {
     const ws = c as AuthedSocket
-    if (ws.readyState === WebSocket.OPEN && ws.userId && userOwnsOrg(ws.userId, board.orgId)) ws.send(frame)
+    if (ws.readyState !== WebSocket.OPEN) return
+    if (ws.shareOrgBoardId === board.id || (ws.userId && userOwnsOrg(ws.userId, board.orgId))) ws.send(frame)
   })
 }
 
@@ -292,7 +336,7 @@ const PORT = Number(process.env.PORT) || 8787
 async function bootstrap() {
   assertDatabaseConfigured()
   await runMigrations()
-  await Promise.all([hydrateAuth(), hydrateKeys(), hydrateShares(), hydrateState(), hydrateActivity()])
+  await Promise.all([hydrateAuth(), hydrateKeys(), hydrateShares(), hydrateOrgBoardShares(), hydrateState(), hydrateActivity()])
   await backfillSearchIfEmpty()
   server.listen(PORT, () => {
     console.log(`KineTrak server → http://localhost:${PORT}`)

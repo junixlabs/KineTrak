@@ -6,6 +6,7 @@ import { searchRepo } from './infra/repositories'
 import { ProjectRegistry } from './runtime/ProjectRegistry'
 import { revokeOrgKeys } from './keys'
 import { pruneShares } from './shares'
+import { pruneOrgBoardShares } from './orgBoardShares'
 
 // ── Orchestrator (Phase 2: on-demand per-project) ────────────────────────────
 // The catalog (orgs + project headers) stays resident for cheap listing/scoping;
@@ -164,6 +165,7 @@ async function applyOrgBoard(cmd: Command): Promise<OrgBoard | undefined> {
     changed = found
   }
   orgBoards = next
+  if (cmd.type === 'deleteOrgBoard') pruneOrgBoardShares(new Set(orgBoards.map((b) => b.id)))
   return changed
 }
 
@@ -254,6 +256,7 @@ async function applyCatalog(cmd: Command): Promise<Project | undefined> {
       catalog.headers = catalog.headers.filter((h) => h.orgId !== cmd.id)
       revokeOrgKeys(cmd.id)
       pruneShares(new Set(catalog.headers.map((h) => h.id)))
+      pruneOrgBoardShares(new Set(orgBoards.map((b) => b.id)))
       return undefined
     }
     case 'createProject':

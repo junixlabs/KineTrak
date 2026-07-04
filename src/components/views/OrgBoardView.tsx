@@ -11,11 +11,13 @@ import {
   type Node,
   type NodeMouseHandler,
 } from '@xyflow/react'
-import { ArrowLeft, Boxes, Globe, Plus, Trash2, ExternalLink, Anchor } from 'lucide-react'
+import { ArrowLeft, Boxes, Globe, Plus, Trash2, ExternalLink, Anchor, Play, Share2, X } from 'lucide-react'
 import OrgSystemNode from '@/components/nodes/OrgSystemNode'
 import ZoomControl from '@/components/shell/ZoomControl'
 import ViewHint from './ViewHint'
 import { useWorkspace } from '@/store/useWorkspace'
+import { useToast } from '@/store/useToast'
+import { authFetch } from '@/store/api'
 import type { OrgBoardEdgeKind, OrgBoardSel } from '@/store/types'
 
 const nodeTypes = { orgSystem: OrgSystemNode }
@@ -35,6 +37,10 @@ function OrgBoardInner() {
   const orgs = useWorkspace((s) => s.orgs)
   const projects = useWorkspace((s) => s.projects)
   const shareMode = useWorkspace((s) => s.shareMode)
+  const present = useWorkspace((s) => s.present)
+  const setPresent = useWorkspace((s) => s.setPresent)
+  const syncStatus = useWorkspace((s) => s.syncStatus)
+  const showToast = useToast((s) => s.show)
   const goHome = useWorkspace((s) => s.goHome)
   const openProject = useWorkspace((s) => s.openProject)
   const selectEntity = useWorkspace((s) => s.select)
@@ -47,10 +53,22 @@ function OrgBoardInner() {
   const updateOrgBoardEdge = useWorkspace((s) => s.updateOrgBoardEdge)
   const deleteOrgBoardEdge = useWorkspace((s) => s.deleteOrgBoardEdge)
 
-  const editable = !shareMode
+  const editable = !shareMode && !present
   const [sel, setSel] = useState<Sel>(null)
   const [addMenu, setAddMenu] = useState(false)
   const [nameEdit, setNameEdit] = useState<string | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [shareToken, setShareToken] = useState<string | null>(null)
+
+  // Esc leaves present mode (mirrors PresentMode's behavior).
+  useEffect(() => {
+    if (!present) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPresent(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [present, setPresent])
 
   const zoom = useStore((s) => s.transform[2])
   const { zoomIn, zoomOut, fitView } = useReactFlow()
@@ -160,9 +178,11 @@ function OrgBoardInner() {
     <div className="flex h-full flex-col overflow-hidden">
       {/* Slim board header — this screen sits outside the project workspace. */}
       <header className="flex h-14 flex-none items-center gap-3 border-b border-line bg-white px-4">
-        <button onClick={goHome} className="flex h-9 w-9 items-center justify-center rounded-lg border border-line text-muted hover:bg-[#f4f6f9]" title="Back to Home">
-          <ArrowLeft size={16} />
-        </button>
+        {!shareMode && !present && (
+          <button onClick={goHome} className="flex h-9 w-9 items-center justify-center rounded-lg border border-line text-muted hover:bg-[#f4f6f9]" title="Back to Home">
+            <ArrowLeft size={16} />
+          </button>
+        )}
         <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[9px] bg-gradient-to-br from-brand to-brand-light">
           <Boxes size={16} className="text-white" />
         </span>
@@ -188,12 +208,94 @@ function OrgBoardInner() {
         )}
         <span className="rounded-md bg-[#eef1ff] px-2 py-0.5 text-[11px] font-bold text-brand">System map</span>
         <span className="text-[12px] text-faint">{org?.name}</span>
+        {shareMode && <span className="rounded-md bg-[#f4f6f9] px-2 py-0.5 text-[11px] font-bold text-muted">Shared · read-only</span>}
+        <div className="flex-1" />
+        {present ? (
+          <button
+            onClick={() => setPresent(false)}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[12.5px] font-bold text-ink hover:bg-[#f4f6f9]"
+          >
+            <X size={14} /> Exit · Esc
+          </button>
+        ) : (
+          !shareMode && (
+            <>
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    if (syncStatus !== 'live') return showToast('Share links need a KineTrak server (local-only mode)')
+                    setShareOpen((v) => !v)
+                    if (!shareOpen)
+                      void authFetch(`/api/org-boards/${board.id}/share`).then(async (r) => {
+                        if (r.ok) setShareToken((await r.json()).token ?? null)
+                      })
+                  }}
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[12.5px] font-bold text-ink hover:bg-[#f4f6f9]"
+                >
+                  <Share2 size={14} /> Share
+                </button>
+                {shareOpen && (
+                  <>
+                    <div className="fixed inset-0 z-[55]" onClick={() => setShareOpen(false)} />
+                    <div className="absolute right-0 top-11 z-[60] w-[300px] animate-pop rounded-xl border border-line bg-white p-3 shadow-pop">
+                      <div className="mb-2 text-[12px] font-bold text-ink">Public read-only link</div>
+                      {shareToken ? (
+                        <>
+                          <button
+                            onClick={async () => {
+                              await navigator.clipboard.writeText(`${window.location.origin}/map/${shareToken}`)
+                              showToast('Map link copied')
+                              setShareOpen(false)
+                            }}
+                            className="mb-1.5 h-8 w-full rounded-lg bg-brand px-3 text-[12px] font-bold text-white hover:bg-brand-dark"
+                          >
+                            Copy link
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const r = await authFetch(`/api/org-boards/${board.id}/share`, { method: 'DELETE' })
+                              if (r.ok) {
+                                setShareToken(null)
+                                showToast('Link revoked')
+                              }
+                            }}
+                            className="h-8 w-full rounded-lg border border-line px-3 text-[12px] font-bold text-[#e5484d] hover:bg-[#fdecec]"
+                          >
+                            Revoke link
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            const r = await authFetch(`/api/org-boards/${board.id}/share`, { method: 'POST' })
+                            if (r.ok) setShareToken((await r.json()).token ?? null)
+                          }}
+                          className="h-8 w-full rounded-lg bg-brand px-3 text-[12px] font-bold text-white hover:bg-brand-dark"
+                        >
+                          Create link
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => setPresent(true)}
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[12.5px] font-bold text-ink hover:bg-[#f4f6f9]"
+              >
+                <Play size={14} /> Present
+              </button>
+            </>
+          )
+        )}
       </header>
 
       <main className="kt-canvas relative flex-1 overflow-hidden">
-        <ViewHint>
-          Each card is a <b className="text-brand">project</b> (or external system) · connect the blue dots to draw an <b className="text-brand">integration</b> · click an arrow to edit its contract
-        </ViewHint>
+        {!present && !shareMode && (
+          <ViewHint>
+            Each card is a <b className="text-brand">project</b> (or external system) · connect the blue dots to draw an <b className="text-brand">integration</b> · click an arrow to edit its contract
+          </ViewHint>
+        )}
 
         {editable && (
           <div className="absolute left-[18px] top-[18px] z-20">

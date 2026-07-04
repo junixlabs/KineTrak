@@ -32,3 +32,10 @@ export function getShareToken(): string | null {
   if (m) return decodeURIComponent(m[1])
   return new URLSearchParams(window.location.search).get('share')
 }
+
+/** Share token for a public org-board (system map) link: /map/<token> or ?map=. */
+export function getMapShareToken(): string | null {
+  const m = /^\/map\/([^/?#]+)/.exec(window.location.pathname)
+  if (m) return decodeURIComponent(m[1])
+  return new URLSearchParams(window.location.search).get('map')
+}

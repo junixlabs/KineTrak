@@ -113,6 +113,21 @@ export const shares = pgTable(
   (t) => [index('shares_project_idx').on(t.projectId)],
 )
 
+// Public read-only links for org boards — parallel to `shares` (one token per
+// board). A polymorphic shares.project_id would fork every call site (WS auth,
+// /api/shared, pruneShares) for ~50 lines of savings; a twin table keeps both paths simple.
+export const orgBoardShares = pgTable(
+  'org_board_shares',
+  {
+    token: text('token').primaryKey(),
+    orgBoardId: text('org_board_id')
+      .notNull()
+      .references(() => orgBoards.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('org_board_shares_board_idx').on(t.orgBoardId)],
+)
+
 export const activity = pgTable(
   'activity',
   {
