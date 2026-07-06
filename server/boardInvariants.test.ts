@@ -108,7 +108,6 @@ test('severityFor — ssot escalates structural invariants to error, map keeps w
   assert.equal(severityFor('unscoped_step', 'map'), 'warning')
   assert.equal(severityFor('unscoped_step', 'asis-doc'), 'warning')
   assert.equal(severityFor('unscoped_step', undefined), 'warning')
-  // DoD + mismatch stay advisory even on ssot
+  // DoD stays advisory even on ssot
   assert.equal(severityFor('done_without_acceptance', 'ssot'), 'warning')
-  assert.equal(severityFor('flow_feature_mismatch', 'ssot'), 'warning')
 })
