@@ -31,8 +31,8 @@ from implementation memory.
 2. **Structural + quality check.** `validate_board` — surface orphan features, dangling edges,
    disconnected or mislaned steps, and the board-quality invariants (`docs/BOARD_QUALITY.md`):
    `unscoped_step` (a step with no `flowId`), `overlapping_steps`, `cross_flow_edge`,
-   `decision_no_branches`, `flow_no_start`/`flow_no_end`, `done_without_acceptance`,
-   `flow_feature_mismatch`. On an **ssot** board these are errors that block `create_snapshot` until
+   `decision_no_branches`, `flow_no_start`/`flow_no_end`, `done_without_acceptance`. On an **ssot**
+   board the structural ones are errors that block `create_snapshot` until
    fixed; on `map`/`asis-doc` they are warnings. Run `arrange_swimlane` to clear
    `overlapping_steps`. (Fixing some structural issues is Tier 4 — flag, do not silently delete.)
 

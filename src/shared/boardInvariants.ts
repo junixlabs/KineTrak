@@ -3,6 +3,7 @@
 // imported by the server's MCP layer (validate_board, create_snapshot, next_action)
 // and the client, and exercised directly by tests.
 import type { WorkspaceData, BoardRole } from '../store/types'
+import { isSteeringFeature } from '../lib/descriptions'
 
 export type QualitySeverity = 'error' | 'warning'
 
@@ -20,7 +21,6 @@ export type QualityKind =
   | 'flow_no_start' // I6 — a flow with no start node
   | 'flow_no_end' // I6 — a flow with no end node
   | 'done_without_acceptance' // I7 — a done feature with no / unmet acceptance criteria
-  | 'flow_feature_mismatch' // I10 — flowId disagrees with the linked feature
 
 export interface QualityIssue {
   severity: QualitySeverity
@@ -112,10 +112,15 @@ export function boardQualityIssues(data: WorkspaceData): QualityIssue[] {
   })
 
   // I7 — definition of done. Only meaningful where the board IS the truth (ssot):
-  // on map / asis-doc, "done" means "exists elsewhere", not "acceptance met".
+  // on map / asis-doc, "done" means "exists elsewhere", not "acceptance met". The
+  // steering / Project Context feature is a meta doc, not shippable work — exempt it
+  // (same as the description-budget check).
   if (role === 'ssot') {
+    const moduleName = new Map(data.modules.map((m) => [m.id, m.name]))
+    const ctxId = data.settings?.contextFeatureId
     data.features.forEach((f) => {
       if (f.status !== 'done') return
+      if (isSteeringFeature(f, moduleName.get(f.moduleId), ctxId)) return
       const total = f.validations?.length ?? 0
       const done = f.validationsDone?.length ?? 0
       if (total === 0)
@@ -124,20 +129,6 @@ export function boardQualityIssues(data: WorkspaceData): QualityIssue[] {
         push('done_without_acceptance', `Feature “${f.name}” is done but ${total - done}/${total} acceptance criteria are unchecked — verify & check them, or reopen it.`, [f.id])
     })
   }
-
-  // I10 — flowId must agree with the linked feature. link_feature_step writes a mindmap
-  // crossLink to the feature; if it points at a DIFFERENT feature than flowId, the two
-  // scoping mechanisms disagree.
-  nodes.forEach((n) => {
-    if (!n.flowId || !n.crossLinks) return
-    n.crossLinks.forEach((cl) => {
-      if (cl.view === 'mindmap' && cl.targetId && featById.has(cl.targetId) && cl.targetId !== n.flowId) {
-        const linked = featById.get(cl.targetId)!
-        const flow = featById.get(n.flowId!)
-        push('flow_feature_mismatch', `Step “${n.label}” is scoped to flow “${flow?.name ?? n.flowId}” but linked to feature “${linked.name}” — align flowId with link_feature_step.`, [n.id])
-      }
-    })
-  })
 
   return issues
 }

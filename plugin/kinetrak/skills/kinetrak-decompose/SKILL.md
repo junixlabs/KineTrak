@@ -46,8 +46,10 @@ feature's description and acceptance criteria first (`get_board` / `search`).
 5. **Link each step to its feature.** Call `link_feature_step({featureId, nodeId})` for every step.
    This is different from `flowId`: `flowId` (step 2) scopes the flow for the UI filter, while
    `link_feature_step` writes the bidirectional crossLink `compute_impact` walks to resolve a
-   feature to its swimlane entry node — set **both**, pointing at the same feature. Skip the link and
-   impact analysis sees nothing. Add an `append_note` for any extra traceability context.
+   feature to its swimlane entry node — set **both**. For a normal feature flow they name the same
+   feature; a backbone flow spanning features uses the backbone as `flowId` and links each step to
+   the real feature it represents. Skip the link and impact analysis sees nothing. Add an
+   `append_note` for any extra traceability context.
 
 6. **Leave steps `todo`.** Do not start work here — decomposition only produces the plan.
 

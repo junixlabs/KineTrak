@@ -276,7 +276,7 @@ export function buildMcpServer(key: ApiKey): McpServer {
     'validate_board',
     {
       description:
-        "Self-check the board (docs/BOARD_QUALITY.md). Structural: empty modules, orphan features, swim steps in missing lanes, edges to missing steps, disconnected steps, dangling flows, duplicate names, bloated descriptions. Quality invariants (severity by boardRole — errors on ssot, warnings on map/asis-doc): unscoped_step (every step needs a flowId), overlapping_steps, cross_flow_edge, decision_no_branches, flow_no_start/flow_no_end, done_without_acceptance, flow_feature_mismatch. Returns issues by severity so you can fix them.",
+        "Self-check the board (docs/BOARD_QUALITY.md). Structural: empty modules, orphan features, swim steps in missing lanes, edges to missing steps, disconnected steps, dangling flows, duplicate names, bloated descriptions. Quality invariants (severity by boardRole — errors on ssot, warnings on map/asis-doc): unscoped_step (every step needs a flowId), overlapping_steps, cross_flow_edge, decision_no_branches, flow_no_start/flow_no_end, done_without_acceptance. Returns issues by severity so you can fix them.",
       inputSchema: { projectId: z.string().optional() },
     },
     async ({ projectId }) => {

@@ -21,12 +21,13 @@ renders in *every* flow view and overlaps whatever flow you filter to.
 
 | Mechanism | What it does |
 |---|---|
-| `flowId` (on the step) | Scopes the step to a feature's flow so the UI can filter the canvas to one flow, and so flows lay out in separate bands. |
-| `link_feature_step` | Writes a bidirectional crossLink used by `compute_impact` to walk from a feature to its entry step. |
+| `flowId` (on the step) | Scopes the step to a *flow* (which swimlane sequence it belongs to) so the UI can filter the canvas to one flow, and so flows lay out in separate bands. |
+| `link_feature_step` | Writes a bidirectional crossLink used by `compute_impact` to walk from a *feature* to the step that represents it. |
 
-Set **both**: `flowId` when you create the step, `link_feature_step` in the Decompose
-step-linking pass. They must point at the same feature (`flow_feature_mismatch` flags
-a disagreement).
+Set **both**. For a normal feature flow they point at the same feature. For a **backbone
+flow** that spans several features (see the last section), `flowId` is the backbone's
+host feature while each step is linked to the real feature it represents — so the two
+legitimately differ. Both must reference *some* live feature; neither may be blank.
 
 ## The invariants
 
@@ -38,10 +39,9 @@ a disagreement).
 | I4 | An edge connects two steps of the *same* flow | `cross_flow_edge` |
 | I5 | A `decision` step forks (≥2 outgoing branches) | `decision_no_branches` |
 | I6 | Each flow has a `start` and an `end` step | `flow_no_start` / `flow_no_end` |
-| I7 | A `done` feature has acceptance criteria, all checked (ssot only) | `done_without_acceptance` |
+| I7 | A `done` feature has acceptance criteria, all checked (ssot only; steering feature exempt) | `done_without_acceptance` |
 | I8 | Feature status agrees with its steps' statuses | `flow_lags_feature` / `feature_lags_flow` |
 | I9 | Descriptions stay within the contract budget | `bloated_description` |
-| I10 | `flowId` agrees with the `link_feature_step` crossLink | `flow_feature_mismatch` |
 
 ## Severity by board role
 
@@ -53,8 +53,9 @@ Severity is resolved from `settings.boardRole` (`severityFor` in
   must be valid). `next_action` routes you to `validate` while any error remains.
 - **`map` / `asis-doc`** (truth lives elsewhere): the same invariants are **warnings**
   (advisory). I7 (definition-of-done) is only checked on `ssot`, since on `map`/`asis-doc`
-  "done" means "exists elsewhere", not "acceptance met".
-- I7, I9, I10 stay warnings on every role.
+  "done" means "exists elsewhere", not "acceptance met"; the steering / Project Context
+  feature is exempt from I7.
+- I7 and I9 stay warnings on every role.
 
 ## Layout: keep flows readable
 

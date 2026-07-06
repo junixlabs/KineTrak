@@ -84,11 +84,22 @@ test('I7 — done feature with all criteria checked is clean on ssot', () => {
   assert.ok(!kinds(data).includes('done_without_acceptance'))
 })
 
-test('I10 flow_feature_mismatch — flowId disagrees with the linked feature', () => {
-  const node = step('a', { flowId: 'f1', kind: 'start', crossLinks: [{ view: 'mindmap', label: 'x', targetId: 'f2' }] })
-  const end = step('b', { flowId: 'f1', kind: 'end' })
+test('I7 — the steering / Project Context feature is exempt on ssot', () => {
+  const ctx = feature('ctx', 'done') // no acceptance criteria
+  const nodes = [step('a', { flowId: 'ctx', kind: 'start' }), step('b', { flowId: 'ctx', kind: 'end' })]
+  const data: WorkspaceData = {
+    ...board({ features: [ctx], swimNodes: nodes, swimEdges: [{ from: 'a', to: 'b' }] }, 'ssot'),
+    settings: { boardRole: 'ssot', contextFeatureId: 'ctx' },
+  }
+  assert.ok(!kinds(data).includes('done_without_acceptance'))
+})
+
+test('backbone pattern — a step whose flowId differs from its link_feature_step crossLink is clean', () => {
+  // A backbone flow hosted on f1, its step linked to the real feature f2 it represents.
+  const node = step('a', { flowId: 'f1', kind: 'start', x: 0, crossLinks: [{ view: 'mindmap', label: 'x', targetId: 'f2' }] })
+  const end = step('b', { flowId: 'f1', kind: 'end', x: 220 })
   const data = board({ features: [feature('f1'), feature('f2')], swimNodes: [node, end], swimEdges: [{ from: 'a', to: 'b' }] })
-  assert.ok(kinds(data).includes('flow_feature_mismatch'))
+  assert.deepEqual(kinds(data), []) // no flow_feature_mismatch — the pattern is legitimate
 })
 
 test('severityFor — ssot escalates structural invariants to error, map keeps warning', () => {
