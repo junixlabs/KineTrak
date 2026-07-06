@@ -180,9 +180,13 @@ MCP resources: `kinetrak://playbook` (the full agent playbook) and `kinetrak://p
 (`npm run mcp:stdio` with `KINETRAK_MCP_KEY=kt_live_…`) for locally-spawned CLI agents.
 
 Layout — the agent decides how the board displays, not just its contents:
+- `add_swim_node({lane, flowId, …})` — **`flowId` (the owning feature id) is required**: every
+  step belongs to a feature's flow (`docs/BOARD_QUALITY.md`). New steps are placed clear of
+  existing ones in their lane.
 - `move_swim_node({id,x,y})` — place a swimlane step anywhere on the canvas.
-- `arrange_swimlane()` — auto-tidy the whole flow: x by flow depth (longest path along
-  arrows), y centered in each lane. One call cleans up the diagram.
+- `arrange_swimlane({flowId?})` — auto-tidy. With no `flowId` it bands *every* flow into its own
+  x-range so distinct flows never overlap; scoped to one `flowId` it tidies that flow (x by flow
+  depth, y centered in each lane) and leaves the others in place. One call cleans up the diagram.
 - `reorder_modules({orderedIds})` / `reorder_features({orderedIds})` — set display order on the
   Mindmap (branches / rows) and Story Map (columns / rows). Omitted ids keep their order at the end.
 - `update_module({id, side})` — pin a module's Mindmap branch to `"left"`/`"right"` of the root

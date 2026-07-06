@@ -91,8 +91,9 @@ export interface SwimNode {
   code?: string
   label: string
   lane: number
-  /** Feature id owning this step's flow (feature-scoped swimlane). Unset = legacy
-   *  shared canvas: the step shows in every flow view. */
+  /** Feature id owning this step's flow (feature-scoped swimlane). Required on new
+   *  steps (docs/BOARD_QUALITY.md); optional only for legacy/pre-migration data, which
+   *  validate_board flags as unscoped_step (it renders in every flow view). */
   flowId?: string
   kind: NodeKind
   status: NodeStatus

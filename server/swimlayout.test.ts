@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { autoArrangeSwimlane } from '../src/lib/swimlayout'
+import { autoArrangeSwimlane, arrangeAllFlows } from '../src/lib/swimlayout'
 import type { SwimNode, SwimEdge, SwimLane } from '../src/store/types'
 
 const lanes: SwimLane[] = [
@@ -34,6 +34,23 @@ test('scoped arrange starts clear of avoided nodes (no flow stacking)', () => {
 test('unscoped arrange (no avoid) starts clear of the lane title block', () => {
   const pos = autoArrangeSwimlane([node('a', 0)], [], lanes)
   assert.equal(pos[0].x, 220)
+})
+
+test('arrangeAllFlows tiles distinct flows into non-overlapping x-bands', () => {
+  // Two flows, each a 2-step chain in lane 0, all starting at the same origin.
+  const nodes = [
+    node('a', 0, 'f1'), node('b', 0, 'f1'),
+    node('c', 0, 'f2'), node('d', 0, 'f2'),
+  ]
+  const edges: SwimEdge[] = [{ from: 'a', to: 'b' }, { from: 'c', to: 'd' }]
+  const pos = arrangeAllFlows(nodes, edges, lanes)
+  const byId = new Map(pos.map((p) => [p.id, p]))
+  const f1MaxX = Math.max(byId.get('a')!.x, byId.get('b')!.x)
+  const f2MinX = Math.min(byId.get('c')!.x, byId.get('d')!.x)
+  assert.ok(f2MinX > f1MaxX, `flow f2 (minX=${f2MinX}) must sit right of flow f1 (maxX=${f1MaxX}) — no shared band`)
+  // No two nodes in the same lane share an x column across the whole board.
+  const xs = pos.map((p) => p.x)
+  assert.equal(new Set(xs).size, xs.length, 'every node in the single lane claims a distinct column')
 })
 
 test('lane centering uses the per-kind node height', () => {

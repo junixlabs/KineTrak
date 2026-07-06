@@ -4,6 +4,11 @@ How to extend the server without making it messy. These are **invariants** — C
 (`typecheck:server` + tests + build) and code review enforce them. Read this before
 adding a command, a tool, a table, or a persistence path.
 
+> For the invariants that govern **board data** (flow scoping, layout, definition-of-done)
+> rather than server code, see `docs/BOARD_QUALITY.md`. They are enforced in
+> `src/shared/boardInvariants.ts` via the shared `boardIssues()` detector, and surfaced by
+> `validate_board` / `create_snapshot` / `next_action`.
+
 ## Layers (dependency points downward)
 
 ```

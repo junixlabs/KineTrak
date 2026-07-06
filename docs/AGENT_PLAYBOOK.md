@@ -170,8 +170,13 @@ that **changes** a contract needs an `ask_human` gate (it affects other projects
 → *Human gate: the human reviews the spec before implementation begins.*
 
 **3 · Decompose** — Create an ordered sequence of swim steps for the feature, connected with edges
-to show flow. Keep it to **~7 steps per pass**; if it needs more, split into two features. Run
-`arrange_swimlane` to tidy the layout. → *Human gate: the human reviews the plan.*
+to show flow. **Every `add_swim_node` must pass `flowId` = the feature id** — this scopes the step
+to the feature's flow so the canvas can filter to it and flows never overlap (a step with no flowId
+is rejected; see `docs/BOARD_QUALITY.md`). `flowId` is not `link_feature_step`: set both — flowId on
+create, `link_feature_step` in the linking pass, pointing at the same feature. Keep it to **~7 steps
+per pass**; if it needs more, split into two features. Give each flow a `start` and an `end` step and
+let `decision` steps fork. Run `arrange_swimlane` to band the flows and tidy the layout. → *Human
+gate: the human reviews the plan.*
 
 **4 · Implement** — Inner loop, one step at a time:
 - Do the work (write code, run tests — using your own file/shell tools).

@@ -16,8 +16,9 @@ import type { Project, WorkspaceData, WorkspaceSettings } from '../src/store/typ
 import { makeId, nextNodeCode } from '../src/store/ids'
 import { computeImpact } from '../src/lib/impact'
 import { descStats, isSteeringFeature } from '../src/lib/descriptions'
-import { autoArrangeSwimlane } from '../src/lib/swimlayout'
+import { autoArrangeSwimlane, arrangeAllFlows } from '../src/lib/swimlayout'
 import { flowStatusIssues } from '../src/lib/flowstatus'
+import { boardQualityIssues } from '../src/shared/boardInvariants'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -33,9 +34,96 @@ const dateLabel = () => {
  * of the other flows' steps, which keep their canvas positions.
  */
 function arrangeSwimlane(data: import('../src/shared/board').Root['projects'][number]['data'], flowId?: string) {
-  const swimNodes = flowId ? data.swimNodes.filter((n) => !n.flowId || n.flowId === flowId) : data.swimNodes
-  const avoid = flowId ? data.swimNodes.filter((n) => n.flowId && n.flowId !== flowId) : []
+  // Whole-board arrange (no flowId): band every flow into its own x-range so distinct
+  // flows never stack on a shared origin. Scoped arrange: tidy that flow (+ any legacy
+  // unscoped steps) while leaving the other flows' steps where they sit.
+  if (!flowId) return arrangeAllFlows(data.swimNodes, data.swimEdges, data.lanes)
+  const swimNodes = data.swimNodes.filter((n) => !n.flowId || n.flowId === flowId)
+  const avoid = data.swimNodes.filter((n) => n.flowId && n.flowId !== flowId)
   return autoArrangeSwimlane(swimNodes, data.swimEdges, data.lanes, avoid)
+}
+
+/** Place a new step so it never lands on an existing one: right of the rightmost node
+ *  already in its lane (across all flows), lane-centered vertically. A later
+ *  arrange_swimlane bands the flows properly; this just prevents creation-time overlap. */
+function nextNodePos(d: WorkspaceData, lane: number, laneObj?: { y: number; h: number }): { x: number; y: number } {
+  const inLane = d.swimNodes.filter((n) => n.lane === lane)
+  const x = inLane.length ? Math.max(...inLane.map((n) => n.x)) + 210 : 220
+  const y = laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80
+  return { x, y }
+}
+
+type BoardIssue = { severity: 'error' | 'warning'; kind: string; message: string; ids?: string[] }
+
+/**
+ * The single board-quality detector. Runs the structural checks (module/feature tree,
+ * lanes, edges, dangling flows, duplicate names, doc-budget) and merges the flow /
+ * layout / definition-of-done invariants from boardInvariants (severity already
+ * resolved against the board's role). validate_board, create_snapshot and next_action
+ * all read this one list, so the contract is enforced from exactly one place.
+ */
+function boardIssues(d: WorkspaceData): BoardIssue[] {
+  const issues: BoardIssue[] = []
+  const moduleIds = new Set(d.modules.map((m) => m.id))
+  const laneIds = new Set(d.lanes.map((l) => l.id))
+  const nodeIds = new Set(d.swimNodes.map((n) => n.id))
+
+  d.modules.forEach((m) => {
+    if (!d.features.some((f) => f.moduleId === m.id))
+      issues.push({ severity: 'warning', kind: 'empty_module', message: `Module “${m.name}” has no features`, ids: [m.id] })
+  })
+  d.features.forEach((f) => {
+    if (!moduleIds.has(f.moduleId)) issues.push({ severity: 'error', kind: 'orphan_feature', message: `Feature “${f.name}” points at a missing module`, ids: [f.id] })
+  })
+  const featById = new Map(d.features.map((f) => [f.id, f]))
+  d.features.forEach((f) => {
+    if (!f.parentId) return
+    const parent = featById.get(f.parentId)
+    if (!parent) issues.push({ severity: 'warning', kind: 'missing_parent', message: `Sub-feature “${f.name}” points at a missing parent`, ids: [f.id] })
+    else if (f.parentId === f.id) issues.push({ severity: 'error', kind: 'nested_parent', message: `Feature “${f.name}” is its own parent`, ids: [f.id] })
+    else if (parent.moduleId !== f.moduleId) issues.push({ severity: 'error', kind: 'cross_module_parent', message: `Sub-feature “${f.name}” has its parent in another module`, ids: [f.id, parent.id] })
+    else if (parent.parentId) issues.push({ severity: 'error', kind: 'nested_parent', message: `Sub-feature “${f.name}” nests deeper than one level (parent “${parent.name}” is itself a sub-feature)`, ids: [f.id, parent.id] })
+  })
+  d.swimNodes.forEach((n) => {
+    if (!laneIds.has(n.lane)) issues.push({ severity: 'error', kind: 'node_bad_lane', message: `Step “${n.label}” is in a non-existent lane`, ids: [n.id] })
+    const connected = d.swimEdges.some((e) => e.from === n.id || e.to === n.id)
+    if (!connected && d.swimNodes.length > 1) issues.push({ severity: 'warning', kind: 'disconnected_step', message: `Step “${n.label}” has no connections`, ids: [n.id] })
+  })
+  d.swimEdges.forEach((e) => {
+    if (!nodeIds.has(e.from) || !nodeIds.has(e.to)) issues.push({ severity: 'error', kind: 'dangling_edge', message: `An edge references a missing step`, ids: [e.from, e.to] })
+  })
+  const featIds = new Set(d.features.map((f) => f.id))
+  d.swimNodes.forEach((n) => {
+    if (n.flowId && !featIds.has(n.flowId))
+      issues.push({ severity: 'warning', kind: 'dangling_flow', message: `Step “${n.label}” belongs to a flow whose feature no longer exists`, ids: [n.id] })
+  })
+  // Flow / layout / definition-of-done invariants (I1–I10), severity per boardRole.
+  boardQualityIssues(d).forEach((i) => issues.push(i))
+  flowStatusIssues(d.features, d.swimNodes).forEach((i) => issues.push(i))
+  const dupNames = (names: string[]) => {
+    const seen = new Set<string>()
+    const dups = new Set<string>()
+    names.forEach((n) => (seen.has(n.toLowerCase()) ? dups.add(n) : seen.add(n.toLowerCase())))
+    return [...dups]
+  }
+  dupNames(d.modules.map((m) => m.name)).forEach((n) => issues.push({ severity: 'warning', kind: 'duplicate_module_name', message: `Duplicate module name “${n}”` }))
+  const ctxId = d.settings?.contextFeatureId
+  if (ctxId && !d.features.some((f) => f.id === ctxId))
+    issues.push({ severity: 'warning', kind: 'dangling_context_pointer', message: 'settings.contextFeatureId points at a missing feature — fix the board contract (update_settings)', ids: [ctxId] })
+
+  // Description-contract budget (see AGENT_PLAYBOOK §1.6): flag rambling descriptions to compact.
+  // The Meta/Project Context steering node is exempt from the char/line budget.
+  const moduleName = new Map(d.modules.map((m) => [m.id, m.name]))
+  d.features.forEach((f) => {
+    if (isSteeringFeature(f, moduleName.get(f.moduleId), d.settings?.contextFeatureId)) return
+    const s = descStats(f.desc)
+    if (s.overBudget) issues.push({ severity: 'warning', kind: 'bloated_description', message: `Feature “${f.name}” description over budget — ${s.reasons.join('; ')}`, ids: [f.id] })
+  })
+  d.swimNodes.forEach((n) => {
+    const s = descStats(n.desc)
+    if (s.overBudget) issues.push({ severity: 'warning', kind: 'bloated_description', message: `Step “${n.label}” description over budget — ${s.reasons.join('; ')}`, ids: [n.id] })
+  })
+  return issues
 }
 
 const featureStatus = z.enum(['must', 'progress', 'done', 'nice'])
@@ -63,7 +151,7 @@ const SERVER_INSTRUCTIONS = `KineTrak is a live product/dev board you operate as
 
 RECALL BEFORE YOU WRITE. Run the read path first every session: get_changes_since (incremental — pass back the cursor you stored last) or, on a cold start, get_board; then read the "Meta / Project Context" feature; then validate_board. Honor the BOARD CONTRACT in next_action/settings (boardRole: ssot = this board is the truth · map = derived view, verify against truthPointers before acting · asis-doc = as-built snapshot, "done" means exists, not shipped); set it with update_settings when onboarding. Search before creating so you never duplicate (use find_or_create_module / find_or_create_feature; batch large writes with bulk_apply). IDs are durable, names drift — resolve IDs fresh, never reuse one from a past session.
 
-PER-FEATURE LIFECYCLE: write the spec (goal, non-goals, acceptance criteria) into the feature description → lay out an ordered swimlane (add_swim_node + add_swim_edge, passing flowId = the feature id so the flow is scoped to that feature and filterable in the UI) → implement one step at a time, flipping each step's status and append_note-ing evidence → validate against the acceptance criteria → set the feature status to done and create_snapshot. Big features may nest sub-features one level via update_feature parentId (epic → sub-features, same module). Narrate non-trivial actions with log_activity so the watching human can follow.
+PER-FEATURE LIFECYCLE: write the spec (goal, non-goals, acceptance criteria) into the feature description → lay out an ordered swimlane (add_swim_node + add_swim_edge; flowId = the feature id is REQUIRED on every step so the flow is scoped, filterable, and never overlaps other flows — see docs/BOARD_QUALITY.md; run arrange_swimlane to band flows) → implement one step at a time, flipping each step's status and append_note-ing evidence → validate against the acceptance criteria (validate_board enforces the board-quality invariants: errors on ssot boards block create_snapshot) → set the feature status to done and create_snapshot. Big features may nest sub-features one level via update_feature parentId (epic → sub-features, same module). Narrate non-trivial actions with log_activity so the watching human can follow.
 
 EXISTING CODEBASE not yet on the board? Do NOT restructure. Scan the code with your own tools, draft an ADDITIVE map (find_or_create_module / find_or_create_feature) plus the "Project Context" node, then STOP for the human to confirm it, then create_snapshot("v0: as-is") before changing anything.
 
@@ -188,78 +276,12 @@ export function buildMcpServer(key: ApiKey): McpServer {
     'validate_board',
     {
       description:
-        "Self-check the board for structural problems you can't see visually: empty modules, orphan features, swim steps in missing lanes, edges to missing steps, disconnected steps, duplicate names. Returns issues by severity so you can fix them.",
+        "Self-check the board (docs/BOARD_QUALITY.md). Structural: empty modules, orphan features, swim steps in missing lanes, edges to missing steps, disconnected steps, dangling flows, duplicate names, bloated descriptions. Quality invariants (severity by boardRole — errors on ssot, warnings on map/asis-doc): unscoped_step (every step needs a flowId), overlapping_steps, cross_flow_edge, decision_no_branches, flow_no_start/flow_no_end, done_without_acceptance, flow_feature_mismatch. Returns issues by severity so you can fix them.",
       inputSchema: { projectId: z.string().optional() },
     },
     async ({ projectId }) => {
       const p = await requireProj(projectId)
-      const d = p.data
-      const issues: { severity: 'error' | 'warning'; kind: string; message: string; ids?: string[] }[] = []
-      const moduleIds = new Set(d.modules.map((m) => m.id))
-      const laneIds = new Set(d.lanes.map((l) => l.id))
-      const nodeIds = new Set(d.swimNodes.map((n) => n.id))
-
-      d.modules.forEach((m) => {
-        if (!d.features.some((f) => f.moduleId === m.id))
-          issues.push({ severity: 'warning', kind: 'empty_module', message: `Module “${m.name}” has no features`, ids: [m.id] })
-      })
-      d.features.forEach((f) => {
-        if (!moduleIds.has(f.moduleId)) issues.push({ severity: 'error', kind: 'orphan_feature', message: `Feature “${f.name}” points at a missing module`, ids: [f.id] })
-      })
-      const featById = new Map(d.features.map((f) => [f.id, f]))
-      d.features.forEach((f) => {
-        if (!f.parentId) return
-        const parent = featById.get(f.parentId)
-        if (!parent) issues.push({ severity: 'warning', kind: 'missing_parent', message: `Sub-feature “${f.name}” points at a missing parent`, ids: [f.id] })
-        else if (f.parentId === f.id) issues.push({ severity: 'error', kind: 'nested_parent', message: `Feature “${f.name}” is its own parent`, ids: [f.id] })
-        else if (parent.moduleId !== f.moduleId) issues.push({ severity: 'error', kind: 'cross_module_parent', message: `Sub-feature “${f.name}” has its parent in another module`, ids: [f.id, parent.id] })
-        else if (parent.parentId) issues.push({ severity: 'error', kind: 'nested_parent', message: `Sub-feature “${f.name}” nests deeper than one level (parent “${parent.name}” is itself a sub-feature)`, ids: [f.id, parent.id] })
-      })
-      d.swimNodes.forEach((n) => {
-        if (!laneIds.has(n.lane)) issues.push({ severity: 'error', kind: 'node_bad_lane', message: `Step “${n.label}” is in a non-existent lane`, ids: [n.id] })
-        const connected = d.swimEdges.some((e) => e.from === n.id || e.to === n.id)
-        if (!connected && d.swimNodes.length > 1) issues.push({ severity: 'warning', kind: 'disconnected_step', message: `Step “${n.label}” has no connections`, ids: [n.id] })
-      })
-      d.swimEdges.forEach((e) => {
-        if (!nodeIds.has(e.from) || !nodeIds.has(e.to)) issues.push({ severity: 'error', kind: 'dangling_edge', message: `An edge references a missing step`, ids: [e.from, e.to] })
-      })
-      const featIds = new Set(d.features.map((f) => f.id))
-      const nodeById = new Map(d.swimNodes.map((n) => [n.id, n]))
-      d.swimNodes.forEach((n) => {
-        if (n.flowId && !featIds.has(n.flowId))
-          issues.push({ severity: 'warning', kind: 'dangling_flow', message: `Step “${n.label}” belongs to a flow whose feature no longer exists`, ids: [n.id] })
-      })
-      d.swimEdges.forEach((e) => {
-        const a = nodeById.get(e.from)
-        const b = nodeById.get(e.to)
-        if (a?.flowId && b?.flowId && a.flowId !== b.flowId)
-          issues.push({ severity: 'warning', kind: 'cross_flow_edge', message: `Edge “${a.label}” → “${b.label}” crosses two flows — steps of one flow should connect within it`, ids: [e.from, e.to] })
-      })
-      flowStatusIssues(d.features, d.swimNodes).forEach((i) => issues.push(i))
-      const dupNames = (names: string[]) => {
-        const seen = new Set<string>()
-        const dups = new Set<string>()
-        names.forEach((n) => (seen.has(n.toLowerCase()) ? dups.add(n) : seen.add(n.toLowerCase())))
-        return [...dups]
-      }
-      dupNames(d.modules.map((m) => m.name)).forEach((n) => issues.push({ severity: 'warning', kind: 'duplicate_module_name', message: `Duplicate module name “${n}”` }))
-      const ctxId = d.settings?.contextFeatureId
-      if (ctxId && !d.features.some((f) => f.id === ctxId))
-        issues.push({ severity: 'warning', kind: 'dangling_context_pointer', message: 'settings.contextFeatureId points at a missing feature — fix the board contract (update_settings)', ids: [ctxId] })
-
-      // Description-contract budget (see AGENT_PLAYBOOK §1.6): flag rambling descriptions to compact.
-      // The Meta/Project Context steering node is exempt from the char/line budget.
-      const moduleName = new Map(d.modules.map((m) => [m.id, m.name]))
-      d.features.forEach((f) => {
-        if (isSteeringFeature(f, moduleName.get(f.moduleId), d.settings?.contextFeatureId)) return
-        const s = descStats(f.desc)
-        if (s.overBudget) issues.push({ severity: 'warning', kind: 'bloated_description', message: `Feature “${f.name}” description over budget — ${s.reasons.join('; ')}`, ids: [f.id] })
-      })
-      d.swimNodes.forEach((n) => {
-        const s = descStats(n.desc)
-        if (s.overBudget) issues.push({ severity: 'warning', kind: 'bloated_description', message: `Step “${n.label}” description over budget — ${s.reasons.join('; ')}`, ids: [n.id] })
-      })
-
+      const issues = boardIssues(p.data)
       return json({ ok: issues.every((i) => i.severity !== 'error'), errors: issues.filter((i) => i.severity === 'error').length, warnings: issues.filter((i) => i.severity === 'warning').length, issues })
     },
   )
@@ -286,11 +308,8 @@ export function buildMcpServer(key: ApiKey): McpServer {
       const blocked = d.swimNodes.filter((n) => n.status === 'blocked')
       const inProgress = d.features.filter((f) => f.status === 'progress')
       const planned = d.features.filter((f) => f.status === 'must')
-      const moduleIds = new Set(d.modules.map((m) => m.id))
-      const laneIds = new Set(d.lanes.map((l) => l.id))
-      const structuralIssues =
-        d.features.filter((f) => !moduleIds.has(f.moduleId)).length +
-        d.swimNodes.filter((n) => !laneIds.has(n.lane)).length
+      // Error-severity board issues (structural + ssot-escalated quality) route to validate.
+      const structuralIssues = boardIssues(d).filter((i) => i.severity === 'error').length
       const names = (xs: { name?: string; label?: string }[]) =>
         xs.slice(0, 3).map((x) => `“${x.name ?? x.label}”`).join(', ')
 
@@ -512,13 +531,14 @@ export function buildMcpServer(key: ApiKey): McpServer {
           case 'add_swim_node': {
             if (typeof a.lane !== 'number') return err('lane required')
             if (a.kind !== undefined && !nodeKind.options.includes(a.kind as never)) return err('invalid kind')
-            if (typeof a.flowId === 'string' && a.flowId && !d.features.some((f) => f.id === a.flowId)) return err('flowId does not reference a feature on this board')
+            if (typeof a.flowId !== 'string' || !a.flowId) return err('flowId required — every step must belong to a feature flow (docs/BOARD_QUALITY.md)')
+            if (!d.features.some((f) => f.id === a.flowId)) return err('flowId does not reference a feature on this board')
+            const flowId = a.flowId
             const code = nextNodeCode(d.swimNodes.map((n) => n.code))
-            const flowId = typeof a.flowId === 'string' && a.flowId ? a.flowId : undefined
-            const count = d.swimNodes.filter((n) => n.lane === a.lane && (!flowId || n.flowId === flowId)).length
             const laneObj = d.lanes.find((l) => l.id === a.lane)
+            const { x, y } = nextNodePos(d, a.lane, laneObj)
             const id = makeId('n')
-            await silent({ type: 'addSwimNode', projectId: pid, id, code, lane: a.lane, x: 220 + count * 210, y: laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80, label: typeof a.label === 'string' ? a.label : undefined, kind: a.kind as never, flowId })
+            await silent({ type: 'addSwimNode', projectId: pid, id, code, lane: a.lane, x, y, label: typeof a.label === 'string' ? a.label : undefined, kind: a.kind as never, flowId })
             return { id, code }
           }
           case 'add_swim_edge': {
@@ -880,16 +900,15 @@ export function buildMcpServer(key: ApiKey): McpServer {
   // ── Swimlane nodes & edges ───────────────────────────────────────────────────
   server.registerTool(
     'add_swim_node',
-    { description: 'Add a swimlane step to a lane (lane is the numeric lane id from get_board). Pass flowId (the owning feature id) to scope the step to that feature\'s flow — the UI can then filter the canvas to one flow; omit for the legacy shared canvas.', inputSchema: { projectId: z.string().optional(), lane: z.number().int(), label: z.string().optional(), kind: nodeKind.optional(), flowId: z.string().optional() } },
+    { description: 'Add a swimlane step to a lane (lane is the numeric lane id from get_board). flowId (the owning feature id) is REQUIRED — it scopes the step to that feature\'s flow so the UI can filter the canvas to one flow and flows never overlap (docs/BOARD_QUALITY.md). The step is placed clear of existing steps in its lane.', inputSchema: { projectId: z.string().optional(), lane: z.number().int(), flowId: z.string(), label: z.string().optional(), kind: nodeKind.optional() } },
     async ({ projectId, lane, label, kind, flowId }) => {
       const p = await requireProj(projectId)
       const d = p.data
-      if (flowId && !d.features.some((f) => f.id === flowId)) return json({ error: 'flowId does not reference a feature on this board' })
+      if (!flowId) return json({ error: 'flowId required — every step must belong to a feature flow (docs/BOARD_QUALITY.md)' })
+      if (!d.features.some((f) => f.id === flowId)) return json({ error: 'flowId does not reference a feature on this board' })
       const code = nextNodeCode(d.swimNodes.map((n) => n.code))
-      const count = d.swimNodes.filter((n) => n.lane === lane && (!flowId || n.flowId === flowId)).length
       const laneObj = d.lanes.find((l) => l.id === lane)
-      const x = 220 + count * 210
-      const y = laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80
+      const { x, y } = nextNodePos(d, lane, laneObj)
       const id = makeId('n')
       await applyAndBroadcast({ type: 'addSwimNode', projectId: p.id, id, code, lane, x, y, label, kind, flowId })
       return json({ id, code })
@@ -897,7 +916,7 @@ export function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'update_swim_node',
-    { description: 'Update a swimlane step (label, status, kind, lane, owner, description, constraints, flowId). flowId scopes the step to a feature\'s flow — pass "" to un-scope it back to the shared canvas.', inputSchema: { projectId: z.string().optional(), id: z.string(), label: z.string().optional(), status: nodeStatus.optional(), kind: nodeKind.optional(), lane: z.number().int().optional(), owner: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional(), flowId: z.string().optional() } },
+    { description: 'Update a swimlane step (label, status, kind, lane, owner, description, constraints, flowId). flowId re-scopes the step to a different feature\'s flow; every step should stay scoped to a feature (docs/BOARD_QUALITY.md) — un-scoping (flowId "") leaves it flagged by validate_board.', inputSchema: { projectId: z.string().optional(), id: z.string(), label: z.string().optional(), status: nodeStatus.optional(), kind: nodeKind.optional(), lane: z.number().int().optional(), owner: z.string().optional(), desc: z.string().optional(), constraints: z.array(z.string()).optional(), flowId: z.string().optional() } },
     async ({ projectId, id, flowId, ...rest }) => {
       const p = await requireProj(projectId)
       if (flowId && !p.data.features.some((f) => f.id === flowId)) return json({ error: 'flowId does not reference a feature on this board' })
@@ -938,9 +957,10 @@ export function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'add_swim_edge',
-    { description: 'Connect two swimlane steps with an arrow (ids from get_board).', inputSchema: { projectId: z.string().optional(), from: z.string(), to: z.string(), branch: z.string().optional() } },
+    { description: 'Connect two swimlane steps with an arrow (ids from get_board). Both steps must exist and should belong to the same flow (cross-flow edges are flagged by validate_board).', inputSchema: { projectId: z.string().optional(), from: z.string(), to: z.string(), branch: z.string().optional() } },
     async ({ projectId, from, to, branch }) => {
       const p = await requireProj(projectId)
+      if (!p.data.swimNodes.some((n) => n.id === from) || !p.data.swimNodes.some((n) => n.id === to)) return json({ error: 'swim node not found' })
       await applyAndBroadcast({ type: 'addSwimEdge', projectId: p.id, from, to, branch })
       return json({ ok: true })
     },
@@ -958,9 +978,14 @@ export function buildMcpServer(key: ApiKey): McpServer {
   // ── Snapshots & memory ───────────────────────────────────────────────────────
   server.registerTool(
     'create_snapshot',
-    { description: 'Freeze the current board as a read-only snapshot — your undo point. Take one before any wide or destructive batch, and when shipping. Name it with a version + what changed, e.g. "v3: checkout flow shipped".', inputSchema: { projectId: z.string().optional(), name: z.string() } },
+    { description: 'Freeze the current board as a read-only snapshot — your undo point. Take one before any wide or destructive batch, and when shipping. Name it with a version + what changed, e.g. "v3: checkout flow shipped". On an ssot board a snapshot is refused while error-severity board issues remain (a checkpoint must be valid) — fix them or run validate_board.', inputSchema: { projectId: z.string().optional(), name: z.string() } },
     async ({ projectId, name }) => {
       const p = await requireProj(projectId)
+      // Checkpoints must be valid: on ssot boards, refuse to freeze an error state.
+      if (p.data.settings?.boardRole === 'ssot') {
+        const errors = boardIssues(p.data).filter((i) => i.severity === 'error')
+        if (errors.length) return json({ error: `create_snapshot refused: ${errors.length} error-severity board issue(s) must be fixed first (run validate_board)`, errors })
+      }
       const id = makeId('snap')
       await applyAndBroadcast({ type: 'createSnapshot', projectId: p.id, id, name, date: dateLabel() })
       return json({ id })

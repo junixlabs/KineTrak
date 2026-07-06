@@ -28,8 +28,13 @@ from implementation memory.
 1. **Re-read the contract.** Load the feature (`get_board` / `search`) and read its acceptance
    criteria / `validations` — the conditions written at `kinetrak-specify`.
 
-2. **Structural check.** `validate_board` — surface orphan features, dangling edges, disconnected
-   or mislaned steps. (Fixing some of these is Tier 4 — flag, do not silently delete.)
+2. **Structural + quality check.** `validate_board` — surface orphan features, dangling edges,
+   disconnected or mislaned steps, and the board-quality invariants (`docs/BOARD_QUALITY.md`):
+   `unscoped_step` (a step with no `flowId`), `overlapping_steps`, `cross_flow_edge`,
+   `decision_no_branches`, `flow_no_start`/`flow_no_end`, `done_without_acceptance`,
+   `flow_feature_mismatch`. On an **ssot** board these are errors that block `create_snapshot` until
+   fixed; on `map`/`asis-doc` they are warnings. Run `arrange_swimlane` to clear
+   `overlapping_steps`. (Fixing some structural issues is Tier 4 — flag, do not silently delete.)
 
 3. **Check the work against each acceptance criterion.** Inspect the code (`Read`/`Grep`/`Glob`)
    and, if needed, re-run the tests (your own tools follow normal permissions). Confirm
