@@ -275,18 +275,39 @@ function SwimlaneInner() {
           {editable && laneMenu && (
             <>
               <div className="fixed inset-0 z-[1]" onClick={() => setLaneMenu(false)} />
-              <div className="absolute left-0 top-[42px] z-[2] w-[220px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
-                <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-bold tracking-wide text-faint">ADD STEP TO LANE</div>
-                {data.lanes.map((l) => (
-                  <button
-                    key={l.id}
-                    onClick={() => { addSwimNode(l.id, flowFilter ?? undefined); setLaneMenu(false) }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink hover:bg-[#f4f6f9]"
-                  >
-                    <span className="h-2.5 w-2.5 flex-none rounded-sm" style={{ background: l.color }} />
-                    {l.name}
-                  </button>
-                ))}
+              <div className="absolute left-0 top-[42px] z-[2] w-[240px] animate-pop rounded-xl border border-line bg-white p-1.5 shadow-pop">
+                {flowFilter ? (
+                  <>
+                    <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-bold tracking-wide text-faint">ADD STEP TO LANE</div>
+                    {data.lanes.map((l) => (
+                      <button
+                        key={l.id}
+                        onClick={() => { addSwimNode(l.id, flowFilter); setLaneMenu(false) }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink hover:bg-[#f4f6f9]"
+                      >
+                        <span className="h-2.5 w-2.5 flex-none rounded-sm" style={{ background: l.color }} />
+                        {l.name}
+                      </button>
+                    ))}
+                  </>
+                ) : flows.length > 0 ? (
+                  <>
+                    <div className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-bold tracking-wide text-faint">PICK A FLOW FIRST</div>
+                    <div className="px-2.5 pb-1.5 text-[11px] leading-snug text-faint">Every step belongs to a feature’s flow. Choose one, then add the step.</div>
+                    {flows.map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => setFlowFilter(f.id)}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] font-semibold text-ink hover:bg-[#f4f6f9]"
+                      >
+                        <span className="h-2.5 w-2.5 flex-none rounded-sm bg-brand" />
+                        {f.name}
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  <div className="px-2.5 py-2 text-[11.5px] leading-snug text-faint">No flows yet. Create a feature on the Mindmap first — every swimlane step must belong to a feature’s flow.</div>
+                )}
               </div>
             </>
           )}

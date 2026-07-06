@@ -96,3 +96,38 @@ export function autoArrangeSwimlane(nodes: SwimNode[], edges: SwimEdge[], lanes:
     }
   })
 }
+
+/**
+ * Arrange the WHOLE board so distinct flows never overlap. Each flow (nodes sharing
+ * a `flowId`) is arranged into its own left→right band, tiled to the right of every
+ * previously-placed flow via `autoArrangeSwimlane`'s `avoid` mechanism. Flow order
+ * is first-appearance in `nodes` (deterministic — no clock/random). Legacy unscoped
+ * steps (no flowId) are grouped last under their own band.
+ *
+ * This is what `arrange_swimlane` runs when called without a flowId, and what the
+ * web UI's "Auto-arrange" runs in the All-flows view — so the all-flows canvas reads
+ * as separate bands instead of two graphs stacked on the same origin.
+ */
+export function arrangeAllFlows(nodes: SwimNode[], edges: SwimEdge[], lanes: SwimLane[]): SwimPos[] {
+  const order: string[] = []
+  const groups = new Map<string, SwimNode[]>()
+  nodes.forEach((n) => {
+    const key = n.flowId ?? ''
+    if (!groups.has(key)) { groups.set(key, []); order.push(key) }
+    groups.get(key)!.push(n)
+  })
+
+  const placed: SwimNode[] = [] // previously-banded nodes, at their new positions, used as `avoid`
+  const result: SwimPos[] = []
+  order.forEach((key) => {
+    const group = groups.get(key)!
+    const pos = autoArrangeSwimlane(group, edges, lanes, placed)
+    result.push(...pos)
+    const posById = new Map(pos.map((p) => [p.id, p]))
+    group.forEach((n) => {
+      const p = posById.get(n.id)
+      if (p) placed.push({ ...n, x: p.x, y: p.y })
+    })
+  })
+  return result
+}

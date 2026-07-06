@@ -29,19 +29,25 @@ feature's description and acceptance criteria first (`get_board` / `search`).
    steps in the lane that owns that kind of work.
 
 2. **Create the steps.** `add_swim_node` for each discrete step of the plan, in execution order.
-   Give each a clear `label` and the right `kind` (`start` / `process` / `decision` / `end`).
+   **Always pass `flowId` = the feature id** — it is required and scopes the step to this feature's
+   flow so the canvas can filter to it and flows never overlap (`docs/BOARD_QUALITY.md`). Give each
+   a clear `label` and the right `kind` (`start` / `process` / `decision` / `end`) — give the flow a
+   `start` and an `end`.
    **Keep it to ~7 steps per pass** — if the feature needs more, it is two features; split it and
    spec the second separately.
 
 3. **Connect the flow.** `add_swim_edge` from each step to the next so the execution path is
-   explicit. Use `branch` labels on edges out of a `decision` node.
+   explicit — keep edges within this flow. Use `branch` labels on edges out of a `decision` node (a
+   decision must fork into ≥2 branches).
 
-4. **Tidy the layout.** Call `arrange_swimlane` once to lay the steps out left→right by flow depth.
+4. **Tidy the layout.** Call `arrange_swimlane` once to lay the steps out left→right by flow depth
+   and band this flow clear of the others.
 
-5. **Link each step to its feature.** Call `link_feature_step({featureId, nodeId})` for every step —
-   this is a real bidirectional crossLink, not just a note, and it is the input `compute_impact`
-   walks to resolve a feature to its swimlane entry node. Skip this and impact analysis sees nothing.
-   Add an `append_note` for any extra traceability context.
+5. **Link each step to its feature.** Call `link_feature_step({featureId, nodeId})` for every step.
+   This is different from `flowId`: `flowId` (step 2) scopes the flow for the UI filter, while
+   `link_feature_step` writes the bidirectional crossLink `compute_impact` walks to resolve a
+   feature to its swimlane entry node — set **both**, pointing at the same feature. Skip the link and
+   impact analysis sees nothing. Add an `append_note` for any extra traceability context.
 
 6. **Leave steps `todo`.** Do not start work here — decomposition only produces the plan.
 

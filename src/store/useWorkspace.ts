@@ -22,7 +22,7 @@ import type {
 import { cloneData, sampleTemplate, blankTemplate } from './seed'
 import { makeId, nextNodeCode } from './ids'
 import { applyCommand, seedOrgBoardNodes, type Command, type Root } from '@/shared/board'
-import { autoArrangeSwimlane } from '@/lib/swimlayout'
+import { autoArrangeSwimlane, arrangeAllFlows } from '@/lib/swimlayout'
 
 /** UI-only view selector: the three diagram views plus the derived Overview.
  *  Kept separate from the domain `ViewId` (used by crossLinks/selection/alerts). */
@@ -158,7 +158,7 @@ interface WorkspaceState {
   addFeature: (moduleId: string, releaseId: string) => void
   updateFeature: (id: string, patch: Partial<Feature>) => void
   deleteFeature: (id: string) => void
-  addSwimNode: (lane: number, flowId?: string) => void
+  addSwimNode: (lane: number, flowId: string) => void
   updateSwimNode: (id: string, patch: Partial<SwimNode>) => void
   updateSwimNodePos: (id: string, x: number, y: number) => void
   arrangeSwimNodes: (flowId?: string) => void
@@ -411,12 +411,13 @@ export const useWorkspace = create<WorkspaceState>()(
           clearSelIf(id)
         },
         addSwimNode: (lane, flowId) => {
-          if (!editable()) return
+          if (!editable() || !flowId) return // every step must belong to a feature flow
           const d = get().currentData()
           const code = nextNodeCode(d.swimNodes.map((n) => n.code))
           const laneObj = d.lanes.find((l) => l.id === lane)
-          const count = d.swimNodes.filter((n) => n.lane === lane && (!flowId || n.flowId === flowId)).length
-          const x = 220 + count * 210
+          // Place clear of existing steps in this lane (across all flows); Auto-arrange bands them later.
+          const inLane = d.swimNodes.filter((n) => n.lane === lane)
+          const x = inLane.length ? Math.max(...inLane.map((n) => n.x)) + 210 : 220
           const y = laneObj ? laneObj.y + (laneObj.h - 58) / 2 : 80
           const id = makeId('n')
           dispatch({ type: 'addSwimNode', projectId: pid(), id, code, lane, x, y, flowId })
@@ -433,10 +434,16 @@ export const useWorkspace = create<WorkspaceState>()(
         arrangeSwimNodes: (flowId) => {
           if (!editable()) return
           const d = get().currentData()
-          // Scoped to one flow: arrange its steps plus legacy unscoped steps (they show in every flow view).
-          const nodes = flowId ? d.swimNodes.filter((n) => !n.flowId || n.flowId === flowId) : d.swimNodes
-          const avoid = flowId ? d.swimNodes.filter((n) => n.flowId && n.flowId !== flowId) : []
-          const positions = autoArrangeSwimlane(nodes, d.swimEdges, d.lanes, avoid)
+          // Whole board (All flows): band every flow into its own x-range so flows never overlap.
+          // Scoped to one flow: arrange its steps (plus any legacy unscoped) clear of the other flows.
+          const positions = flowId
+            ? autoArrangeSwimlane(
+                d.swimNodes.filter((n) => !n.flowId || n.flowId === flowId),
+                d.swimEdges,
+                d.lanes,
+                d.swimNodes.filter((n) => n.flowId && n.flowId !== flowId),
+              )
+            : arrangeAllFlows(d.swimNodes, d.swimEdges, d.lanes)
           if (positions.length) dispatch({ type: 'arrangeSwimNodes', projectId: pid(), positions })
         },
         deleteSwimNode: (id) => {
