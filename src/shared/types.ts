@@ -197,8 +197,6 @@ export interface WorkspaceData {
   settings?: WorkspaceSettings
 }
 
-// ── Org boards (system maps) ─────────────────────────────────────────────────
-
 export type OrgBoardEdgeKind = 'api' | 'event' | 'data' | 'other'
 
 /** A system on an org board — usually one of the org's projects; without a
@@ -242,8 +240,6 @@ export interface OrgBoard {
   nodes: OrgBoardNode[]
   edges: OrgBoardEdge[]
 }
-
-// ── Multi-project / org ──────────────────────────────────────────────────────
 
 export interface Org {
   id: string

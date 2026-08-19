@@ -43,7 +43,7 @@
       "from": "server",
       "to": "components",
       "status": "locked",
-      "description": "the API/MCP process must never import a React component. server is fully visible to the graph (127 relative imports, 0 alias). Measured 19/08/2026: 0 edges."
+      "description": "the API/MCP process must never import a React component. server is fully visible to the graph (145 relative imports, 0 alias). Measured 19/08/2026: 0 edges."
     },
     {
       "id": "server-not-theme",
