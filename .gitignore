@@ -6,3 +6,7 @@ dist-ssr
 .vite
 server/data
 *.tsbuildinfo
+
+# Artefact runtime của playwright-mcp — không phải nguồn
+.playwright-mcp/
+mcp-needs-auth-cache.json
