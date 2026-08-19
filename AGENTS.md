@@ -7,5 +7,7 @@ Tài liệu này **trỏ**, không chứa luật. Luật ở nơi thực thi đ�
   Một đề xuất không trỏ được về một cơn đau ở §2 thì bị từ chối.
 - Cơ chế và hợp đồng → `SPEC.md` nếu có, rồi `README.md`.
 - Bối cảnh 4 sản phẩm cùng họ → `~/tools/repo-gates/NORTH-STAR.md`.
+- Việc đang mở (issue tracker) → Forge, project `kinetrak`, projectId `efb0748d-d534-49d1-bacf-d64879695b99`.
+  Đây là nơi giữ trạng thái việc; đừng viết TODO vào code.
 
 Một dòng để nhớ: **đua phần vẽ tới mức trần §3.3 — nhưng hào là mô hình + truy vấn, và mỗi vòng visual phải kèm một việc đẩy north star.**
