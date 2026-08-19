@@ -740,6 +740,9 @@ export function buildMcpServer(key: ApiKey): McpServer {
   )
 
   // ── Async human channels (decisions · tooling friction) ─────────────────────
+  // cm:edge lockstep -> .claude/skills/kinetrak-*/SKILL.md — every skill's `allowed-tools` is an
+  // ENFORCING allowlist, so a tool registered here but absent there is denied mid-skill. Registering
+  // a tool an agent is told to call means editing those allowlists in the same change.
   server.registerTool(
     'ask_human',
     {
