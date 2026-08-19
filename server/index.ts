@@ -39,9 +39,9 @@ import { createShare, hydrateShares, projectIdForToken, revokeShare, shareForPro
 import { hydrateActivity, listActivity, onActivity } from './activity'
 import { assertDatabaseConfigured } from './infra/db'
 import { runMigrations } from './infra/migrate'
-import type { Project } from '../src/store/types'
-import { sampleTemplate } from '../src/store/seed'
-import { makeId } from '../src/store/ids'
+import type { Project } from '../src/shared/types'
+import { sampleTemplate } from '../src/shared/seed'
+import { makeId } from '../src/shared/ids'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DIST = join(HERE, '..', 'dist')
@@ -301,7 +301,7 @@ function sendProjectFrame(project: Project) {
 
 // One org board changed → push just that board to its org's owner sessions.
 // (Board deletes ride the catalog resync instead — no tombstone frame needed.)
-function sendOrgBoardFrame(board: import('../src/store/types').OrgBoard) {
+function sendOrgBoardFrame(board: import('../src/shared/types').OrgBoard) {
   const frame = JSON.stringify({ type: 'orgboard', board })
   wss.clients.forEach((c) => {
     const ws = c as AuthedSocket

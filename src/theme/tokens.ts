@@ -1,4 +1,4 @@
-import type { FeatureStatus, NodeStatus } from '@/store/types'
+import type { FeatureStatus, NodeStatus } from '@/shared/types'
 
 /** Brand palette — single source for colors used in inline SVG / canvas contexts. */
 export const palette = {

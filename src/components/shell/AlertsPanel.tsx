@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Triangle, Sparkles, ChevronRight, X } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
-import type { AlertKind } from '@/store/types'
+import type { AlertKind } from '@/shared/types'
 import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD, hasAlertTarget, isDismissibleAlertKind } from '@/lib/impact'
 
 const KIND_META: Record<AlertKind, { c: string; bg: string; label: string }> = {

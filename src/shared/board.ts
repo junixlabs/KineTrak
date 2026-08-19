@@ -23,8 +23,8 @@ import type {
   SwimNode,
   WorkspaceData,
   WorkspaceSettings,
-} from '../store/types'
-import { templateData, cloneData } from '../store/seed'
+} from './types'
+import { templateData, cloneData } from './seed'
 
 export interface Root {
   orgs: Org[]
@@ -266,13 +266,13 @@ export function applyCommand(root: Root, cmd: Command): Root {
         const feat = d.features.find((f) => f.id === cmd.featureId)
         const node = d.swimNodes.find((n) => n.id === cmd.nodeId)
         if (!feat || !node) return d
-        const upFeat = (links: import('../store/types').CrossLink[] = []) =>
+        const upFeat = (links: import('./types').CrossLink[] = []) =>
           cmd.op === 'unlink'
             ? links.filter((l) => !(l.view === 'swimlane' && l.targetId === cmd.nodeId))
             : links.some((l) => l.view === 'swimlane' && l.targetId === cmd.nodeId)
               ? links
               : [...links, { view: 'swimlane' as const, label: `Swimlane · ${node.code ?? node.label}`, targetId: cmd.nodeId }]
-        const upNode = (links: import('../store/types').CrossLink[] = []) =>
+        const upNode = (links: import('./types').CrossLink[] = []) =>
           cmd.op === 'unlink'
             ? links.filter((l) => !(l.view === 'mindmap' && l.targetId === cmd.featureId))
             : links.some((l) => l.view === 'mindmap' && l.targetId === cmd.featureId)
@@ -391,7 +391,7 @@ export function applyCommand(root: Root, cmd: Command): Root {
 
     case 'askHuman':
       return mapData(root, cmd.projectId, (d) => {
-        const sel = cmd.nodeId ? { type: 'swimnode' as const, id: cmd.nodeId, view: (cmd.view ?? 'swimlane') as import('../store/types').ViewId } : null
+        const sel = cmd.nodeId ? { type: 'swimnode' as const, id: cmd.nodeId, view: (cmd.view ?? 'swimlane') as import('./types').ViewId } : null
         const alert: Alert = {
           id: cmd.id,
           kind: 'question',
@@ -416,7 +416,7 @@ export function applyCommand(root: Root, cmd: Command): Root {
       // cm:guard never set time:'pending' or options/answer here — 'friction' is a report about
       // KineTrak's own tooling, and those fields are what put an alert in the human-DECISION queue.
       return mapData(root, cmd.projectId, (d) => {
-        const sel = cmd.nodeId ? { type: 'swimnode' as const, id: cmd.nodeId, view: (cmd.view ?? 'swimlane') as import('../store/types').ViewId } : null
+        const sel = cmd.nodeId ? { type: 'swimnode' as const, id: cmd.nodeId, view: (cmd.view ?? 'swimlane') as import('./types').ViewId } : null
         const alert: Alert = {
           id: cmd.id,
           kind: 'friction',
@@ -595,7 +595,7 @@ const joinText = (...parts: (string | undefined)[]) => parts.filter(Boolean).joi
 export function searchableItems(data: WorkspaceData): SearchItem[] {
   const items: SearchItem[] = []
   for (const m of data.modules) items.push({ kind: 'module', id: m.id, label: m.name, text: joinText(m.name, m.backbone.name, m.backbone.sub) })
-  const refText = (refs?: import('../store/types').CodeRef[]) => (refs ?? []).map((r) => joinText(r.path, r.symbol)).join(' ')
+  const refText = (refs?: import('./types').CodeRef[]) => (refs ?? []).map((r) => joinText(r.path, r.symbol)).join(' ')
   for (const f of data.features)
     items.push({ kind: 'feature', id: f.id, label: f.name, text: joinText(f.name, f.desc, ...(f.constraints ?? []), ...(f.validations ?? []), refText(f.codeRefs)) })
   for (const n of data.swimNodes) items.push({ kind: 'swimnode', id: n.id, label: n.label, text: joinText(n.label, n.desc, n.owner, ...(n.constraints ?? []), refText(n.codeRefs)) })

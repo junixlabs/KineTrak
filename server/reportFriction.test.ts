@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { applyCommand, type Root } from '../src/shared/board'
 import { describeCommand } from './activity'
 import { deriveAllAlerts, hasAlertTarget, isDismissibleAlertKind } from '../src/lib/impact'
-import type { Alert, WorkspaceData } from '../src/store/types'
+import type { Alert, WorkspaceData } from '../src/shared/types'
 
 const emptyData = (alerts: Alert[] = []): WorkspaceData => ({
   modules: [], features: [], releases: [], lanes: [], swimNodes: [], swimEdges: [], alerts,

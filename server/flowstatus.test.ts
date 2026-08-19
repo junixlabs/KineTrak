@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { flowStatusIssues } from '../src/lib/flowstatus'
-import type { Feature, SwimNode } from '../src/store/types'
+import type { Feature, SwimNode } from '../src/shared/types'
 
 const feature = (id: string, status: Feature['status']): Feature => ({
   id, name: id, status, moduleId: 'm1', releaseId: 'r1',

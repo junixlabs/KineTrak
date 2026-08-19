@@ -7,7 +7,6 @@ import type {
   OrgBoard,
   OrgBoardEdge,
   OrgBoardNode,
-  OrgBoardSel,
   Project,
   ProjectTemplate,
   Role,
@@ -15,12 +14,12 @@ import type {
   Feature,
   Module,
   SwimNode,
-  User,
   ViewId,
   WorkspaceData,
-} from './types'
-import { cloneData, sampleTemplate, blankTemplate } from './seed'
-import { makeId, nextNodeCode } from './ids'
+} from '../shared/types'
+import type { OrgBoardSel, User } from './types'
+import { cloneData, sampleTemplate, blankTemplate } from '../shared/seed'
+import { makeId, nextNodeCode } from '../shared/ids'
 import { applyCommand, seedOrgBoardNodes, type Command, type Root } from '@/shared/board'
 import { autoArrangeSwimlane, arrangeAllFlows } from '@/lib/swimlayout'
 import { isDismissibleAlertKind } from '@/lib/impact'

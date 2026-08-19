@@ -4,7 +4,7 @@ import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor } from '@/theme/tokens'
 import { deriveOverview, type Gap } from '@/lib/overview'
 import { DEFAULT_IMPACT_THRESHOLD, hasAlertTarget } from '@/lib/impact'
-import type { AlertKind, NodeStatus } from '@/store/types'
+import type { AlertKind, NodeStatus } from '@/shared/types'
 
 const ALERT_META: Record<AlertKind, { c: string; bg: string; label: string; Icon: typeof Triangle }> = {
   impact: { c: '#e5484d', bg: '#fdecec', label: 'Impact', Icon: Triangle },

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, Plus, Pencil, Trash2, Check, X } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
-import type { ProjectTemplate } from '@/store/types'
+import type { ProjectTemplate } from '@/shared/types'
 
 export default function ProjectSwitcher() {
   const orgs = useWorkspace((s) => s.orgs)

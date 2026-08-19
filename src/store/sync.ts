@@ -3,7 +3,7 @@ import { useActivity, type Activity } from './useActivity'
 import { useToast } from './useToast'
 import { SYNC_URL, authFetch, getToken } from './api'
 import type { Command, Root } from '@/shared/board'
-import type { OrgBoard, Project } from './types'
+import type { OrgBoard, Project } from '../shared/types'
 
 /** Pull the activity history for the active project (newest 200). */
 export async function refreshActivity() {

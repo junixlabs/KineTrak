@@ -5,7 +5,7 @@ import { hashSecret } from './keys'
 import { closeDb } from './infra/db'
 import { runMigrations } from './infra/migrate'
 import { activityRepo, keyRepo, orgRepo, projectRepo, sessionRepo, shareRepo, userRepo } from './infra/repositories'
-import type { Snapshot, WorkspaceData } from '../src/store/types'
+import type { Snapshot, WorkspaceData } from '../src/shared/types'
 import type { Actor } from './activity'
 
 // ── One-time importer: file-JSON store → Postgres ────────────────────────────

@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert'
 import { after, test } from 'node:test'
 import { closeDb } from './db'
 import { activityRepo, keyRepo, orgRepo, projectRepo, searchRepo, sessionRepo, shareRepo, userRepo } from './repositories'
-import { templateData } from '../../src/store/seed'
+import { templateData } from '../../src/shared/seed'
 
 // Round-trip smoke test against a live Postgres. Skips entirely when
 // DATABASE_URL is unset so CI without a DB stays green.

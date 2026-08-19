@@ -1,5 +1,5 @@
 import { bigserial, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
-import type { OrgBoardEdge, OrgBoardNode, Snapshot, WorkspaceData } from '../../src/store/types'
+import type { OrgBoardEdge, OrgBoardNode, Snapshot, WorkspaceData } from '../../src/shared/types'
 import type { Actor } from '../activity'
 
 // ── Drizzle schema — the durable store behind KineTrak ───────────────────────

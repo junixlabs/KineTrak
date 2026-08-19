@@ -1,5 +1,5 @@
 import type { SearchHit } from '../../src/shared/board'
-import type { Org, OrgBoard, Project, ProjectHeader } from '../../src/store/types'
+import type { Org, OrgBoard, Project, ProjectHeader } from '../../src/shared/types'
 import { orgBoardRepo, orgRepo, projectRepo, searchRepo } from './repositories'
 
 // ── Storage port (Ports & Adapters) ──────────────────────────────────────────

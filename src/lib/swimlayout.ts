@@ -1,6 +1,6 @@
 // Relative imports only (no `@` alias) so this module runs unchanged under both
 // Vite and tsx — it is imported by the server's MCP layer as well as the client.
-import type { SwimNode, SwimEdge, SwimLane } from '../store/types'
+import type { SwimNode, SwimEdge, SwimLane } from '../shared/types'
 
 export interface SwimPos {
   id: string

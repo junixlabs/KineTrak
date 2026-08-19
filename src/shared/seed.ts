@@ -7,7 +7,6 @@ export function cloneData(d: WorkspaceData): WorkspaceData {
     : (JSON.parse(JSON.stringify(d)) as WorkspaceData)
 }
 
-// Standard scaffold shared by both templates (blank starts from these, empty otherwise).
 const standardReleases: Release[] = [
   { id: 'mvp', name: 'MVP', tag: 'Minimum viable', color: '#16a34a', bg: '#eaf6ef', bdr: '#cdecd9' },
   { id: 'r1', name: 'Release 1', tag: 'Q3 · 2026', color: '#2f6fed', bg: '#eaf1fe', bdr: '#cfe0fb' },
@@ -43,7 +42,8 @@ const sampleSwimNodes: SwimNode[] = ([
     desc: 'Reflect the Done status across every view via SSOT and persist it.',
     validations: ['Status must be synced to Mindmap + Story Map before closing.'],
     crossLinks: [{ view: 'mindmap', label: 'Mindmap · Real-time sync with workflow', targetId: 'f8' }],
-    // Demo: a VCS webhook flagged this step's linked code as changed → derives a live "outdated" alert.
+    // cm:why codeStale is seeded true so a fresh sample board demonstrates the live
+    // 'outdated' alert path without waiting for a real VCS webhook.
     codeRefs: [{ path: 'src/shared/board.ts' }],
     codeStale: true,
   },

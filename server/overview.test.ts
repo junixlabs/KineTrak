@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { deriveOverview } from '../src/lib/overview'
 import { deriveAllAlerts } from '../src/lib/impact'
-import { templateData } from '../src/store/seed'
+import { templateData } from '../src/shared/seed'
 
 const sample = templateData('sample')
 

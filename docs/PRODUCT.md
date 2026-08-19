@@ -79,8 +79,9 @@ Công cụ dùng được thật, không chỉ xem seed:
   seed là **template** (`sample`/`blank`). Lưu `localStorage` (key `kinetrak-workspace`), có
   `migrate` từ v1 (mô hình overrides cũ) sang project mặc định. Snapshot = bản đông cứng lưu kèm.
 - **Tailwind** với token brand (`#2f6fed` …). Font Hanken Grotesk + JetBrains Mono.
-- Mã nguồn: `src/store` (types/seed/ids/store/selectors), `src/lib/{impact,layout}.ts`,
-  `src/components/{shell,views,nodes,panel}` (panel có `fields.tsx` các control sửa).
+- Mã nguồn: `src/shared` (types/seed/ids — domain), `src/store` (store/selectors — state React),
+  `src/lib/{impact,layout}.ts`, `src/components/{shell,views,nodes,panel}` (panel có
+  `fields.tsx` các control sửa).
 
 ## 5b. Home, Present & Share (done)
 - **Home** (Miro-style): top header (Workspace · Free · Invite · Upgrade · what's-new ·

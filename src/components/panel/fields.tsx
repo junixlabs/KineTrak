@@ -1,5 +1,5 @@
 import { Plus, X, Check } from 'lucide-react'
-import type { Role } from '@/store/types'
+import type { Role } from '@/shared/types'
 
 const ALL_ROLES: Role[] = ['PM', 'PO', 'BA', 'Dev', 'Tester']
 

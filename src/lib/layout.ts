@@ -1,4 +1,4 @@
-import type { Feature, Module } from '@/store/types'
+import type { Feature, Module } from '@/shared/types'
 
 export interface XY {
   x: number

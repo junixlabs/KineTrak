@@ -2,8 +2,8 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { ProjectRegistry } from './ProjectRegistry'
 import type { Store } from '../infra/store'
-import type { Project } from '../../src/store/types'
-import { templateData } from '../../src/store/seed'
+import type { Project } from '../../src/shared/types'
+import { templateData } from '../../src/shared/seed'
 
 function mkProject(id: string): Project {
   return { id, orgId: 'o1', name: id, createdAt: new Date(0).toISOString(), data: templateData('blank'), snapshots: [] }

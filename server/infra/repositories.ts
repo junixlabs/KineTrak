@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gt, gte, ilike, inArray, lte, or, sql } from 'drizz
 import { requireDb } from './db'
 import * as t from './schema'
 import { searchableItems, type SearchHit } from '../../src/shared/board'
-import type { Org, OrgBoard, Project, ProjectHeader } from '../../src/store/types'
+import type { Org, OrgBoard, Project, ProjectHeader } from '../../src/shared/types'
 import type { User } from '../auth'
 import type { ApiKey } from '../keys'
 import type { Share } from '../shares'

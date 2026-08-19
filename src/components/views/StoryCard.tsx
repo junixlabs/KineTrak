@@ -1,7 +1,7 @@
 import { useDraggable } from '@dnd-kit/core'
 import { featureStatusMeta, featureStatusOrder } from '@/theme/tokens'
 import { useWorkspace } from '@/store/useWorkspace'
-import type { Feature } from '@/store/types'
+import type { Feature } from '@/shared/types'
 
 interface StoryCardProps {
   feature: Feature

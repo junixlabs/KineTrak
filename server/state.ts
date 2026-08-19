@@ -1,5 +1,5 @@
 import { applyCommand, type Command, type Root } from '../src/shared/board'
-import type { Alert, Org, OrgBoard, Project, ProjectHeader } from '../src/store/types'
+import type { Alert, Org, OrgBoard, Project, ProjectHeader } from '../src/shared/types'
 import { recordChange, recordNote, type Actor } from './activity'
 import { archiveAlert } from './questionLog'
 import { getStore, type Catalog } from './infra/store'
