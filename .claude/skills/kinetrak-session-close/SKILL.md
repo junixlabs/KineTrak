@@ -8,7 +8,8 @@ description: >-
 allowed-tools: >-
   mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__get_changes_since,
   mcp__kinetrak__search, mcp__kinetrak__find_or_create_module, mcp__kinetrak__find_or_create_feature,
-  mcp__kinetrak__append_note, mcp__kinetrak__create_snapshot, mcp__kinetrak__log_activity
+  mcp__kinetrak__append_note, mcp__kinetrak__create_snapshot, mcp__kinetrak__log_activity,
+  mcp__kinetrak__report_friction
 ---
 
 # kinetrak-session-close

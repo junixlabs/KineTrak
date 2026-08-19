@@ -11,7 +11,8 @@ allowed-tools: >-
   mcp__kinetrak__validate_board, mcp__kinetrak__update_swim_node, mcp__kinetrak__update_feature,
   mcp__kinetrak__check_acceptance, mcp__kinetrak__append_note, mcp__kinetrak__log_activity,
   mcp__kinetrak__validate_org_board, mcp__kinetrak__compute_org_impact,
-  mcp__kinetrak__update_org_board_edge, mcp__kinetrak__resolve_org_edge_stale
+  mcp__kinetrak__update_org_board_edge, mcp__kinetrak__resolve_org_edge_stale,
+  mcp__kinetrak__report_friction
 ---
 
 # kinetrak-validate

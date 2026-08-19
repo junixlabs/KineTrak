@@ -8,7 +8,8 @@ disable-model-invocation: true
 allowed-tools: >-
   mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__search,
   mcp__kinetrak__validate_board, mcp__kinetrak__update_feature, mcp__kinetrak__create_snapshot,
-  mcp__kinetrak__log_activity, mcp__kinetrak__compute_org_impact
+  mcp__kinetrak__log_activity, mcp__kinetrak__compute_org_impact,
+  mcp__kinetrak__report_friction
 ---
 
 # kinetrak-ship

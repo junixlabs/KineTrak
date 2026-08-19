@@ -265,9 +265,15 @@ export function deriveOrgImpactAlerts(ctx: OrgAlertCtx): Alert[] {
   return alerts.sort((a, b) => a.id.localeCompare(b.id))
 }
 
-/** Kinds recomputed from the board on every read. Their inverse — the stored kinds —
- *  is what a human can actually dismiss: dismissing a derived alert is a no-op. */
-export const DERIVED_ALERT_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>(['impact', 'outdated', 'dod'])
+/** Kinds recomputed from the board on every read, so they are never taken from data.alerts. */
+const DERIVED_ALERT_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>(['impact', 'outdated', 'dod'])
+
+// cm:guard widening this beyond 'friction' hands the UI a DELETE with no undo: resolveQuestion
+// drops the alert outright, a 'question' is a decision the calling agent is still polling on, and
+// a derived kind comes straight back on the next read. Add an answer path before adding a kind.
+export function isDismissibleAlertKind(kind: AlertKind): boolean {
+  return kind === 'friction'
+}
 
 /** All live, derived alerts for a board (impact + outdated + DoD + cross-project
  *  org alerts when org context is provided), plus the board's own stored

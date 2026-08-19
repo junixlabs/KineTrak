@@ -10,7 +10,8 @@ allowed-tools: >-
   mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__search,
   mcp__kinetrak__add_swim_node, mcp__kinetrak__add_swim_edge, mcp__kinetrak__arrange_swimlane,
   mcp__kinetrak__update_swim_node, mcp__kinetrak__link_feature_step, mcp__kinetrak__append_note,
-  mcp__kinetrak__log_activity
+  mcp__kinetrak__log_activity,
+  mcp__kinetrak__report_friction
 ---
 
 # kinetrak-decompose

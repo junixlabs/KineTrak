@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { applyCommand, type Root } from '../src/shared/board'
 import { describeCommand } from './activity'
+import { isDismissibleAlertKind } from '../src/lib/impact'
 import type { Alert, WorkspaceData } from '../src/store/types'
 
 const emptyData = (alerts: Alert[] = []): WorkspaceData => ({
@@ -66,4 +67,11 @@ test('the activity summary for reportFriction names the tool and the workaround'
   assert.ok(summary.length > 0, 'summary is not blank')
   assert.ok(summary.includes('add_swim_node'), 'summary names the tool')
   assert.ok(summary.includes('arrange_swimlane'), 'summary carries the workaround')
+})
+
+test('only a friction report is dismissible from the UI', () => {
+  assert.equal(isDismissibleAlertKind('friction'), true)
+  for (const kind of ['question', 'impact', 'outdated', 'dod'] as const) {
+    assert.equal(isDismissibleAlertKind(kind), false, `${kind} must not be dismissible`)
+  }
 })

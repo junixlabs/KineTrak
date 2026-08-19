@@ -11,7 +11,8 @@ allowed-tools: >-
   mcp__kinetrak__search, mcp__kinetrak__validate_board, mcp__kinetrak__update_swim_node,
   mcp__kinetrak__append_note, mcp__kinetrak__log_activity, mcp__kinetrak__create_snapshot,
   mcp__kinetrak__get_org_board, mcp__kinetrak__update_org_board_edge,
-  mcp__kinetrak__link_org_edge_code
+  mcp__kinetrak__link_org_edge_code,
+  mcp__kinetrak__report_friction
 ---
 
 # kinetrak-implement

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Triangle, Sparkles, ChevronRight, X } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import type { AlertKind } from '@/store/types'
-import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD, DERIVED_ALERT_KINDS } from '@/lib/impact'
+import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD, isDismissibleAlertKind } from '@/lib/impact'
 
 const KIND_META: Record<AlertKind, { c: string; bg: string; label: string }> = {
   impact: { c: '#e5484d', bg: '#fdecec', label: 'IMPACT' },
@@ -20,6 +20,7 @@ export default function AlertsPanel() {
   const select = useWorkspace((s) => s.select)
   const openOrgBoard = useWorkspace((s) => s.openOrgBoard)
   const dismissAlert = useWorkspace((s) => s.dismissAlert)
+  const readOnly = useWorkspace((s) => s.isReadOnly())
 
   const orgBoards = useWorkspace((s) => s.orgBoards)
   const projects = useWorkspace((s) => s.projects)
@@ -74,9 +75,9 @@ export default function AlertsPanel() {
                         </span>
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono text-[10.5px] text-faint">{a.time}</span>
-                          {/* cm:guard only stored kinds are dismissible — a derived alert is
-                              recomputed on every read, so clearing one would be a silent no-op. */}
-                          {!DERIVED_ALERT_KINDS.has(a.kind) && (
+                          {/* cm:edge contract -> src/store/useWorkspace.ts — dismissAlert returns
+                              early on !editable(), so rendering this in read-only is a dead control. */}
+                          {isDismissibleAlertKind(a.kind) && !readOnly && (
                             <button
                               onClick={() => dismissAlert(a.id)}
                               title="Dismiss"
