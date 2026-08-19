@@ -123,11 +123,16 @@ Read / memory:
   successful one, counting every call in between. `create_snapshot`(fail) → `validate_board` →
   `update_feature` → `create_snapshot`(ok) is a chain of 4 — four calls for what should have been
   one, and the tool with the longest median chain is the worst-designed one. Nobody ever reports
-  that, because it eventually works. Returns the full ranking, the literal call sequences behind
-  the top offenders (tool + **parameter names, never values**), and clusters of recurring
-  `ask_human` questions, each naming the board field whose absence forced it. Read-only,
-  workspace-scoped, and re-runnable: the same rows always yield the same answer. Empty on day one —
-  it fills in as agents use the board.
+  that, because it eventually works. Every invocation counts, including the ones the MCP SDK rejects
+  before a tool runs (unknown tool name, wrong parameter shape) — that is the failure a maintainer
+  most wants to see. Returns the full ranking, the literal call sequences behind the top offenders
+  (tool + **parameter names, never values**), clusters of recurring `ask_human` questions each
+  naming the board field whose absence forced it, and friction reports counted per tool. Read-only,
+  workspace-scoped, and re-runnable: the same rows always yield the same answer. Bounded by
+  construction: a chain is followed at most 100 calls (`capped: true`, and its length is then a
+  lower bound), quotes at most 25 of them (`omittedSteps`), and `window.truncated` says when the
+  window held more calls than one pass reads. Empty on day one — it fills in as agents use the
+  board.
 
 Write (each broadcasts live to the browser):
 - modules: `add_module`, `find_or_create_module` (idempotent), `update_module`, `delete_module`
@@ -156,8 +161,9 @@ Business logic / impact (what makes the board a source of truth, not just a task
 - `ask_human({question, nodeId?, options?})` / `answer_question` / `resolve_question` — the two-way
   human-decision channel (a structured alternative to one-way `log_activity`) for Tier-4 gates.
   `resolve_question` removes the alert from the board with no undo, but the question / friction
-  **text** is archived when the alert is raised, so dismissing costs the alert and not the record —
-  that archive is the corpus `analyze_tool_friction` clusters.
+  **text** is archived when the alert is raised (and, for an alert older than that archive, on the
+  dismissal itself), so dismissing costs the alert and not the record — that archive is the corpus
+  `analyze_tool_friction` clusters. The board's own × confirm dialog says the same thing.
 - `report_friction({tool, wanted, tried, received, workaround, params?, nodeId?})` — the mirror of
   `ask_human`: friction with KineTrak's **own tooling**, not with the product on the board. Files a
   `friction` report alert (no answer expected, nothing blocks); `workaround` is the highest-signal

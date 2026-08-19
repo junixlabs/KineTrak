@@ -21,6 +21,8 @@ export interface QuestionLike {
   id: string
   kind: 'question' | 'friction'
   text: string
+  /** The tool a 'friction' report names; null for a question. */
+  tool: string | null
 }
 
 /** A gap longer than this ends the working run: the stateless /mcp transport has
@@ -29,7 +31,6 @@ export const RUN_IDLE_GAP_MS = 10 * 60 * 1000
 
 export interface Run {
   keyId: string
-  projectId: string | null
   calls: ToolCallLike[]
 }
 
@@ -41,11 +42,18 @@ export interface ChainStep {
 
 export interface Chain {
   tool: string
-  /** Calls from the failure to the recovering success, inclusive. */
+  /** Calls from the failure to the recovering success, inclusive — capped at
+   *  MAX_CHAIN_SCAN, where it is a lower bound and `capped` says so. */
   length: number
   /** false when the run ended without the tool ever succeeding. */
   recovered: boolean
+  /** true when the forward scan hit MAX_CHAIN_SCAN before the run ended: this
+   *  failure went unrecovered for at least `length` calls, possibly many more. */
+  capped: boolean
+  /** The first MAX_CHAIN_STEPS calls of the chain — enough to read the pattern. */
   sequence: ChainStep[]
+  /** Calls the sequence does not quote (0 unless the chain is longer than the cap). */
+  omittedSteps: number
 }
 
 export interface ToolStat {
@@ -66,14 +74,16 @@ export interface ToolRanking {
   calls: number
 }
 
-/** Split rows into working runs, grouped by (keyId, projectId) then cut wherever
- *  the agent went quiet — the only identities a stateless transport leaves behind. */
+/** Split rows into working runs, grouped by keyId then cut wherever the agent went
+ *  quiet — the only identity a stateless transport leaves behind. */
 // cm:why segmented at ANALYSIS time rather than stamped at write time: a server-minted run id
 // would need process-local state a container restart or the per-POST rebuild splits anyway.
+// cm:guard projectId is NOT part of run identity: 52 of 67 tools take it optionally and the server
+// fills in the default, so keying on it splits one session into groups whose chains never close.
 export function segmentRuns(rows: ToolCallLike[]): Run[] {
   const groups = new Map<string, ToolCallLike[]>()
   for (const r of rows) {
-    const key = `${r.keyId} ${r.projectId ?? ''}`
+    const key = r.keyId
     const g = groups.get(key)
     if (g) g.push(r)
     else groups.set(key, [r])
@@ -85,15 +95,25 @@ export function segmentRuns(rows: ToolCallLike[]): Run[] {
     for (const c of calls) {
       const prev = current.at(-1)
       if (prev && c.ts - prev.ts > RUN_IDLE_GAP_MS) {
-        runs.push({ keyId: prev.keyId, projectId: prev.projectId, calls: current })
+        runs.push({ keyId: prev.keyId, calls: current })
         current = []
       }
       current.push(c)
     }
-    if (current.length) runs.push({ keyId: current[0].keyId, projectId: current[0].projectId, calls: current })
+    if (current.length) runs.push({ keyId: current[0].keyId, calls: current })
   }
   return runs
 }
+
+/** How far forward one failure is followed. Past this the answer is already
+ *  "this never recovered"; the cap is what keeps the pass linear in run length
+ *  instead of quadratic, since every unrecovered failure would otherwise walk the
+ *  whole remaining run. */
+export const MAX_CHAIN_SCAN = 100
+
+/** How many of a chain's calls are quoted. A maintainer reads the shape of the
+ *  detour, not 20 000 of them, and this is what bounds the response size. */
+export const MAX_CHAIN_STEPS = 25
 
 /**
  * Every recovery chain in one run. The definition, in code:
@@ -106,25 +126,32 @@ export function segmentRuns(rows: ToolCallLike[]): Run[] {
  *            is therefore length 4 — four calls for what should have been one.
  *   OVERLAP — if T fails twice before succeeding, each failure opens its own chain;
  *            the chains overlap on purpose, because each failure cost its own detour.
+ *   CAP    — the scan stops after MAX_CHAIN_SCAN calls: `length` is then a lower
+ *            bound and `capped` is true.
  */
 export function recoveryChains(run: Run): Chain[] {
   const chains: Chain[] = []
   run.calls.forEach((call, i) => {
     if (call.outcome !== 'error') return
+    const horizon = Math.min(run.calls.length - 1, i + MAX_CHAIN_SCAN - 1)
     let end = -1
-    for (let j = i + 1; j < run.calls.length; j++) {
+    for (let j = i + 1; j <= horizon; j++) {
       if (run.calls[j].tool === call.tool && run.calls[j].outcome === 'ok') {
         end = j
         break
       }
     }
     const recovered = end !== -1
-    const last = recovered ? end : run.calls.length - 1
+    const last = recovered ? end : horizon
+    const length = last - i + 1
+    const quoted = run.calls.slice(i, Math.min(last, i + MAX_CHAIN_STEPS - 1) + 1)
     chains.push({
       tool: call.tool,
-      length: last - i + 1,
+      length,
       recovered,
-      sequence: run.calls.slice(i, last + 1).map((c) => ({ tool: c.tool, params: c.params, outcome: c.outcome })),
+      capped: !recovered && horizon < run.calls.length - 1,
+      sequence: quoted.map((c) => ({ tool: c.tool, params: c.params, outcome: c.outcome })),
+      omittedSteps: length - quoted.length,
     })
   })
   return chains
@@ -140,6 +167,16 @@ export function median(values: number[]): number {
 
 /** How many worst-offender chains to quote per tool. */
 const CHAINS_PER_TOOL = 3
+
+/** Retain only the CHAINS_PER_TOOL worst chains as they arrive, so a run with
+ *  20 000 failures costs 3 chains of memory per tool rather than 20 000. */
+// cm:guard the trailing sort+truncate must stay: Array#sort is stable, which is the only reason
+// keeping the worst 3 as we go returns the same chains as sorting every chain and slicing 3.
+function keepWorst(chains: Chain[], chain: Chain): void {
+  chains.push(chain)
+  chains.sort((a, b) => b.length - a.length || Number(a.recovered) - Number(b.recovered))
+  if (chains.length > CHAINS_PER_TOOL) chains.length = CHAINS_PER_TOOL
+}
 
 /**
  * Per-tool ranking, worst-first, plus the literal call sequences behind the top
@@ -160,7 +197,7 @@ export function rankTools(rows: ToolCallLike[], topN = 5): ToolRanking {
     for (const chain of recoveryChains(run)) {
       const s = of(chain.tool)
       s.lengths.push(chain.length)
-      s.chains.push(chain)
+      keepWorst(s.chains, chain)
       if (!chain.recovered) s.unrecovered++
     }
   }
@@ -181,9 +218,7 @@ export function rankTools(rows: ToolCallLike[], topN = 5): ToolRanking {
   const topChains = ranking
     .filter((r) => r.failures > 0)
     .slice(0, topN)
-    .flatMap((r) =>
-      [...stats.get(r.tool)!.chains].sort((a, b) => b.length - a.length || Number(a.recovered) - Number(b.recovered)).slice(0, CHAINS_PER_TOOL),
-    )
+    .flatMap((r) => stats.get(r.tool)!.chains)
 
   return { ranking, topChains, runs: runs.length, calls: rows.length }
 }
@@ -244,16 +279,14 @@ function tokenize(text: string): string[] {
 export function clusterQuestions(rows: QuestionLike[]): QuestionCluster[] {
   const questions = rows.filter((r) => r.kind === 'question')
   const freq = new Map<string, number>()
-  const tokensOf = new Map<string, string[]>()
-  for (const q of questions) {
-    const tokens = [...new Set(tokenize(q.text))]
-    tokensOf.set(q.id, tokens)
-    for (const tk of tokens) freq.set(tk, (freq.get(tk) ?? 0) + 1)
-  }
+  // cm:why tokens are indexed by POSITION, not by row id: an alert id is unique per project, not
+  // globally, so two projects' questions could share one and silently overwrite each other's tokens.
+  const tokensOf = questions.map((q) => [...new Set(tokenize(q.text))])
+  for (const tokens of tokensOf) for (const tk of tokens) freq.set(tk, (freq.get(tk) ?? 0) + 1)
 
   const clusters = new Map<string, { texts: string[]; hit: FieldHit | null }>()
-  for (const q of questions) {
-    const tokens = tokensOf.get(q.id)!
+  questions.forEach((q, i) => {
+    const tokens = tokensOf[i]
     const hit = bestField(new Set(tokens))
     const signature =
       hit?.field ??
@@ -261,7 +294,7 @@ export function clusterQuestions(rows: QuestionLike[]): QuestionCluster[] {
     const c = clusters.get(signature) ?? { texts: [], hit }
     c.texts.push(q.text)
     clusters.set(signature, c)
-  }
+  })
 
   return [...clusters.entries()]
     .map(([signature, c]) => ({
@@ -287,4 +320,24 @@ function bestField(tokens: Set<string>): FieldHit | null {
     if (hits > 0 && (!best || hits > best.hits)) best = { field: entry.field, status: entry.status, hits }
   }
   return best ? { field: best.field, status: best.status } : null
+}
+
+export interface FrictionCount {
+  tool: string
+  count: number
+}
+
+/** Friction reports per tool named. The friction corpus is a first-class second
+ *  signal, not just a row count: `report_friction` names the tool that cost the
+ *  agent something, which is the same question the ranking answers from calls. */
+export function frictionByTool(rows: QuestionLike[]): FrictionCount[] {
+  const counts = new Map<string, number>()
+  for (const r of rows) {
+    if (r.kind !== 'friction') continue
+    const tool = r.tool ?? 'unnamed'
+    counts.set(tool, (counts.get(tool) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([tool, count]) => ({ tool, count }))
+    .sort((a, b) => b.count - a.count || a.tool.localeCompare(b.tool))
 }

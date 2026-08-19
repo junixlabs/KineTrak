@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { applyCommand, type Command, type Root } from '../src/shared/board'
-import { archivedQuestion } from './questionLog'
+import { archivedAlert, archivedQuestion } from './questionLog'
 import { clusterQuestions, type QuestionLike } from './toolAnalysis'
 import type { WorkspaceData } from '../src/store/types'
 
@@ -35,8 +35,9 @@ const friction: Command = {
 }
 
 test('an ask_human question is archived with its text and options', () => {
-  const row = archivedQuestion(ask, NOW)
+  const row = archivedQuestion(ask, 'o1', NOW)
   assert.equal(row?.id, 'q1')
+  assert.equal(row?.orgId, 'o1', 'the org is what keeps the row readable — and deletable — after the project goes')
   assert.equal(row?.kind, 'question')
   assert.equal(row?.projectId, 'p1')
   assert.equal(row?.askedAt, NOW)
@@ -46,7 +47,7 @@ test('an ask_human question is archived with its text and options', () => {
 })
 
 test('a friction report is archived with all four fields and the tool it names', () => {
-  const row = archivedQuestion(friction, NOW)
+  const row = archivedQuestion(friction, 'o1', NOW)
   assert.equal(row?.kind, 'friction')
   assert.equal(row?.tool, 'add_swim_node')
   for (const value of ['create ten steps in one call', 'ten sequential calls', 'each call re-arranged the lane', 'called arrange_swimlane once at the end']) {
@@ -55,7 +56,7 @@ test('a friction report is archived with all four fields and the tool it names',
 })
 
 test('dismissing the alert destroys the board alert and nothing else', () => {
-  const archived = archivedQuestion(friction, NOW)
+  const archived = archivedQuestion(friction, 'o1', NOW)
   const withAlert = applyCommand(root(), friction)
   assert.equal(withAlert.projects[0].data.alerts.length, 1)
 
@@ -69,17 +70,42 @@ test('commands that raise no alert archive nothing', () => {
     { type: 'resolveQuestion', projectId: 'p1', id: 'q1' },
     { type: 'addModule', projectId: 'p1', id: 'm1', name: 'Checkout' },
   ] as Command[]) {
-    assert.equal(archivedQuestion(cmd, NOW), null)
+    assert.equal(archivedQuestion(cmd, 'o1', NOW), null)
   }
 })
 
 test('an archived question reaches the clustering the analysis runs', () => {
   const rows = [ask, { ...ask, id: 'q2', question: 'Who is assigned this step?' } as Command]
-    .map((c) => archivedQuestion(c, NOW))
+    .map((c) => archivedQuestion(c, 'o1', NOW))
     .filter((r): r is NonNullable<typeof r> => !!r)
-    .map((r): QuestionLike => ({ id: r.id, kind: r.kind, text: r.text }))
+    .map((r): QuestionLike => ({ id: r.id, kind: r.kind, text: r.text, tool: r.tool }))
   const clusters = clusterQuestions(rows)
   assert.equal(clusters.length, 1)
   assert.equal(clusters[0].count, 2)
   assert.equal(clusters[0].missingField, 'feature.owner')
+})
+
+test('dismissing an alert raised before the archive existed still archives its text', () => {
+  const board = applyCommand(root(), friction)
+  const alert = board.projects[0].data.alerts[0]
+  const row = archivedAlert(alert, 'o1', 'p1', NOW)
+  assert.equal(row?.id, 'fr1')
+  assert.equal(row?.orgId, 'o1')
+  assert.equal(row?.kind, 'friction')
+  assert.equal(row?.tool, 'add_swim_node', 'the tool is recoverable from the alert title')
+  assert.ok(row?.text.includes('called arrange_swimlane once at the end'), 'the workaround is the highest-signal field')
+})
+
+test('a question alert dismissed late archives the question and no tool', () => {
+  const board = applyCommand(root(), ask)
+  const row = archivedAlert(board.projects[0].data.alerts[0], 'o1', 'p1', NOW)
+  assert.equal(row?.kind, 'question')
+  assert.equal(row?.tool, null)
+  assert.ok(row?.text.includes('Who owns the checkout flow?'))
+  assert.ok(row?.text.includes('Ana / Bo'))
+})
+
+test('an alert kind that carries no stored text archives nothing', () => {
+  const derived = { id: 'i1', kind: 'impact' as const, title: 'Impact', detail: 'computed', tags: [], time: 'now', actionLabel: 'Review', action: { view: 'mindmap' as const, selection: null } }
+  assert.equal(archivedAlert(derived, 'o1', 'p1', NOW), null)
 })

@@ -1,4 +1,4 @@
-import { bigserial, index, integer, jsonb, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core'
+import { bigserial, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 import type { OrgBoardEdge, OrgBoardNode, Snapshot, WorkspaceData } from '../../src/store/types'
 import type { Actor } from '../activity'
 
@@ -184,7 +184,9 @@ export const toolCalls = pgTable(
     params: jsonb('params').$type<string[]>().notNull().default([]),
     outcome: text('outcome', { enum: ['ok', 'error'] }).notNull(),
   },
-  (t) => [index('tool_calls_run_idx').on(t.orgId, t.keyId, t.id)],
+  // cm:why not indexed on the run key: both reads filter org_id and order by id (as does trim, on
+  // the write path), and a key_id sitting between the two cannot serve that ordering.
+  (t) => [index('tool_calls_org_idx').on(t.orgId, t.id), index('tool_calls_project_idx').on(t.orgId, t.projectId, t.ts)],
 )
 
 /** The durable corpus behind ask_human clustering. Board alerts are the live
@@ -195,10 +197,14 @@ export const toolCalls = pgTable(
 export const agentQuestions = pgTable(
   'agent_questions',
   {
+    // cm:guard the surrogate key is what makes (org_id, project_id, id) scoping possible: with the
+    // alert id as PRIMARY KEY, an id squatted by one org suppresses another org's archive row.
+    rowId: bigserial('row_id', { mode: 'number' }).primaryKey(),
     /** The alert id, so the archive row and the (deletable) alert are one record. */
-    id: text('id').primaryKey(),
-    // cm:why no FK on project_id: the corpus must outlive a deleted project, or a cascade would
-    // silently shorten the very history this table exists to trend.
+    id: text('id').notNull(),
+    orgId: text('org_id').notNull(),
+    // cm:why no FK on org_id/project_id: the corpus must outlive a deleted project — but org_id is
+    // what keeps that project's rows readable, and therefore trimmable, rather than orphaned.
     projectId: text('project_id').notNull(),
     kind: text('kind', { enum: ['question', 'friction'] }).notNull(),
     askedAt: timestamp('asked_at', { withTimezone: true }).notNull().defaultNow(),
@@ -206,5 +212,9 @@ export const agentQuestions = pgTable(
     tool: text('tool'),
     answer: text('answer'),
   },
-  (t) => [index('agent_questions_project_idx').on(t.projectId, t.askedAt)],
+  (t) => [
+    uniqueIndex('agent_questions_alert_idx').on(t.orgId, t.projectId, t.id),
+    index('agent_questions_org_idx').on(t.orgId, t.askedAt),
+    index('agent_questions_project_idx').on(t.projectId, t.askedAt),
+  ],
 )

@@ -2,7 +2,10 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
   clusterQuestions,
+  frictionByTool,
   KEYWORD_TO_FIELD,
+  MAX_CHAIN_SCAN,
+  MAX_CHAIN_STEPS,
   median,
   rankTools,
   recoveryChains,
@@ -111,8 +114,55 @@ test('another actor’s calls never join a run', () => {
   assert.equal(recoveryChains(runs[0])[0].recovered, false, 'k2 succeeding did not rescue k1')
 })
 
-test('the same key on two projects is two runs', () => {
-  assert.equal(segmentRuns([call('a', 'ok', 0, 'k1', 'p1'), call('a', 'ok', 1, 'k1', 'p2')]).length, 2)
+// cm:why one key working on two projects is ONE run: projectId is optional on 52 of 67 tools and the
+// server fills the default, so a run keyed on it splits mid-session and its chains never close.
+test('one key is one run regardless of which project each call named', () => {
+  const runs = segmentRuns([call('a', 'ok', 0, 'k1', 'p1'), call('a', 'ok', 1, 'k1', 'p2')])
+  assert.equal(runs.length, 1)
+  assert.deepEqual(runs[0].calls.map((c) => c.projectId), ['p1', 'p2'], 'the row keeps its project — only the RUN key drops it')
+})
+
+test('a failure recorded without a project is recovered by the same call that named one', () => {
+  const runs = segmentRuns([call('create_snapshot', 'error', 0, 'k1', null), call('create_snapshot', 'ok', 1, 'k1', 'p1')])
+  assert.equal(runs.length, 1)
+  const chains = recoveryChains(runs[0])
+  assert.deepEqual(
+    chains.map((c) => [c.length, c.recovered]),
+    [[2, true]],
+    'a null/p1 split would have scored this unrecovered, running to the end of the null group',
+  )
+})
+
+test('two keys on the same project stay two runs', () => {
+  assert.equal(segmentRuns([call('a', 'ok', 0, 'k1', 'p1'), call('a', 'ok', 1, 'k2', 'p1')]).length, 2)
+})
+
+test('a chain is capped, and says so, instead of walking the rest of the run', () => {
+  const rows: ToolCallLike[] = [call('create_snapshot', 'error', 0)]
+  for (let i = 1; i <= MAX_CHAIN_SCAN + 50; i++) rows.push(call('get_board', 'ok', i * 0.01))
+  const chains = recoveryChains(oneRun(rows))
+  assert.equal(chains.length, 1)
+  assert.equal(chains[0].length, MAX_CHAIN_SCAN, 'the length is the cap, i.e. a lower bound')
+  assert.equal(chains[0].recovered, false)
+  assert.equal(chains[0].capped, true)
+  assert.equal(chains[0].sequence.length, MAX_CHAIN_STEPS, 'and only the readable head is quoted')
+  assert.equal(chains[0].omittedSteps, MAX_CHAIN_SCAN - MAX_CHAIN_STEPS)
+})
+
+test('a chain that ends before the cap is not flagged as capped', () => {
+  const chains = recoveryChains(oneRun([call('create_snapshot', 'error', 0), call('create_snapshot', 'ok', 1)]))
+  assert.equal(chains[0].capped, false)
+  assert.equal(chains[0].omittedSteps, 0)
+})
+
+test('the response stays bounded on a run that is one long failure', () => {
+  const rows: ToolCallLike[] = []
+  for (let i = 0; i < 4000; i++) rows.push(call('add_swim_edge', 'error', i * 0.01))
+  const { ranking, topChains } = rankTools(rows)
+  assert.equal(ranking[0].failures, 4000, 'every failure is still counted')
+  assert.equal(topChains.length, 3, 'but at most CHAINS_PER_TOOL sequences are quoted')
+  for (const c of topChains) assert.ok(c.sequence.length <= MAX_CHAIN_STEPS)
+  assert.ok(JSON.stringify(topChains).length < 20_000, 'a 4000-call run must not return a megabyte of sequences')
 })
 
 test('median averages the two middles on an even count', () => {
@@ -211,7 +261,7 @@ test('an empty table yields an empty ranking, not a crash', () => {
   assert.deepEqual(rankTools([]), { ranking: [], topChains: [], runs: 0, calls: 0 })
 })
 
-const q = (id: string, text: string): QuestionLike => ({ id, kind: 'question', text })
+const q = (id: string, text: string): QuestionLike => ({ id, kind: 'question', text, tool: null })
 
 test('three phrasings of the same question land in one cluster', () => {
   const clusters = clusterQuestions([
@@ -260,7 +310,7 @@ test('clusters are ordered by count, biggest first', () => {
 
 test('friction reports are not clustered as questions', () => {
   const rows: QuestionLike[] = [
-    { id: 'fr1', kind: 'friction', text: 'Wanted: ten steps in one call' },
+    { id: 'fr1', kind: 'friction', text: 'Wanted: ten steps in one call', tool: 'add_swim_node' },
     q('q1', 'Who owns this feature?'),
   ]
   const clusters = clusterQuestions(rows)
@@ -285,4 +335,34 @@ test('no lexicon keyword is silently swallowed by the stopword list', () => {
       assert.equal(clusters[0].missingField, entry.field, `keyword "${keyword}" never reaches ${entry.field}`)
     }
   }
+})
+
+test('two questions sharing an alert id are two questions, not one overwriting the other', () => {
+  const clusters = clusterQuestions([q('q1', 'Who owns this feature?'), q('q1', 'When is this due?')])
+  assert.deepEqual(
+    clusters.map((c) => [c.signature, c.count]),
+    [
+      ['feature.dueDate', 1],
+      ['feature.owner', 1],
+    ],
+  )
+})
+
+test('friction reports are counted per tool, worst-first', () => {
+  const rows: QuestionLike[] = [
+    { id: 'fr1', kind: 'friction', text: 'x', tool: 'add_swim_node' },
+    { id: 'fr2', kind: 'friction', text: 'y', tool: 'add_swim_node' },
+    { id: 'fr3', kind: 'friction', text: 'z', tool: 'bulk_apply' },
+    { id: 'fr4', kind: 'friction', text: 'w', tool: null },
+    q('q1', 'Who owns this?'),
+  ]
+  assert.deepEqual(frictionByTool(rows), [
+    { tool: 'add_swim_node', count: 2 },
+    { tool: 'bulk_apply', count: 1 },
+    { tool: 'unnamed', count: 1 },
+  ])
+})
+
+test('a corpus with no friction reports counts nothing', () => {
+  assert.deepEqual(frictionByTool([q('q1', 'Who owns this?')]), [])
 })

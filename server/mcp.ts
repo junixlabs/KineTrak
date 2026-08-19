@@ -19,9 +19,9 @@ import { descStats, isSteeringFeature } from '../src/lib/descriptions'
 import { autoArrangeSwimlane, arrangeAllFlows } from '../src/lib/swimlayout'
 import { flowStatusIssues } from '../src/lib/flowstatus'
 import { boardQualityIssues } from '../src/shared/boardInvariants'
-import { instrumentToolRegistration, readToolCalls } from './toolLog'
+import { instrumentToolCalls, READ_LIMIT, readToolCalls } from './toolLog'
 import { readQuestions } from './questionLog'
-import { clusterQuestions, rankTools, RUN_IDLE_GAP_MS } from './toolAnalysis'
+import { clusterQuestions, frictionByTool, rankTools, RUN_IDLE_GAP_MS } from './toolAnalysis'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -167,9 +167,6 @@ AT SESSION END, append_note your summary + next step + the latest cursor onto "P
 export function buildMcpServer(key: ApiKey): McpServer {
   const server = new McpServer({ name: 'kinetrak', version: '1.0.0' }, { instructions: SERVER_INSTRUCTIONS })
   const orgId = key.orgId
-  // cm:edge protocol -> server/toolLog.ts — this must stay ABOVE every registerTool call below it;
-  // a tool registered before this line records nothing and vanishes from analyze_tool_friction.
-  instrumentToolRegistration(server, { orgId, keyId: key.id, actor: key.name })
   const actor: Actor = { kind: 'agent', name: key.name }
   // Every agent mutation is attributed to this key in the activity log.
   const applyAndBroadcast = (cmd: Parameters<typeof applyRaw>[0]) => applyRaw(cmd, actor)
@@ -305,14 +302,26 @@ export function buildMcpServer(key: ApiKey): McpServer {
       if (projectId && !(await proj(projectId))) return json({ error: 'project not found in this workspace' })
       const since = sinceDays === undefined ? undefined : Date.now() - sinceDays * 86_400_000
       const calls = await readToolCalls(orgId, { projectId, since })
-      const questions = await readQuestions(projectId ? [projectId] : orgHeaders().map((h) => h.id), since)
+      const questions = await readQuestions(orgId, { projectId, since })
       const ranked = rankTools(calls, topN ?? 5)
+      const asked = questions.filter((q) => q.kind === 'question').length
       return json({
-        window: { sinceDays: sinceDays ?? null, projectId: projectId ?? null, calls: ranked.calls, runs: ranked.runs, questions: questions.length },
+        window: {
+          sinceDays: sinceDays ?? null,
+          projectId: projectId ?? null,
+          calls: ranked.calls,
+          runs: ranked.runs,
+          questions: asked,
+          frictionReports: questions.length - asked,
+          // cm:why a truncation flag rather than a silent cut: a full window means the ranking
+          // describes the recent end of the log, not the whole of it, and a reader must know which.
+          truncated: calls.length >= READ_LIMIT,
+        },
         recoveryChainDefinition: `a failed call of T through the next successful call of T in the same run, inclusive; a run breaks after ${RUN_IDLE_GAP_MS / 60000} idle minutes`,
         ranking: ranked.ranking,
         topChains: ranked.topChains,
         questionClusters: clusterQuestions(questions),
+        frictionByTool: frictionByTool(questions),
         // cm:why an empty log returns empty arrays plus this note, never an error: on day one nothing
         // is recorded, and saying so is the honest answer rather than a failure.
         note: ranked.calls === 0 ? 'No tool calls recorded yet in this window — the ranking fills in as agents use the board.' : undefined,
@@ -1354,6 +1363,12 @@ export function buildMcpServer(key: ApiKey): McpServer {
       return { contents: [{ uri: 'kinetrak://project-context', mimeType: 'text/markdown', text }] }
     },
   )
+
+  // cm:edge protocol -> server/toolLog.ts — installed here, BELOW every registration, because the
+  // SDK creates the tools/call handler this wraps on the first registerTool call.
+  // cm:guard defaultProjectId must stay the same expression proj() defaults to: a row recorded under
+  // a different project than the call was served on splits one session's runs and breaks its chains.
+  instrumentToolCalls(server, { orgId, keyId: key.id, actor: key.name }, { defaultProjectId: () => orgHeaders()[0]?.id ?? null })
 
   return server
 }

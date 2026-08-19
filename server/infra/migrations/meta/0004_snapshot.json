@@ -1,5 +1,5 @@
 {
-  "id": "a2212a37-c0fb-4058-b6a9-ae4ca56a78b2",
+  "id": "3c36b2fc-7be5-47a0-8181-11b6bcaf6708",
   "prevId": "4ae7659e-c6d4-472c-91e2-2100bda84abb",
   "version": "7",
   "dialect": "postgresql",
@@ -100,10 +100,22 @@
       "name": "agent_questions",
       "schema": "",
       "columns": {
+        "row_id": {
+          "name": "row_id",
+          "type": "bigserial",
+          "primaryKey": true,
+          "notNull": true
+        },
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true
         },
         "project_id": {
@@ -145,6 +157,54 @@
         }
       },
       "indexes": {
+        "agent_questions_alert_idx": {
+          "name": "agent_questions_alert_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_questions_org_idx": {
+          "name": "agent_questions_org_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "asked_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "agent_questions_project_idx": {
           "name": "agent_questions_project_idx",
           "columns": [
@@ -867,8 +927,8 @@
         }
       },
       "indexes": {
-        "tool_calls_run_idx": {
-          "name": "tool_calls_run_idx",
+        "tool_calls_org_idx": {
+          "name": "tool_calls_org_idx",
           "columns": [
             {
               "expression": "org_id",
@@ -877,13 +937,34 @@
               "nulls": "last"
             },
             {
-              "expression": "key_id",
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tool_calls_project_idx": {
+          "name": "tool_calls_project_idx",
+          "columns": [
+            {
+              "expression": "org_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "id",
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ts",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
