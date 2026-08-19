@@ -118,6 +118,16 @@ Read / memory:
 - `validate_board({projectId?})` — structural self-check (empty modules, orphan features, steps in
   missing lanes, dangling edges, disconnected steps, duplicate names). Use it to catch problems you
   can't see visually, then fix them.
+- `analyze_tool_friction({projectId?, topN?, sinceDays?})` — KineTrak's own tools, ranked by median
+  **recovery-chain** length: the run of calls from a failed invocation of a tool to the next
+  successful one, counting every call in between. `create_snapshot`(fail) → `validate_board` →
+  `update_feature` → `create_snapshot`(ok) is a chain of 4 — four calls for what should have been
+  one, and the tool with the longest median chain is the worst-designed one. Nobody ever reports
+  that, because it eventually works. Returns the full ranking, the literal call sequences behind
+  the top offenders (tool + **parameter names, never values**), and clusters of recurring
+  `ask_human` questions, each naming the board field whose absence forced it. Read-only,
+  workspace-scoped, and re-runnable: the same rows always yield the same answer. Empty on day one —
+  it fills in as agents use the board.
 
 Write (each broadcasts live to the browser):
 - modules: `add_module`, `find_or_create_module` (idempotent), `update_module`, `delete_module`
@@ -145,6 +155,9 @@ Business logic / impact (what makes the board a source of truth, not just a task
   against the changed code.
 - `ask_human({question, nodeId?, options?})` / `answer_question` / `resolve_question` — the two-way
   human-decision channel (a structured alternative to one-way `log_activity`) for Tier-4 gates.
+  `resolve_question` removes the alert from the board with no undo, but the question / friction
+  **text** is archived when the alert is raised, so dismissing costs the alert and not the record —
+  that archive is the corpus `analyze_tool_friction` clusters.
 - `report_friction({tool, wanted, tried, received, workaround, params?, nodeId?})` — the mirror of
   `ask_human`: friction with KineTrak's **own tooling**, not with the product on the board. Files a
   `friction` report alert (no answer expected, nothing blocks); `workaround` is the highest-signal

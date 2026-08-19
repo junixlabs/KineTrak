@@ -1,6 +1,7 @@
 import { applyCommand, type Command, type Root } from '../src/shared/board'
 import type { Org, OrgBoard, Project, ProjectHeader } from '../src/store/types'
 import { recordChange, recordNote, type Actor } from './activity'
+import { archiveAlert } from './questionLog'
 import { getStore, type Catalog } from './infra/store'
 import { searchRepo } from './infra/repositories'
 import { ProjectRegistry } from './runtime/ProjectRegistry'
@@ -138,6 +139,9 @@ export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<vo
   }
 
   recordChange(actor, cmd, affected)
+  // cm:edge lockstep -> server/questionLog.ts — archived at CREATE time so resolve_question's
+  // destructive filter in the pure reducer stays as it is and a dismissal loses nothing.
+  archiveAlert(cmd)
   const event: ChangeEvent = ORG_BOARD_CMDS.has(cmd.type)
     ? orgBoard
       ? { kind: 'orgboard', board: orgBoard }

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, ilike, inArray, lte, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm'
 import { requireDb } from './db'
 import * as t from './schema'
 import { searchableItems, type SearchHit } from '../../src/shared/board'
@@ -344,4 +344,112 @@ function rowToActivity(r: typeof t.activity.$inferSelect): Activity {
     targetId: r.targetId ?? undefined,
     kind: r.kind,
   }
+}
+
+export interface ToolCallInsert {
+  orgId: string
+  projectId: string | null
+  keyId: string
+  actor: string
+  tool: string
+  params: string[]
+  outcome: 'ok' | 'error'
+  ts: number
+}
+export interface ToolCallRow extends ToolCallInsert {
+  id: number
+}
+
+export const toolCallRepo = {
+  async insert(c: ToolCallInsert): Promise<void> {
+    await requireDb().insert(t.toolCalls).values({
+      orgId: c.orgId,
+      projectId: c.projectId,
+      keyId: c.keyId,
+      actor: c.actor,
+      tool: c.tool,
+      params: c.params,
+      outcome: c.outcome,
+      ts: new Date(c.ts),
+    })
+  },
+  /** Bound the table: keep only the newest `cap` rows for an org (mirrors activityRepo.trim). */
+  async trim(orgId: string, cap: number): Promise<void> {
+    const cutoff = await requireDb()
+      .select({ id: t.toolCalls.id })
+      .from(t.toolCalls)
+      .where(eq(t.toolCalls.orgId, orgId))
+      .orderBy(desc(t.toolCalls.id))
+      .limit(1)
+      .offset(cap)
+    if (cutoff[0]) await requireDb().delete(t.toolCalls).where(and(eq(t.toolCalls.orgId, orgId), lte(t.toolCalls.id, cutoff[0].id)))
+  },
+  /** One org's calls, oldest→newest so the analysis can walk them in call order. */
+  async range(orgId: string, opts: { projectId?: string; since?: number; limit?: number } = {}): Promise<ToolCallRow[]> {
+    const rows = await requireDb()
+      .select()
+      .from(t.toolCalls)
+      .where(
+        and(
+          eq(t.toolCalls.orgId, orgId),
+          opts.projectId ? eq(t.toolCalls.projectId, opts.projectId) : undefined,
+          opts.since !== undefined ? gte(t.toolCalls.ts, new Date(opts.since)) : undefined,
+        ),
+      )
+      .orderBy(asc(t.toolCalls.id))
+      .limit(opts.limit ?? 20000)
+    return rows.map((r) => ({
+      id: r.id,
+      orgId: r.orgId,
+      projectId: r.projectId,
+      keyId: r.keyId,
+      actor: r.actor,
+      tool: r.tool,
+      params: r.params,
+      outcome: r.outcome,
+      ts: r.ts.getTime(),
+    }))
+  },
+}
+
+export interface AgentQuestionRow {
+  id: string
+  projectId: string
+  kind: 'question' | 'friction'
+  askedAt: number
+  text: string
+  tool: string | null
+  answer: string | null
+}
+
+export const agentQuestionRepo = {
+  /** Idempotent on the alert id — a replayed command must not fork the corpus. */
+  async insert(q: Omit<AgentQuestionRow, 'answer'>): Promise<void> {
+    await requireDb()
+      .insert(t.agentQuestions)
+      .values({ id: q.id, projectId: q.projectId, kind: q.kind, askedAt: new Date(q.askedAt), text: q.text, tool: q.tool })
+      .onConflictDoNothing({ target: t.agentQuestions.id })
+  },
+  async answer(id: string, answer: string): Promise<void> {
+    await requireDb().update(t.agentQuestions).set({ answer }).where(eq(t.agentQuestions.id, id))
+  },
+  /** The corpus for a set of projects (an org's, resolved by the caller), oldest→newest. */
+  async byProjects(projectIds: string[], since?: number, limit = 5000): Promise<AgentQuestionRow[]> {
+    if (!projectIds.length) return []
+    const rows = await requireDb()
+      .select()
+      .from(t.agentQuestions)
+      .where(and(inArray(t.agentQuestions.projectId, projectIds), since !== undefined ? gte(t.agentQuestions.askedAt, new Date(since)) : undefined))
+      .orderBy(asc(t.agentQuestions.askedAt))
+      .limit(limit)
+    return rows.map((r) => ({
+      id: r.id,
+      projectId: r.projectId,
+      kind: r.kind,
+      askedAt: r.askedAt.getTime(),
+      text: r.text,
+      tool: r.tool,
+      answer: r.answer,
+    }))
+  },
 }

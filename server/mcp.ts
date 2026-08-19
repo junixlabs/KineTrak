@@ -19,6 +19,9 @@ import { descStats, isSteeringFeature } from '../src/lib/descriptions'
 import { autoArrangeSwimlane, arrangeAllFlows } from '../src/lib/swimlayout'
 import { flowStatusIssues } from '../src/lib/flowstatus'
 import { boardQualityIssues } from '../src/shared/boardInvariants'
+import { instrumentToolRegistration, readToolCalls } from './toolLog'
+import { readQuestions } from './questionLog'
+import { clusterQuestions, rankTools, RUN_IDLE_GAP_MS } from './toolAnalysis'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -164,6 +167,9 @@ AT SESSION END, append_note your summary + next step + the latest cursor onto "P
 export function buildMcpServer(key: ApiKey): McpServer {
   const server = new McpServer({ name: 'kinetrak', version: '1.0.0' }, { instructions: SERVER_INSTRUCTIONS })
   const orgId = key.orgId
+  // cm:edge protocol -> server/toolLog.ts — this must stay ABOVE every registerTool call below it;
+  // a tool registered before this line records nothing and vanishes from analyze_tool_friction.
+  instrumentToolRegistration(server, { orgId, keyId: key.id, actor: key.name })
   const actor: Actor = { kind: 'agent', name: key.name }
   // Every agent mutation is attributed to this key in the activity log.
   const applyAndBroadcast = (cmd: Parameters<typeof applyRaw>[0]) => applyRaw(cmd, actor)
@@ -283,6 +289,34 @@ export function buildMcpServer(key: ApiKey): McpServer {
       const p = await requireProj(projectId)
       const issues = boardIssues(p.data)
       return json({ ok: issues.every((i) => i.severity !== 'error'), errors: issues.filter((i) => i.severity === 'error').length, warnings: issues.filter((i) => i.severity === 'warning').length, issues })
+    },
+  )
+
+  // cm:why deliberately absent from the 8 kinetrak-* skill allowlists: this is a maintainer read
+  // about KineTrak's own tooling, not a step in operating a board — do not add it to them.
+  server.registerTool(
+    'analyze_tool_friction',
+    {
+      description:
+        "Rank KineTrak's own MCP tools by how many calls it costs an agent to recover from a failure — the tool with the longest median RECOVERY CHAIN (from a failed call of T to the next successful call of T, counting every call in between) is the worst-designed one, and nobody ever reports it because it eventually works. Also clusters recurring ask_human questions, naming per cluster the board field whose absence forced the question. Read-only, scoped to your workspace, and re-runnable: the same rows always give the same answer. Records tool and PARAMETER NAMES only — never argument values.",
+      inputSchema: { projectId: z.string().optional(), topN: z.number().int().min(1).max(20).optional(), sinceDays: z.number().int().min(1).optional() },
+    },
+    async ({ projectId, topN, sinceDays }) => {
+      if (projectId && !(await proj(projectId))) return json({ error: 'project not found in this workspace' })
+      const since = sinceDays === undefined ? undefined : Date.now() - sinceDays * 86_400_000
+      const calls = await readToolCalls(orgId, { projectId, since })
+      const questions = await readQuestions(projectId ? [projectId] : orgHeaders().map((h) => h.id), since)
+      const ranked = rankTools(calls, topN ?? 5)
+      return json({
+        window: { sinceDays: sinceDays ?? null, projectId: projectId ?? null, calls: ranked.calls, runs: ranked.runs, questions: questions.length },
+        recoveryChainDefinition: `a failed call of T through the next successful call of T in the same run, inclusive; a run breaks after ${RUN_IDLE_GAP_MS / 60000} idle minutes`,
+        ranking: ranked.ranking,
+        topChains: ranked.topChains,
+        questionClusters: clusterQuestions(questions),
+        // cm:why an empty log returns empty arrays plus this note, never an error: on day one nothing
+        // is recorded, and saying so is the honest answer rather than a failure.
+        note: ranked.calls === 0 ? 'No tool calls recorded yet in this window — the ranking fills in as agents use the board.' : undefined,
+      })
     },
   )
 
@@ -768,7 +802,7 @@ export function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'resolve_question',
-    { description: 'Dismiss a stored alert: a "question" once its decision has been acted on, or a "friction" report once it has been read. Deletes it outright — there is no undo, and the four report fields are not recoverable.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
+    { description: 'Dismiss a stored alert: a "question" once its decision has been acted on, or a "friction" report once it has been read. Removes it from the board outright — there is no undo and it will not reappear. The question / report TEXT is retained separately for analysis (see analyze_tool_friction), so dismissing costs you the alert, not the record.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'resolveQuestion', projectId: p.id, id })
