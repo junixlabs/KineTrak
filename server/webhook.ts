@@ -2,7 +2,7 @@ import type { Express, Request, Response } from 'express'
 import { applyAndBroadcast, getOrgBoards, getProject, projectHeader, projectOrgId } from './state'
 import { recordNote, type Actor } from './activity'
 import { getAdapter, listProviders, pathMatches } from './integrations/vcs'
-import { makeId } from '../src/store/ids'
+import { makeId } from '../src/shared/ids'
 
 // ── VCS webhook ingestion ────────────────────────────────────────────────────
 // POST /api/webhook/:provider?projectId=…  — a provider-specific push/merge event

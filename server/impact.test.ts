@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { computeImpact, deriveImpactAlerts, deriveOutdatedAlerts, deriveDodAlerts, dependentsOf } from '../src/lib/impact'
-import { templateData } from '../src/store/seed'
+import { templateData } from '../src/shared/seed'
 import { applyCommand, type Root } from '../src/shared/board'
 
 // The sample board: f6 "Automatic impact calculation" links to swim node E

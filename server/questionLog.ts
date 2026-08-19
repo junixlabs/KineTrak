@@ -9,7 +9,7 @@
 // the alerts that were already on boards before this table existed.
 
 import type { Command } from '../src/shared/board'
-import type { Alert } from '../src/store/types'
+import type { Alert } from '../src/shared/types'
 import { agentQuestionRepo, type AgentQuestionRow } from './infra/repositories'
 
 /** Keep the newest N archived alerts per org (CONVENTIONS invariant 6: anything

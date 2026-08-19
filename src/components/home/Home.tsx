@@ -25,7 +25,7 @@ import {
 import { useWorkspace } from '@/store/useWorkspace'
 import { useToast } from '@/store/useToast'
 import { logout } from '@/store/auth'
-import type { ProjectTemplate } from '@/store/types'
+import type { ProjectTemplate } from '@/shared/types'
 
 const fmtDate = (iso: string) => {
   const d = new Date(iso)

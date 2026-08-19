@@ -2,7 +2,7 @@
 // Vite and tsx — it is the single source of truth for board-quality invariants,
 // imported by the server's MCP layer (validate_board, create_snapshot, next_action)
 // and the client, and exercised directly by tests.
-import type { WorkspaceData, BoardRole } from '../store/types'
+import type { WorkspaceData, BoardRole } from './types'
 import { isSteeringFeature } from '../lib/descriptions'
 
 export type QualitySeverity = 'error' | 'warning'

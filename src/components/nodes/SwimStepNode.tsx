@@ -1,7 +1,7 @@
 import { Handle, Position } from '@xyflow/react'
 import { nodeStatusColor } from '@/theme/tokens'
 import { useWorkspace } from '@/store/useWorkspace'
-import type { NodeKind, NodeStatus } from '@/store/types'
+import type { NodeKind, NodeStatus } from '@/shared/types'
 
 export interface SwimStepData {
   nodeId: string

@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { autoArrangeSwimlane, arrangeAllFlows } from '../src/lib/swimlayout'
-import type { SwimNode, SwimEdge, SwimLane } from '../src/store/types'
+import type { SwimNode, SwimEdge, SwimLane } from '../src/shared/types'
 
 const lanes: SwimLane[] = [
   { id: 0, name: 'L0', sub: '', color: '#000', owners: [], y: 40, h: 100 },

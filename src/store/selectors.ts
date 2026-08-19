@@ -1,4 +1,4 @@
-import type { Feature, Module, Release, Role, SwimLane, WorkspaceData } from './types'
+import type { Feature, Module, Release, Role, SwimLane, WorkspaceData } from '../shared/types'
 
 /** done / total for a module's features. */
 export function moduleProgress(moduleId: string, features: Feature[]): { done: number; total: number; ratio: number } {

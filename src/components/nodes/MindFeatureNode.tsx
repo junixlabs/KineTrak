@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import { featureStatusMeta } from '@/theme/tokens'
-import type { FeatureStatus } from '@/store/types'
+import type { FeatureStatus } from '@/shared/types'
 
 export interface MindFeatureData {
   name: string

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Command } from '../src/shared/board'
-import type { Project } from '../src/store/types'
+import type { Project } from '../src/shared/types'
 import { activityRepo } from './infra/repositories'
 
 // ── Activity log ─────────────────────────────────────────────────────────────

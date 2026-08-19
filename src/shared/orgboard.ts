@@ -6,7 +6,7 @@
 // boards load on demand), so instead of a Root this takes a feature lookup
 // that may return undefined for projects the caller chose not to load —
 // anchor checks are skipped for those, never guessed.
-import type { Feature, OrgBoard } from '../store/types'
+import type { Feature, OrgBoard } from './types'
 
 export interface OrgBoardIssue {
   severity: 'error' | 'warning'

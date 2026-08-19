@@ -1,5 +1,5 @@
 import { applyCommand, type Command } from '../../src/shared/board'
-import type { Project } from '../../src/store/types'
+import type { Project } from '../../src/shared/types'
 import type { Store } from '../infra/store'
 
 // ── Aggregate root: one project ───────────────────────────────────────────────

@@ -3,7 +3,8 @@ import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor, hexA } from '@/theme/tokens'
 import { FieldLabel, TextField, SelectField, ListEditor, ChecklistEditor, RoleChips } from './fields'
 import { MarkdownField } from './Markdownish'
-import type { CodeRef, CrossLink, FeatureStatus, NodeKind, NodeStatus, Selection } from '@/store/types'
+import type { CodeRef, CrossLink, FeatureStatus, NodeKind, NodeStatus } from '@/shared/types'
+import type { Selection } from '@/store/types'
 
 const NODE_STATUS: { key: NodeStatus; label: string }[] = [
   { key: 'todo', label: 'To do' },

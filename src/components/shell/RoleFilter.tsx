@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Users, ChevronDown, Check } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
-import type { Role } from '@/store/types'
+import type { Role } from '@/shared/types'
 
 const ROLES: Role[] = ['PM', 'PO', 'BA', 'Dev', 'Tester']
 

@@ -1,7 +1,7 @@
 import { useWorkspace } from './useWorkspace'
 import { useActivity, type Activity } from './useActivity'
 import { SYNC_URL } from './api'
-import type { OrgBoard, WorkspaceData } from './types'
+import type { OrgBoard, WorkspaceData } from '../shared/types'
 
 /**
  * Open the app as an anonymous, read-only viewer for a public share token.

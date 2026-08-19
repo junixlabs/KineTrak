@@ -18,7 +18,8 @@ import ViewHint from './ViewHint'
 import { useWorkspace } from '@/store/useWorkspace'
 import { useToast } from '@/store/useToast'
 import { authFetch } from '@/store/api'
-import type { OrgBoardEdgeKind, OrgBoardSel } from '@/store/types'
+import type { OrgBoardEdgeKind } from '@/shared/types'
+import type { OrgBoardSel } from '@/store/types'
 
 const nodeTypes = { orgSystem: OrgSystemNode }
 

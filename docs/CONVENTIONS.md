@@ -17,7 +17,11 @@ http/         REST + WS + MCP controllers (thin: parse → call → respond)
 state.ts      orchestrator — the only module that mutates board/catalog state
 runtime/      LoadedProject (aggregate) · ProjectRegistry (identity map + TTL)
 infra/        Store port + Postgres adapter · repositories (drizzle) · db · migrate
-src/shared/   board.ts — the pure reducer + search extractor, shared with the client
+src/shared/   the domain layer, shared with the client and free of React/zustand
+  board.ts    the pure reducer + search extractor
+  types.ts    the board domain model (Feature, Module, SwimNode, WorkspaceData, OrgBoard…)
+  seed.ts     template + clone data · ids.ts  id/code minting
+src/store/    React/zustand state ONLY — no domain type lives here
 ```
 
 Rules:
@@ -28,6 +32,9 @@ Rules:
   Postgres adapter, never inline SQL in `state.ts`/`mcp.ts`.
 - **The reducer (`src/shared/board.ts`) stays pure** and import-free of server code —
   it runs in the browser too. Mint ids/timestamps in the caller and pass them in the command.
+- **`src/shared/` must not import `src/store/`** — locked by the `shared-not-state` contract in
+  `.arch.json`. The domain model lives in `src/shared/types.ts`; `src/store/types.ts` holds only
+  client-side shapes. A domain type filed under `src/store/` reddens the gate.
 
 ## The three aggregates
 

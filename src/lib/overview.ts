@@ -1,4 +1,4 @@
-import type { Alert, FeatureStatus, NodeStatus, WorkspaceData } from '../store/types'
+import type { Alert, FeatureStatus, NodeStatus, WorkspaceData } from '../shared/types'
 import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD, type OrgAlertCtx } from './impact'
 import { isDescOverBudget, isSteeringFeature } from './descriptions'
 

@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { applyCommand, type Command, type Root } from '../src/shared/board'
 import { archivedAlert, archivedQuestion } from './questionLog'
 import { clusterQuestions, type QuestionLike } from './toolAnalysis'
-import type { WorkspaceData } from '../src/store/types'
+import type { WorkspaceData } from '../src/shared/types'
 
 const NOW = 1_700_000_000_000
 

@@ -1,6 +1,6 @@
 // Relative imports only (no `@` alias) so this module runs unchanged under both
 // Vite and tsx — it is imported by the server's MCP layer as well as the client.
-import type { Feature, SwimNode } from '../store/types'
+import type { Feature, SwimNode } from '../shared/types'
 
 export interface FlowStatusIssue {
   severity: 'warning'

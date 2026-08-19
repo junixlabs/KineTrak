@@ -1,4 +1,4 @@
-import type { Alert, AlertKind, OrgBoard, Project, SwimEdge, WorkspaceData } from '../store/types'
+import type { Alert, AlertKind, OrgBoard, Project, SwimEdge, WorkspaceData } from '../shared/types'
 
 // Relative imports only (no `@` alias) so this module runs unchanged under both
 // Vite and tsx — it is imported by the server's MCP layer as well as the client.

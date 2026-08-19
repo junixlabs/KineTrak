@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { boardQualityIssues, severityFor, OVERLAP_PX } from '../src/shared/boardInvariants'
-import type { WorkspaceData, Feature, SwimNode, SwimEdge, BoardRole } from '../src/store/types'
+import type { WorkspaceData, Feature, SwimNode, SwimEdge, BoardRole } from '../src/shared/types'
 
 const feature = (id: string, status: Feature['status'] = 'progress', extra: Partial<Feature> = {}): Feature => ({
   id, name: id, status, moduleId: 'm1', releaseId: 'r1', ...extra,
