@@ -118,8 +118,8 @@ board `ssot` là lỗi cứng, **chặn `create_snapshot`**) · ProjectRegistry 
 khi rảnh + ghi tuần tự · WS delta có scope · webhook GitHub/GitLab HMAC → gắn cờ `codeStale` ·
 share link chỉ đọc.
 
-**Đang là MCP server thật** cho `~/services/anhome` và `~/code/dodgeprint-api`; có board memory ở 3
-project; cài như plugin marketplace `kinetrak-tools`.
+**Đang là MCP server thật** cho hai dự án đang chạy; có board memory ở 3 project; cài như plugin
+marketplace `kinetrak-tools`.
 
 **Đây là artifact mạnh nhất trong bốn sản phẩm.** Nó không cần “hoàn thiện” — nó cần **được nối** và
 **được người ngoài dùng**.
