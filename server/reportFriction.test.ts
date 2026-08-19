@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { applyCommand, type Root } from '../src/shared/board'
 import { describeCommand } from './activity'
-import { isDismissibleAlertKind } from '../src/lib/impact'
+import { deriveAllAlerts, hasAlertTarget, isDismissibleAlertKind } from '../src/lib/impact'
 import type { Alert, WorkspaceData } from '../src/store/types'
 
 const emptyData = (alerts: Alert[] = []): WorkspaceData => ({
@@ -74,4 +74,30 @@ test('only a friction report is dismissible from the UI', () => {
   for (const kind of ['question', 'impact', 'outdated', 'dod'] as const) {
     assert.equal(isDismissibleAlertKind(kind), false, `${kind} must not be dismissible`)
   }
+})
+
+test('deriveAllAlerts surfaces a stored friction alert', () => {
+  const stored = alertsOf(applyCommand(root(), cmd))
+  const derived = deriveAllAlerts(emptyData(stored))
+  assert.deepEqual(derived.map((a) => a.id), ['fr1'], 'the friction kind is not swallowed as derived')
+})
+
+test('a friction report with no nodeId offers no navigation target', () => {
+  const a = alertsOf(applyCommand(root(), cmd))[0]
+  assert.equal(hasAlertTarget(a), false)
+  assert.equal(a.actionLabel, '')
+  const onNode = alertsOf(applyCommand(root(), { ...cmd, nodeId: 'n1' }))[0]
+  assert.equal(hasAlertTarget(onNode), true)
+  assert.equal(onNode.actionLabel, 'Open step')
+})
+
+test('dismissing an alert is not logged as resolving a decision', () => {
+  const { summary } = describeCommand({ type: 'resolveQuestion', projectId: 'p1', id: 'fr1' })
+  assert.ok(summary.length > 0, 'summary is not blank')
+  assert.ok(!/decision/i.test(summary), `"${summary}" must not call a friction dismissal a decision`)
+})
+
+test('the four report fields render as separate lines, not one run-on string', () => {
+  const a = alertsOf(applyCommand(root(), cmd))[0]
+  assert.equal(a.detail.split('\n').length, 4)
 })

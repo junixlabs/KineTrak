@@ -126,7 +126,9 @@ export function describeCommand(cmd: Command, project?: Project): { summary: str
     case 'updateSettings': return { summary: `updated board settings (${Object.keys(cmd.patch).join(', ')})` }
     case 'askHuman': return { summary: `asked the human: ${cmd.question.slice(0, 120)}`, targetId: cmd.nodeId }
     case 'answerQuestion': return { summary: `a decision was answered` }
-    case 'resolveQuestion': return { summary: `resolved a pending decision` }
+    // cm:why kind-neutral wording: resolveQuestion dismisses 'friction' reports too, and the project
+    // handed here is the POST-state, so the alert is already gone and its kind cannot be read back.
+    case 'resolveQuestion': return { summary: `dismissed an alert` }
     case 'reportFriction': return { summary: `reported tooling friction with ${cmd.tool}: ${cmd.workaround.slice(0, 120)}`, targetId: cmd.nodeId }
     default: return { summary: '' }
   }

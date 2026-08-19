@@ -104,10 +104,8 @@ export const sampleTemplate: WorkspaceData = {
     { from: 'G', to: 'J' },
     { from: 'J', to: 'K' },
   ],
-  // All alert kinds are now DERIVED live from the board (see src/lib/impact):
-  // impact ← crossLinks + dependsOn, outdated ← codeStale (VCS webhook), dod ←
-  // unmet acceptance criteria. Only stored 'question' alerts (human decisions)
-  // would live here; the sample seeds none.
+  // cm:why empty by design: impact/outdated/dod are derived in src/lib/impact and never read from
+  // here; only stored 'question' decisions and 'friction' tooling reports belong in this array.
   alerts: [],
   settings: { impactThreshold: 3 },
 }

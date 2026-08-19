@@ -421,15 +421,17 @@ export function applyCommand(root: Root, cmd: Command): Root {
           id: cmd.id,
           kind: 'friction',
           title: `Tooling friction · ${cmd.tool}`,
+          // cm:edge contract -> src/components/shell/AlertsPanel.tsx — the four fields are newline-
+          // separated and only render as lines because both detail cells set whitespace-pre-line.
           detail: [
             `Wanted: ${cmd.wanted}`,
             `Tried: ${cmd.tool}${cmd.params?.length ? `(${cmd.params.join(', ')})` : ''} — ${cmd.tried}`,
             `Got: ${cmd.received}`,
             `Workaround: ${cmd.workaround}`,
-          ].join('  ·  '),
+          ].join('\n'),
           tags: ['@tooling'],
           time: 'reported',
-          actionLabel: cmd.nodeId ? 'Open step' : 'Review',
+          actionLabel: cmd.nodeId ? 'Open step' : '',
           action: { view: cmd.view ?? 'swimlane', selection: sel },
         }
         return { ...d, alerts: [...d.alerts, alert] }

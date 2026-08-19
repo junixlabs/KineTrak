@@ -268,11 +268,16 @@ export function deriveOrgImpactAlerts(ctx: OrgAlertCtx): Alert[] {
 /** Kinds recomputed from the board on every read, so they are never taken from data.alerts. */
 const DERIVED_ALERT_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>(['impact', 'outdated', 'dod'])
 
-// cm:guard widening this beyond 'friction' hands the UI a DELETE with no undo: resolveQuestion
-// drops the alert outright, a 'question' is a decision the calling agent is still polling on, and
-// a derived kind comes straight back on the next read. Add an answer path before adding a kind.
+// cm:guard widening this beyond 'friction' hands the UI an undoable DELETE: a 'question' is a
+// decision its agent is still polling on, a derived kind returns next read. Add an answer path first.
 export function isDismissibleAlertKind(kind: AlertKind): boolean {
   return kind === 'friction'
+}
+
+// cm:guard a friction report normally carries no nodeId, so its AlertAction points at an EMPTY
+// swimlane; render no navigation control when this is false or a click meant to read ejects the user.
+export function hasAlertTarget(a: Alert): boolean {
+  return a.action.view === 'orgboard' || a.action.selection !== null || a.kind !== 'friction'
 }
 
 /** All live, derived alerts for a board (impact + outdated + DoD + cross-project

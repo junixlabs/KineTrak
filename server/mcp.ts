@@ -739,10 +739,10 @@ export function buildMcpServer(key: ApiKey): McpServer {
     },
   )
 
-  // ── Async human channels (decisions · tooling friction) ─────────────────────
-  // cm:edge lockstep -> .claude/skills/kinetrak-*/SKILL.md — every skill's `allowed-tools` is an
-  // ENFORCING allowlist, so a tool registered here but absent there is denied mid-skill. Registering
-  // a tool an agent is told to call means editing those allowlists in the same change.
+  // cm:edge lockstep -> .claude/skills/kinetrak-orient/SKILL.md — `allowed-tools` is an ENFORCING
+  // allowlist; a tool registered here but absent from all 8 kinetrak-* skills is denied mid-skill.
+  // cm:edge lockstep -> plugin/kinetrak/skills/kinetrak-orient/SKILL.md — second enforcing copy of
+  // those 8 allowlists, shipped as the published plugin; miss it and plugin installs are denied.
   server.registerTool(
     'ask_human',
     {
@@ -768,7 +768,7 @@ export function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'resolve_question',
-    { description: 'Dismiss a "question" alert once its decision has been acted on.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
+    { description: 'Dismiss a stored alert: a "question" once its decision has been acted on, or a "friction" report once it has been read. Deletes it outright — there is no undo, and the four report fields are not recoverable.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'resolveQuestion', projectId: p.id, id })
