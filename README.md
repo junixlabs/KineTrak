@@ -1,5 +1,7 @@
 # KineTrak
 
+> **Mục tiêu & cái không được làm:** [`NORTH-STAR.md`](./NORTH-STAR.md) — đọc trước khi thêm tính năng.
+
 A **visual operating interface** for product teams: run the whole project lifecycle through
 **three synchronized living diagrams** — Mindmap, Story Map, Swimlane — over a **single source of
 truth**. KineTrak is built to be **operated by an AI agent over MCP** while humans watch every
