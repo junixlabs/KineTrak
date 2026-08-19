@@ -133,7 +133,8 @@ export interface Snapshot {
   data: WorkspaceData
 }
 
-export type AlertKind = 'impact' | 'outdated' | 'dod' | 'question'
+// cm:edge lockstep -> src/lib/overview.ts — a new kind needs its own count key in Overview['alerts']
+export type AlertKind = 'impact' | 'outdated' | 'dod' | 'question' | 'friction'
 
 /** Where an alert's action button navigates: a project view + selection, or an
  *  org board (optionally focusing one integration edge). */

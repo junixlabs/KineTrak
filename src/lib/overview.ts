@@ -17,7 +17,7 @@ export interface Gap {
 export interface Overview {
   features: Record<FeatureStatus, number> & { total: number }
   steps: Record<NodeStatus, number> & { total: number }
-  alerts: { impact: number; outdated: number; dod: number; question: number; total: number; list: Alert[] }
+  alerts: { impact: number; outdated: number; dod: number; question: number; friction: number; total: number; list: Alert[] }
   /** Semantic completeness of the board as a source of truth (not structural — that's validate_board). */
   fidelity: {
     /** Committed features (must/progress) with no code linked. */
@@ -43,7 +43,7 @@ export function deriveOverview(data: WorkspaceData, threshold = DEFAULT_IMPACT_T
 
   const list = deriveAllAlerts(data, threshold, org)
   const by = (k: Alert['kind']) => list.filter((a) => a.kind === k).length
-  const alerts = { impact: by('impact'), outdated: by('outdated'), dod: by('dod'), question: by('question'), total: list.length, list }
+  const alerts = { impact: by('impact'), outdated: by('outdated'), dod: by('dod'), question: by('question'), friction: by('friction'), total: list.length, list }
 
   // A step is traceable if some feature crossLinks into it (link_feature_step writes this).
   const linkedNodes = new Set<string>()

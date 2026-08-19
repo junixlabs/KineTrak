@@ -165,6 +165,8 @@ interface WorkspaceState {
   deleteSwimNode: (id: string) => void
   addSwimEdge: (from: string, to: string) => void
   deleteSwimEdge: (from: string, to: string) => void
+  /** Dismiss a stored alert (question / friction). Derived kinds are recomputed, so not dismissible. */
+  dismissAlert: (id: string) => void
 
   // Convenience wrappers
   setFeatureStatus: (id: string, status: FeatureStatus) => void
@@ -458,6 +460,10 @@ export const useWorkspace = create<WorkspaceState>()(
         deleteSwimEdge: (from, to) => {
           if (!editable()) return
           dispatch({ type: 'deleteSwimEdge', projectId: pid(), from, to })
+        },
+        dismissAlert: (id) => {
+          if (!editable()) return
+          dispatch({ type: 'resolveQuestion', projectId: pid(), id })
         },
 
         // ── Snapshots ──────────────────────────────────────────────────────

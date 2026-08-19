@@ -1,4 +1,4 @@
-import type { Alert, OrgBoard, Project, SwimEdge, WorkspaceData } from '../store/types'
+import type { Alert, AlertKind, OrgBoard, Project, SwimEdge, WorkspaceData } from '../store/types'
 
 // Relative imports only (no `@` alias) so this module runs unchanged under both
 // Vite and tsx — it is imported by the server's MCP layer as well as the client.
@@ -265,16 +265,19 @@ export function deriveOrgImpactAlerts(ctx: OrgAlertCtx): Alert[] {
   return alerts.sort((a, b) => a.id.localeCompare(b.id))
 }
 
+/** Kinds recomputed from the board on every read. Their inverse — the stored kinds —
+ *  is what a human can actually dismiss: dismissing a derived alert is a no-op. */
+export const DERIVED_ALERT_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>(['impact', 'outdated', 'dod'])
+
 /** All live, derived alerts for a board (impact + outdated + DoD + cross-project
  *  org alerts when org context is provided), plus the board's own stored
- *  non-derived alerts (e.g. pending human-decision 'question's). */
+ *  non-derived alerts ('question' decisions and 'friction' tooling reports). */
 export function deriveAllAlerts(data: WorkspaceData, threshold = DEFAULT_IMPACT_THRESHOLD, org?: OrgAlertCtx): Alert[] {
-  const derivedKinds = new Set(['impact', 'outdated', 'dod'])
   return [
     ...deriveImpactAlerts(data, threshold),
     ...deriveOutdatedAlerts(data),
     ...deriveDodAlerts(data),
     ...(org ? deriveOrgImpactAlerts(org) : []),
-    ...data.alerts.filter((a) => !derivedKinds.has(a.kind)),
+    ...data.alerts.filter((a) => !DERIVED_ALERT_KINDS.has(a.kind)),
   ]
 }

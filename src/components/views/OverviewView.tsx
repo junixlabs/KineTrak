@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Triangle, Clock, CheckCircle2, HelpCircle, FileCode2, GitBranch, Link2, FileText, ChevronRight } from 'lucide-react'
+import { Triangle, Clock, CheckCircle2, HelpCircle, Wrench, FileCode2, GitBranch, Link2, FileText, ChevronRight } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor } from '@/theme/tokens'
 import { deriveOverview, type Gap } from '@/lib/overview'
@@ -11,6 +11,7 @@ const ALERT_META: Record<AlertKind, { c: string; bg: string; label: string; Icon
   outdated: { c: '#f59e0b', bg: '#fef3e2', label: 'Outdated', Icon: Clock },
   dod: { c: '#2f6fed', bg: '#e9f1ff', label: 'Def. of Done', Icon: CheckCircle2 },
   question: { c: '#7c5cff', bg: '#f1edff', label: 'Decision', Icon: HelpCircle },
+  friction: { c: '#0f9b8e', bg: '#e6f6f4', label: 'Tooling', Icon: Wrench },
 }
 const NODE_ORDER: NodeStatus[] = ['todo', 'progress', 'done', 'blocked']
 const nodeLabel: Record<NodeStatus, string> = { todo: 'To do', progress: 'In progress', done: 'Done', blocked: 'Blocked' }

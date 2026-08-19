@@ -1,14 +1,15 @@
 import { useMemo } from 'react'
-import { Triangle, Sparkles, ChevronRight } from 'lucide-react'
+import { Triangle, Sparkles, ChevronRight, X } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import type { AlertKind } from '@/store/types'
-import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD } from '@/lib/impact'
+import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD, DERIVED_ALERT_KINDS } from '@/lib/impact'
 
 const KIND_META: Record<AlertKind, { c: string; bg: string; label: string }> = {
   impact: { c: '#e5484d', bg: '#fdecec', label: 'IMPACT' },
   outdated: { c: '#f59e0b', bg: '#fef3e2', label: 'OUTDATED' },
   dod: { c: '#2f6fed', bg: '#e9f1ff', label: 'DEF. OF DONE' },
   question: { c: '#7c5cff', bg: '#f1edff', label: 'DECISION' },
+  friction: { c: '#0f9b8e', bg: '#e6f6f4', label: 'TOOLING' },
 }
 
 export default function AlertsPanel() {
@@ -18,6 +19,7 @@ export default function AlertsPanel() {
   const setView = useWorkspace((s) => s.setView)
   const select = useWorkspace((s) => s.select)
   const openOrgBoard = useWorkspace((s) => s.openOrgBoard)
+  const dismissAlert = useWorkspace((s) => s.dismissAlert)
 
   const orgBoards = useWorkspace((s) => s.orgBoards)
   const projects = useWorkspace((s) => s.projects)
@@ -70,7 +72,21 @@ export default function AlertsPanel() {
                         >
                           {m.label}
                         </span>
-                        <span className="font-mono text-[10.5px] text-faint">{a.time}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[10.5px] text-faint">{a.time}</span>
+                          {/* cm:guard only stored kinds are dismissible — a derived alert is
+                              recomputed on every read, so clearing one would be a silent no-op. */}
+                          {!DERIVED_ALERT_KINDS.has(a.kind) && (
+                            <button
+                              onClick={() => dismissAlert(a.id)}
+                              title="Dismiss"
+                              aria-label="Dismiss alert"
+                              className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px] text-faint hover:bg-[#f1f3f6] hover:text-ink"
+                            >
+                              <X size={12} strokeWidth={2.2} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="mb-[3px] text-[13px] font-bold text-ink">{a.title}</div>
                       <div className="text-[12px] leading-[1.5] text-muted">{a.detail}</div>

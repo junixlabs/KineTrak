@@ -71,7 +71,7 @@ export function recordChange(actor: Actor | undefined, cmd: Command, project?: P
   if (!actor) return
   const projectId = projectIdOf(cmd)
   if (!projectId) return
-  const { summary, targetId } = describe(cmd, project)
+  const { summary, targetId } = describeCommand(cmd, project)
   if (!summary) return
   push({ id: randomUUID(), projectId, ts: Date.now(), actor, summary, targetId, kind: 'change' })
 }
@@ -82,7 +82,7 @@ function projectIdOf(cmd: Command): string | undefined {
   return undefined
 }
 
-function describe(cmd: Command, project?: Project): { summary: string; targetId?: string } {
+export function describeCommand(cmd: Command, project?: Project): { summary: string; targetId?: string } {
   const d = project?.data
   const moduleName = (id?: string) => d?.modules.find((m) => m.id === id)?.name ?? 'a module'
   const featureName = (id?: string) => d?.features.find((f) => f.id === id)?.name ?? 'a feature'
@@ -127,6 +127,7 @@ function describe(cmd: Command, project?: Project): { summary: string; targetId?
     case 'askHuman': return { summary: `asked the human: ${cmd.question.slice(0, 120)}`, targetId: cmd.nodeId }
     case 'answerQuestion': return { summary: `a decision was answered` }
     case 'resolveQuestion': return { summary: `resolved a pending decision` }
+    case 'reportFriction': return { summary: `reported tooling friction with ${cmd.tool}: ${cmd.workaround.slice(0, 120)}`, targetId: cmd.nodeId }
     default: return { summary: '' }
   }
 }
