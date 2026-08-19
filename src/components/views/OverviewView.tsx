@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
-import { Triangle, Clock, CheckCircle2, HelpCircle, FileCode2, GitBranch, Link2, FileText, ChevronRight } from 'lucide-react'
+import { Triangle, Clock, CheckCircle2, HelpCircle, Wrench, FileCode2, GitBranch, Link2, FileText, ChevronRight } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor } from '@/theme/tokens'
 import { deriveOverview, type Gap } from '@/lib/overview'
-import { DEFAULT_IMPACT_THRESHOLD } from '@/lib/impact'
+import { DEFAULT_IMPACT_THRESHOLD, hasAlertTarget } from '@/lib/impact'
 import type { AlertKind, NodeStatus } from '@/store/types'
 
 const ALERT_META: Record<AlertKind, { c: string; bg: string; label: string; Icon: typeof Triangle }> = {
@@ -11,6 +11,7 @@ const ALERT_META: Record<AlertKind, { c: string; bg: string; label: string; Icon
   outdated: { c: '#f59e0b', bg: '#fef3e2', label: 'Outdated', Icon: Clock },
   dod: { c: '#2f6fed', bg: '#e9f1ff', label: 'Def. of Done', Icon: CheckCircle2 },
   question: { c: '#7c5cff', bg: '#f1edff', label: 'Decision', Icon: HelpCircle },
+  friction: { c: '#0b7a70', bg: '#e6f6f4', label: 'Tooling', Icon: Wrench },
 }
 const NODE_ORDER: NodeStatus[] = ['todo', 'progress', 'done', 'blocked']
 const nodeLabel: Record<NodeStatus, string> = { todo: 'To do', progress: 'In progress', done: 'Done', blocked: 'Blocked' }
@@ -53,6 +54,11 @@ export default function OverviewView() {
       ),
     [data, orgBoards, projects, activeProjectId],
   )
+
+  // cm:guard a 'friction' alert reports on KineTrak's OWN tooling, so it is the internal hygiene the
+  // `presenting` gate exists to hide — keep it out of both the counters and the queue, not just one.
+  const alertKinds = useMemo(() => (Object.keys(ALERT_META) as AlertKind[]).filter((k) => !(presenting && k === 'friction')), [presenting])
+  const alertList = useMemo(() => (presenting ? ov.alerts.list.filter((a) => a.kind !== 'friction') : ov.alerts.list), [presenting, ov.alerts.list])
 
   const goGap = (g: Gap) =>
     g.kind === 'feature'
@@ -105,9 +111,9 @@ export default function OverviewView() {
             </div>
           </Card>
 
-          <Card title={`Live alerts · ${ov.alerts.total}`}>
+          <Card title={`Live alerts · ${alertList.length}`}>
             <div className="grid grid-cols-2 gap-2">
-              {(Object.keys(ALERT_META) as AlertKind[]).map((k) => {
+              {alertKinds.map((k) => {
                 const m = ALERT_META[k]
                 return (
                   <div key={k} className="flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: m.bg }}>
@@ -122,21 +128,32 @@ export default function OverviewView() {
         </div>
 
         {/* ── Alert triage queue ──────────────────────────────────────────── */}
-        {ov.alerts.list.length > 0 && (
+        {alertList.length > 0 && (
           <div className="mt-5">
             <div className="mb-2 text-[12px] font-bold uppercase tracking-wide text-faint">Needs attention</div>
             <div className="overflow-hidden rounded-2xl border border-line bg-white">
-              {ov.alerts.list.map((a) => {
+              {alertList.map((a) => {
                 const m = ALERT_META[a.kind]
-                return (
-                  <button key={a.id} onClick={() => { if (a.action.view === 'orgboard') openOrgBoard(a.action.boardId, a.action.edge ? { type: 'edge', ...a.action.edge } : undefined); else { setView(a.action.view); select(a.action.selection) } }} className="flex w-full items-start gap-3 border-b border-[#f3f5f7] px-4 py-3 text-left last:border-0 hover:bg-[#f9fbfd]">
+                const body = (
+                  <>
                     <span className="mt-0.5 flex-none rounded-md px-1.5 py-0.5 text-[9.5px] font-bold" style={{ color: m.c, background: m.bg }}>{m.label}</span>
                     <div className="flex-1">
                       <div className="text-[13px] font-semibold text-ink">{a.title}</div>
-                      <div className="text-[12px] leading-[1.45] text-muted">{a.detail}</div>
+                      <div className="whitespace-pre-line text-[12px] leading-[1.45] text-muted">{a.detail}</div>
                     </div>
+                  </>
+                )
+                // cm:edge contract -> src/lib/impact.ts#hasAlertTarget — the WHOLE row is the nav
+                // control, so an alert with nowhere to go must render as a plain row, not a button.
+                return hasAlertTarget(a) ? (
+                  <button key={a.id} onClick={() => { if (a.action.view === 'orgboard') openOrgBoard(a.action.boardId, a.action.edge ? { type: 'edge', ...a.action.edge } : undefined); else { setView(a.action.view); select(a.action.selection) } }} className="flex w-full items-start gap-3 border-b border-[#f3f5f7] px-4 py-3 text-left last:border-0 hover:bg-[#f9fbfd]">
+                    {body}
                     <ChevronRight size={14} className="mt-1 flex-none text-faint" />
                   </button>
+                ) : (
+                  <div key={a.id} className="flex w-full items-start gap-3 border-b border-[#f3f5f7] px-4 py-3 text-left last:border-0">
+                    {body}
+                  </div>
                 )
               })}
             </div>

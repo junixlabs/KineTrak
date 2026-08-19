@@ -12,7 +12,8 @@ allowed-tools: >-
   mcp__kinetrak__list_projects, mcp__kinetrak__next_action, mcp__kinetrak__get_board,
   mcp__kinetrak__get_changes_since, mcp__kinetrak__search, mcp__kinetrak__validate_board,
   mcp__kinetrak__log_activity, mcp__kinetrak__list_org_boards, mcp__kinetrak__get_org_board,
-  mcp__kinetrak__validate_org_board
+  mcp__kinetrak__validate_org_board,
+  mcp__kinetrak__report_friction
 ---
 
 # kinetrak-orient

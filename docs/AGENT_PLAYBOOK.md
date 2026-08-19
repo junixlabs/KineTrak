@@ -278,7 +278,7 @@ Sort every operation by reversibility and blast radius. Enforce these as process
 
 | Tier | Stance | KineTrak operations |
 |---|---|---|
-| **1 — Read** | Autonomous, no gate | `get_board`, `get_changes_since`, `list_projects`, `search`, `validate_board`, `next_action`, `log_activity`; a single leaf step status flip |
+| **1 — Read** | Autonomous, no gate | `get_board`, `get_changes_since`, `list_projects`, `search`, `validate_board`, `next_action`, `log_activity`, `report_friction` (report friction with KineTrak's own tooling — names of tools/parameters only, never argument values); a single leaf step status flip |
 | **2 — Additive** | Autonomous, but narrate via `log_activity` | `append_note`, `add_swim_node`, `add_swim_edge`, `update_swim_node`, `move_swim_node`, `arrange_swimlane`; org-board edge upkeep (`update_org_board_edge` contract/anchors, `link_org_edge_code`, `resolve_org_edge_stale`) |
 | **3 — New structure** | Proceed, but flag for async review | `add_module`, `add_feature`, `update_module`, `update_feature`, `reorder_modules`, `reorder_features`, routine `create_snapshot`; `create_org_board`, `add_org_board_node`, `add_org_board_edge` |
 | **4 — Irreversible / high blast radius** | **Stop and get synchronous approval first** | `delete_module`, `delete_feature`, `delete_swim_node`, `delete_swim_edge`; `delete_org_board`, `delete_org_board_node`, `delete_org_board_edge`; **ship** promotion; restructuring that touches **>3 modules or >10 features** in one pass; creating or deleting a project |
@@ -360,5 +360,10 @@ anchor edges (`fromFeatureId`/`toFeatureId`) + `link_org_edge_code` in Decompose
 
 **Stop and ask (Tier 4):** any `delete_*`, ship promotion, wide restructuring, project
 create/delete.
+
+**Blocked by KineTrak itself?** Call `report_friction` (`wanted` / `tried` / `received` /
+`workaround`) the moment a KineTrak tool blocks you or you have to work around one — the workaround
+is the point, and it needs no answer so nothing blocks. Tool and **parameter names only, never
+argument values**; the board holds real customer data.
 
 **Session close:** note (summary + next + cursor) on `Project Context` → snapshot → `log_activity`.

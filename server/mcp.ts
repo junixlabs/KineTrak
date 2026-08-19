@@ -151,7 +151,7 @@ const SERVER_INSTRUCTIONS = `KineTrak is a live product/dev board you operate as
 
 RECALL BEFORE YOU WRITE. Run the read path first every session: get_changes_since (incremental — pass back the cursor you stored last) or, on a cold start, get_board; then read the "Meta / Project Context" feature; then validate_board. Honor the BOARD CONTRACT in next_action/settings (boardRole: ssot = this board is the truth · map = derived view, verify against truthPointers before acting · asis-doc = as-built snapshot, "done" means exists, not shipped); set it with update_settings when onboarding. Search before creating so you never duplicate (use find_or_create_module / find_or_create_feature; batch large writes with bulk_apply). IDs are durable, names drift — resolve IDs fresh, never reuse one from a past session.
 
-PER-FEATURE LIFECYCLE: write the spec (goal, non-goals, acceptance criteria) into the feature description → lay out an ordered swimlane (add_swim_node + add_swim_edge; flowId = the feature id is REQUIRED on every step so the flow is scoped, filterable, and never overlaps other flows — see docs/BOARD_QUALITY.md; run arrange_swimlane to band flows) → implement one step at a time, flipping each step's status and append_note-ing evidence → validate against the acceptance criteria (validate_board enforces the board-quality invariants: errors on ssot boards block create_snapshot) → set the feature status to done and create_snapshot. Big features may nest sub-features one level via update_feature parentId (epic → sub-features, same module). Narrate non-trivial actions with log_activity so the watching human can follow.
+PER-FEATURE LIFECYCLE: write the spec (goal, non-goals, acceptance criteria) into the feature description → lay out an ordered swimlane (add_swim_node + add_swim_edge; flowId = the feature id is REQUIRED on every step so the flow is scoped, filterable, and never overlaps other flows — see docs/BOARD_QUALITY.md; run arrange_swimlane to band flows) → implement one step at a time, flipping each step's status and append_note-ing evidence → validate against the acceptance criteria (validate_board enforces the board-quality invariants: errors on ssot boards block create_snapshot) → set the feature status to done and create_snapshot. Big features may nest sub-features one level via update_feature parentId (epic → sub-features, same module). Narrate non-trivial actions with log_activity so the watching human can follow. Blocked by KineTrak's OWN tooling, or had to work around it? Call report_friction (wanted / tried / received / workaround — the workaround is the point; it needs no answer, so nothing blocks). Names of tools and parameters only, never argument values.
 
 EXISTING CODEBASE not yet on the board? Do NOT restructure. Scan the code with your own tools, draft an ADDITIVE map (find_or_create_module / find_or_create_feature) plus the "Project Context" node, then STOP for the human to confirm it, then create_snapshot("v0: as-is") before changing anything.
 
@@ -739,7 +739,10 @@ export function buildMcpServer(key: ApiKey): McpServer {
     },
   )
 
-  // ── Async human-decision channel ─────────────────────────────────────────────
+  // cm:edge lockstep -> .claude/skills/kinetrak-orient/SKILL.md — `allowed-tools` is an ENFORCING
+  // allowlist; a tool registered here but absent from all 8 kinetrak-* skills is denied mid-skill.
+  // cm:edge lockstep -> plugin/kinetrak/skills/kinetrak-orient/SKILL.md — second enforcing copy of
+  // those 8 allowlists, shipped as the published plugin; miss it and plugin installs are denied.
   server.registerTool(
     'ask_human',
     {
@@ -765,11 +768,27 @@ export function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'resolve_question',
-    { description: 'Dismiss a "question" alert once its decision has been acted on.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
+    { description: 'Dismiss a stored alert: a "question" once its decision has been acted on, or a "friction" report once it has been read. Deletes it outright — there is no undo, and the four report fields are not recoverable.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'resolveQuestion', projectId: p.id, id })
       return json({ ok: true })
+    },
+  )
+  // cm:edge contract -> docs/AGENT_PLAYBOOK.md — the names-never-values rule is a documented
+  // contract only; nothing scrubs the four free-text fields at runtime.
+  server.registerTool(
+    'report_friction',
+    {
+      description:
+        "Report friction with KineTrak's OWN tooling — the mirror of ask_human, which is about the product on the board. Call it the moment you are blocked by a tool or have to work around one: you hold the context a later bug report would not. `workaround` is the MOST VALUABLE field — \"wanted X, the tool could not do X, did Y instead\" is a fully-contextualised feature request that nothing crashes and no telemetry can see; pass 'none — still blocked' when there genuinely was no workaround. Files a \"friction\" report alert on the board for the maintainer; it needs no answer and nothing blocks, so do not poll for a reply. NAMES ONLY: `tool` and `params` take the tool name and PARAMETER NAMES, never argument values — and keep the four text fields free of values too, because this board holds real customer data.",
+      inputSchema: { projectId: z.string().optional(), tool: z.string(), wanted: z.string(), tried: z.string(), received: z.string(), workaround: z.string(), params: z.array(z.string()).optional(), nodeId: z.string().optional(), view: z.enum(['mindmap', 'story', 'swimlane']).optional() },
+    },
+    async ({ projectId, tool, wanted, tried, received, workaround, params, nodeId, view }) => {
+      const p = await requireProj(projectId)
+      const id = makeId('fr')
+      await applyAndBroadcast({ type: 'reportFriction', projectId: p.id, id, tool, wanted, tried, received, workaround, params, nodeId, view })
+      return json({ id, status: 'reported' })
     },
   )
 

@@ -145,6 +145,11 @@ Business logic / impact (what makes the board a source of truth, not just a task
   against the changed code.
 - `ask_human({question, nodeId?, options?})` / `answer_question` / `resolve_question` — the two-way
   human-decision channel (a structured alternative to one-way `log_activity`) for Tier-4 gates.
+- `report_friction({tool, wanted, tried, received, workaround, params?, nodeId?})` — the mirror of
+  `ask_human`: friction with KineTrak's **own tooling**, not with the product on the board. Files a
+  `friction` report alert (no answer expected, nothing blocks); `workaround` is the highest-signal
+  field. `tool` and `params` take the tool name and **parameter names, never argument values** — and
+  keep the four text fields free of values too; the board holds real customer data.
 
 Org boards (system maps — cross-system business logic at the org level; every tool is scoped to
 the key's workspace):

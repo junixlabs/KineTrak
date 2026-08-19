@@ -78,6 +78,7 @@ export type Command =
   | { type: 'askHuman'; projectId: string; id: string; question: string; nodeId?: string; view?: 'mindmap' | 'story' | 'swimlane'; options?: string[] }
   | { type: 'answerQuestion'; projectId: string; id: string; answer: string }
   | { type: 'resolveQuestion'; projectId: string; id: string }
+  | { type: 'reportFriction'; projectId: string; id: string; tool: string; wanted: string; tried: string; received: string; workaround: string; params?: string[]; nodeId?: string; view?: 'mindmap' | 'story' | 'swimlane' }
   // ── Org boards (system maps) ─────────────────────────────────────────────
   | { type: 'createOrgBoard'; id: string; orgId: string; name: string; createdAt: string; nodes?: OrgBoardNode[] }
   | { type: 'renameOrgBoard'; id: string; name: string }
@@ -411,6 +412,30 @@ export function applyCommand(root: Root, cmd: Command): Root {
       }))
     case 'resolveQuestion':
       return mapData(root, cmd.projectId, (d) => ({ ...d, alerts: d.alerts.filter((a) => a.id !== cmd.id) }))
+    case 'reportFriction':
+      // cm:guard never set time:'pending' or options/answer here — 'friction' is a report about
+      // KineTrak's own tooling, and those fields are what put an alert in the human-DECISION queue.
+      return mapData(root, cmd.projectId, (d) => {
+        const sel = cmd.nodeId ? { type: 'swimnode' as const, id: cmd.nodeId, view: (cmd.view ?? 'swimlane') as import('../store/types').ViewId } : null
+        const alert: Alert = {
+          id: cmd.id,
+          kind: 'friction',
+          title: `Tooling friction · ${cmd.tool}`,
+          // cm:edge contract -> src/components/shell/AlertsPanel.tsx — the four fields are newline-
+          // separated and only render as lines because both detail cells set whitespace-pre-line.
+          detail: [
+            `Wanted: ${cmd.wanted}`,
+            `Tried: ${cmd.tool}${cmd.params?.length ? `(${cmd.params.join(', ')})` : ''} — ${cmd.tried}`,
+            `Got: ${cmd.received}`,
+            `Workaround: ${cmd.workaround}`,
+          ].join('\n'),
+          tags: ['@tooling'],
+          time: 'reported',
+          actionLabel: cmd.nodeId ? 'Open step' : '',
+          action: { view: cmd.view ?? 'swimlane', selection: sel },
+        }
+        return { ...d, alerts: [...d.alerts, alert] }
+      })
 
     // ── Org boards (system maps) ───────────────────────────────────────────────
     case 'createOrgBoard':

@@ -23,6 +23,7 @@ import { cloneData, sampleTemplate, blankTemplate } from './seed'
 import { makeId, nextNodeCode } from './ids'
 import { applyCommand, seedOrgBoardNodes, type Command, type Root } from '@/shared/board'
 import { autoArrangeSwimlane, arrangeAllFlows } from '@/lib/swimlayout'
+import { isDismissibleAlertKind } from '@/lib/impact'
 
 /** UI-only view selector: the three diagram views plus the derived Overview.
  *  Kept separate from the domain `ViewId` (used by crossLinks/selection/alerts). */
@@ -165,6 +166,8 @@ interface WorkspaceState {
   deleteSwimNode: (id: string) => void
   addSwimEdge: (from: string, to: string) => void
   deleteSwimEdge: (from: string, to: string) => void
+  /** Dismiss a stored alert (question / friction). Derived kinds are recomputed, so not dismissible. */
+  dismissAlert: (id: string) => void
 
   // Convenience wrappers
   setFeatureStatus: (id: string, status: FeatureStatus) => void
@@ -458,6 +461,14 @@ export const useWorkspace = create<WorkspaceState>()(
         deleteSwimEdge: (from, to) => {
           if (!editable()) return
           dispatch({ type: 'deleteSwimEdge', projectId: pid(), from, to })
+        },
+        // cm:edge contract -> src/lib/impact.ts#isDismissibleAlertKind — the kind check lives here so
+        // the invariant survives a caller that is not the AlertsPanel render predicate.
+        dismissAlert: (id) => {
+          if (!editable()) return
+          const a = get().currentData().alerts.find((x) => x.id === id)
+          if (!a || !isDismissibleAlertKind(a.kind)) return
+          dispatch({ type: 'resolveQuestion', projectId: pid(), id })
         },
 
         // ── Snapshots ──────────────────────────────────────────────────────

@@ -9,7 +9,8 @@ description: >-
 allowed-tools: >-
   Read, Grep, Glob, mcp__kinetrak__list_projects, mcp__kinetrak__get_board, mcp__kinetrak__search,
   mcp__kinetrak__validate_board, mcp__kinetrak__update_swim_node, mcp__kinetrak__update_feature,
-  mcp__kinetrak__check_acceptance, mcp__kinetrak__append_note, mcp__kinetrak__log_activity
+  mcp__kinetrak__check_acceptance, mcp__kinetrak__append_note, mcp__kinetrak__log_activity,
+  mcp__kinetrak__report_friction
 ---
 
 # kinetrak-validate

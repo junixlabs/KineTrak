@@ -1,14 +1,15 @@
 import { useMemo } from 'react'
-import { Triangle, Sparkles, ChevronRight } from 'lucide-react'
+import { Triangle, Sparkles, ChevronRight, X } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import type { AlertKind } from '@/store/types'
-import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD } from '@/lib/impact'
+import { deriveAllAlerts, DEFAULT_IMPACT_THRESHOLD, hasAlertTarget, isDismissibleAlertKind } from '@/lib/impact'
 
 const KIND_META: Record<AlertKind, { c: string; bg: string; label: string }> = {
   impact: { c: '#e5484d', bg: '#fdecec', label: 'IMPACT' },
   outdated: { c: '#f59e0b', bg: '#fef3e2', label: 'OUTDATED' },
   dod: { c: '#2f6fed', bg: '#e9f1ff', label: 'DEF. OF DONE' },
   question: { c: '#7c5cff', bg: '#f1edff', label: 'DECISION' },
+  friction: { c: '#0b7a70', bg: '#e6f6f4', label: 'TOOLING' },
 }
 
 export default function AlertsPanel() {
@@ -18,6 +19,8 @@ export default function AlertsPanel() {
   const setView = useWorkspace((s) => s.setView)
   const select = useWorkspace((s) => s.select)
   const openOrgBoard = useWorkspace((s) => s.openOrgBoard)
+  const dismissAlert = useWorkspace((s) => s.dismissAlert)
+  const readOnly = useWorkspace((s) => s.isReadOnly())
 
   const orgBoards = useWorkspace((s) => s.orgBoards)
   const projects = useWorkspace((s) => s.projects)
@@ -30,6 +33,10 @@ export default function AlertsPanel() {
     const org = activeProjectId ? { orgBoards, projects, projectId: activeProjectId } : undefined
     return deriveAllAlerts(data, threshold, org)
   }, [data, orgBoards, projects, activeProjectId])
+
+  // cm:edge contract -> src/store/useWorkspace.ts — dismissAlert returns early on !editable() and on
+  // a non-dismissible kind, so both checks must hold here or the × is a dead control.
+  const canDismiss = (kind: AlertKind) => isDismissibleAlertKind(kind) && !readOnly
 
   return (
     <div className="relative">
@@ -53,7 +60,7 @@ export default function AlertsPanel() {
               </span>
               <div className="flex-1">
                 <div className="text-[13.5px] font-bold text-ink">Impact Warning AI</div>
-                <div className="text-[11px] text-faint">Outdated · impact · acceptance alerts</div>
+                <div className="text-[11px] text-faint">Outdated · impact · acceptance · decisions · tooling</div>
               </div>
             </div>
             <div className="max-h-[440px] overflow-auto">
@@ -70,10 +77,22 @@ export default function AlertsPanel() {
                         >
                           {m.label}
                         </span>
-                        <span className="font-mono text-[10.5px] text-faint">{a.time}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[10.5px] text-faint">{a.time}</span>
+                          {canDismiss(a.kind) && (
+                            <button
+                              onClick={() => confirm('Dismiss this report? Its text is deleted and cannot be recovered.') && dismissAlert(a.id)}
+                              title="Dismiss"
+                              aria-label="Dismiss alert"
+                              className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] text-faint hover:bg-[#f1f3f6] hover:text-ink"
+                            >
+                              <X size={12} strokeWidth={2.2} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="mb-[3px] text-[13px] font-bold text-ink">{a.title}</div>
-                      <div className="text-[12px] leading-[1.5] text-muted">{a.detail}</div>
+                      <div className="max-h-[128px] overflow-auto whitespace-pre-line text-[12px] leading-[1.5] text-muted">{a.detail}</div>
                       <div className="mt-[9px] flex items-center justify-between gap-2">
                         <div className="flex gap-[5px]">
                           {a.tags.map((t) => (
@@ -85,22 +104,24 @@ export default function AlertsPanel() {
                             </span>
                           ))}
                         </div>
-                        <button
-                          onClick={() => {
-                            if (a.action.view === 'orgboard') {
-                              // Cross-project alert — jump to the org board, focusing the edge.
-                              openOrgBoard(a.action.boardId, a.action.edge ? { type: 'edge', ...a.action.edge } : undefined)
-                              toggleAlerts(false)
-                            } else {
-                              setView(a.action.view)
-                              select(a.action.selection)
-                            }
-                          }}
-                          className="flex h-[26px] items-center gap-[5px] rounded-[7px] border border-[#d3deff] bg-[#f1f5ff] px-2.5 text-[11.5px] font-bold text-brand hover:bg-[#e3ecff]"
-                        >
-                          {a.actionLabel}
-                          <ChevronRight size={12} strokeWidth={2} />
-                        </button>
+                        {hasAlertTarget(a) && (
+                          <button
+                            onClick={() => {
+                              if (a.action.view === 'orgboard') {
+                                // Cross-project alert — jump to the org board, focusing the edge.
+                                openOrgBoard(a.action.boardId, a.action.edge ? { type: 'edge', ...a.action.edge } : undefined)
+                                toggleAlerts(false)
+                              } else {
+                                setView(a.action.view)
+                                select(a.action.selection)
+                              }
+                            }}
+                            className="flex h-[26px] items-center gap-[5px] rounded-[7px] border border-[#d3deff] bg-[#f1f5ff] px-2.5 text-[11.5px] font-bold text-brand hover:bg-[#e3ecff]"
+                          >
+                            {a.actionLabel}
+                            <ChevronRight size={12} strokeWidth={2} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
