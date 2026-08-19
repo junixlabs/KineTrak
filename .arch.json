@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "modules": {
+    "shared": [
+      "src/shared/**"
+    ],
+    "lib": [
+      "src/lib/**"
+    ],
+    "store": [
+      "src/store/**"
+    ],
+    "components": [
+      "src/components/**"
+    ],
+    "theme": [
+      "src/theme/**"
+    ],
+    "server": [
+      "server/**"
+    ]
+  },
+  "tests": [
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/.forge/**",
+    "**/.claude/**",
+    "**/*.d.ts",
+    "backups/**",
+    "plugin/**",
+    "public/**"
+  ],
+  "contracts": [
+    {
+      "id": "server-not-ui",
+      "type": "forbidden",
+      "from": "server",
+      "to": "components",
+      "status": "locked",
+      "description": "the API/MCP process must never import a React component. server is fully visible to the graph (127 relative imports, 0 alias). Measured 19/08/2026: 0 edges."
+    },
+    {
+      "id": "server-not-theme",
+      "type": "forbidden",
+      "from": "server",
+      "to": "theme",
+      "status": "locked",
+      "description": "styling has no place in a headless process. Measured 19/08/2026: 0 edges."
+    },
+    {
+      "id": "shared-is-domain",
+      "type": "forbidden",
+      "from": "shared",
+      "to": "components",
+      "status": "locked",
+      "description": "src/shared holds board invariants I1-I7 and is imported by both the server and the client; a UI import would make the invariants unrunnable server-side. shared is fully visible (5 relative, 0 alias). Measured 19/08/2026: 0 edges."
+    },
+    {
+      "id": "shared-not-state",
+      "type": "forbidden",
+      "from": "shared",
+      "to": "store",
+      "status": "draft",
+      "description": "the domain layer should not reach into the state layer. 4 edges today: 3 are `import type` (erased), but board.ts:27 imports the values templateData/cloneData. Draft until that one is moved."
+    }
+  ],
+  "$graphCaveat": "Client modules import through the @/ alias, and archmap passes the root tsconfig.json — which here is a references-only file carrying no `paths`. Every @/ import therefore lands in `unresolvable` and the components/theme graph is VACUOUS. No contract may name `components` or `theme` as its FROM side until that is fixed; a pass would mean the edges are missing, not that the code obeys. Measured 19/08/2026: components 87 alias vs 13 relative imports."
+}
