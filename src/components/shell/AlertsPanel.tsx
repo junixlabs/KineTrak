@@ -12,6 +12,10 @@ const KIND_META: Record<AlertKind, { c: string; bg: string; label: string }> = {
   friction: { c: '#0b7a70', bg: '#e6f6f4', label: 'TOOLING' },
 }
 
+// cm:edge lockstep -> server/questionLog.ts — the archive row is written when the alert is RAISED,
+// which is what makes "the text is kept" true; if that ever stops, this sentence is a lie to a human.
+const DISMISS_CONFIRM = 'Dismiss this alert? It disappears from the board for good — its text is kept for analysis.'
+
 export default function AlertsPanel() {
   const data = useWorkspace((s) => s.currentData())
   const alertsOpen = useWorkspace((s) => s.alertsOpen)
@@ -81,7 +85,7 @@ export default function AlertsPanel() {
                           <span className="font-mono text-[10.5px] text-faint">{a.time}</span>
                           {canDismiss(a.kind) && (
                             <button
-                              onClick={() => confirm('Dismiss this report? Its text is deleted and cannot be recovered.') && dismissAlert(a.id)}
+                              onClick={() => confirm(DISMISS_CONFIRM) && dismissAlert(a.id)}
                               title="Dismiss"
                               aria-label="Dismiss alert"
                               className="flex h-[24px] w-[24px] items-center justify-center rounded-[5px] text-faint hover:bg-[#f1f3f6] hover:text-ink"

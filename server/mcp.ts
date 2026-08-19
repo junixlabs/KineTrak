@@ -19,6 +19,9 @@ import { descStats, isSteeringFeature } from '../src/lib/descriptions'
 import { autoArrangeSwimlane, arrangeAllFlows } from '../src/lib/swimlayout'
 import { flowStatusIssues } from '../src/lib/flowstatus'
 import { boardQualityIssues } from '../src/shared/boardInvariants'
+import { instrumentToolCalls, READ_LIMIT, readToolCalls } from './toolLog'
+import { readQuestions } from './questionLog'
+import { clusterQuestions, frictionByTool, rankTools, RUN_IDLE_GAP_MS } from './toolAnalysis'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -283,6 +286,46 @@ export function buildMcpServer(key: ApiKey): McpServer {
       const p = await requireProj(projectId)
       const issues = boardIssues(p.data)
       return json({ ok: issues.every((i) => i.severity !== 'error'), errors: issues.filter((i) => i.severity === 'error').length, warnings: issues.filter((i) => i.severity === 'warning').length, issues })
+    },
+  )
+
+  // cm:why deliberately absent from the 8 kinetrak-* skill allowlists: this is a maintainer read
+  // about KineTrak's own tooling, not a step in operating a board — do not add it to them.
+  server.registerTool(
+    'analyze_tool_friction',
+    {
+      description:
+        "Rank KineTrak's own MCP tools by how many calls it costs an agent to recover from a failure — the tool with the longest median RECOVERY CHAIN (from a failed call of T to the next successful call of T, counting every call in between) is the worst-designed one, and nobody ever reports it because it eventually works. Also clusters recurring ask_human questions, naming per cluster the board field whose absence forced the question. Read-only, scoped to your workspace, and re-runnable: the same rows always give the same answer. Records tool and PARAMETER NAMES only — never argument values.",
+      inputSchema: { projectId: z.string().optional(), topN: z.number().int().min(1).max(20).optional(), sinceDays: z.number().int().min(1).optional() },
+    },
+    async ({ projectId, topN, sinceDays }) => {
+      if (projectId && !(await proj(projectId))) return json({ error: 'project not found in this workspace' })
+      const since = sinceDays === undefined ? undefined : Date.now() - sinceDays * 86_400_000
+      const calls = await readToolCalls(orgId, { projectId, since })
+      const questions = await readQuestions(orgId, { projectId, since })
+      const ranked = rankTools(calls, topN ?? 5)
+      const asked = questions.filter((q) => q.kind === 'question').length
+      return json({
+        window: {
+          sinceDays: sinceDays ?? null,
+          projectId: projectId ?? null,
+          calls: ranked.calls,
+          runs: ranked.runs,
+          questions: asked,
+          frictionReports: questions.length - asked,
+          // cm:why a truncation flag rather than a silent cut: a full window means the ranking
+          // describes the recent end of the log, not the whole of it, and a reader must know which.
+          truncated: calls.length >= READ_LIMIT,
+        },
+        recoveryChainDefinition: `a failed call of T through the next successful call of T in the same run, inclusive; a run breaks after ${RUN_IDLE_GAP_MS / 60000} idle minutes`,
+        ranking: ranked.ranking,
+        topChains: ranked.topChains,
+        questionClusters: clusterQuestions(questions),
+        frictionByTool: frictionByTool(questions),
+        // cm:why an empty log returns empty arrays plus this note, never an error: on day one nothing
+        // is recorded, and saying so is the honest answer rather than a failure.
+        note: ranked.calls === 0 ? 'No tool calls recorded yet in this window — the ranking fills in as agents use the board.' : undefined,
+      })
     },
   )
 
@@ -768,7 +811,7 @@ export function buildMcpServer(key: ApiKey): McpServer {
   )
   server.registerTool(
     'resolve_question',
-    { description: 'Dismiss a stored alert: a "question" once its decision has been acted on, or a "friction" report once it has been read. Deletes it outright — there is no undo, and the four report fields are not recoverable.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
+    { description: 'Dismiss a stored alert: a "question" once its decision has been acted on, or a "friction" report once it has been read. Removes it from the board outright — there is no undo and it will not reappear. The question / report TEXT is retained separately for analysis (see analyze_tool_friction), so dismissing costs you the alert, not the record.', inputSchema: { projectId: z.string().optional(), id: z.string() } },
     async ({ projectId, id }) => {
       const p = await requireProj(projectId)
       await applyAndBroadcast({ type: 'resolveQuestion', projectId: p.id, id })
@@ -1320,6 +1363,12 @@ export function buildMcpServer(key: ApiKey): McpServer {
       return { contents: [{ uri: 'kinetrak://project-context', mimeType: 'text/markdown', text }] }
     },
   )
+
+  // cm:edge protocol -> server/toolLog.ts — installed here, BELOW every registration, because the
+  // SDK creates the tools/call handler this wraps on the first registerTool call.
+  // cm:guard defaultProjectId must stay the same expression proj() defaults to: a row recorded under
+  // a different project than the call was served on splits one session's runs and breaks its chains.
+  instrumentToolCalls(server, { orgId, keyId: key.id, actor: key.name }, { defaultProjectId: () => orgHeaders()[0]?.id ?? null })
 
   return server
 }

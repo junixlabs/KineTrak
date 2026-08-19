@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, ilike, inArray, lte, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm'
 import { requireDb } from './db'
 import * as t from './schema'
 import { searchableItems, type SearchHit } from '../../src/shared/board'
@@ -344,4 +344,155 @@ function rowToActivity(r: typeof t.activity.$inferSelect): Activity {
     targetId: r.targetId ?? undefined,
     kind: r.kind,
   }
+}
+
+export interface ToolCallInsert {
+  orgId: string
+  projectId: string | null
+  keyId: string
+  actor: string
+  tool: string
+  params: string[]
+  outcome: 'ok' | 'error'
+  ts: number
+}
+export interface ToolCallRow extends ToolCallInsert {
+  id: number
+}
+
+export const toolCallRepo = {
+  async insert(c: ToolCallInsert): Promise<void> {
+    await requireDb().insert(t.toolCalls).values({
+      orgId: c.orgId,
+      projectId: c.projectId,
+      keyId: c.keyId,
+      actor: c.actor,
+      tool: c.tool,
+      params: c.params,
+      outcome: c.outcome,
+      ts: new Date(c.ts),
+    })
+  },
+  /** Bound the table: keep only the newest `cap` rows for an org (mirrors activityRepo.trim). */
+  async trim(orgId: string, cap: number): Promise<void> {
+    const cutoff = await requireDb()
+      .select({ id: t.toolCalls.id })
+      .from(t.toolCalls)
+      .where(eq(t.toolCalls.orgId, orgId))
+      .orderBy(desc(t.toolCalls.id))
+      .limit(1)
+      .offset(cap)
+    if (cutoff[0]) await requireDb().delete(t.toolCalls).where(and(eq(t.toolCalls.orgId, orgId), lte(t.toolCalls.id, cutoff[0].id)))
+  },
+  /** One org's NEWEST `limit` calls, returned oldest→newest so the analysis walks
+   *  them in call order. */
+  // cm:guard select desc + reverse, never asc + limit: asc would return the OLDEST rows of a
+  // trimmed-to-CAP table, so the analysis would silently read history and miss today entirely.
+  async range(orgId: string, opts: { projectId?: string; since?: number; limit?: number } = {}): Promise<ToolCallRow[]> {
+    const rows = await requireDb()
+      .select()
+      .from(t.toolCalls)
+      .where(
+        and(
+          eq(t.toolCalls.orgId, orgId),
+          opts.projectId ? eq(t.toolCalls.projectId, opts.projectId) : undefined,
+          opts.since !== undefined ? gte(t.toolCalls.ts, new Date(opts.since)) : undefined,
+        ),
+      )
+      .orderBy(desc(t.toolCalls.id))
+      .limit(opts.limit ?? 20000)
+    rows.reverse()
+    return rows.map((r) => ({
+      id: r.id,
+      orgId: r.orgId,
+      projectId: r.projectId,
+      keyId: r.keyId,
+      actor: r.actor,
+      tool: r.tool,
+      params: r.params,
+      outcome: r.outcome,
+      ts: r.ts.getTime(),
+    }))
+  },
+}
+
+export interface AgentQuestionRow {
+  /** The alert id. Unique per (org, project), not globally — see schema.ts. */
+  id: string
+  orgId: string
+  projectId: string
+  kind: 'question' | 'friction'
+  askedAt: number
+  text: string
+  tool: string | null
+  answer: string | null
+}
+
+export const agentQuestionRepo = {
+  /** Idempotent on (org, project, alert id) — a replayed command must not fork the
+   *  corpus, and one org's id can never collide with another's. */
+  async insert(q: Omit<AgentQuestionRow, 'answer'>): Promise<void> {
+    await requireDb()
+      .insert(t.agentQuestions)
+      .values({ id: q.id, orgId: q.orgId, projectId: q.projectId, kind: q.kind, askedAt: new Date(q.askedAt), text: q.text, tool: q.tool })
+      .onConflictDoNothing({ target: [t.agentQuestions.orgId, t.agentQuestions.projectId, t.agentQuestions.id] })
+  },
+  /** Record the human's answer. Returns the rows updated — 0 means no archive row
+   *  exists for that alert in that project. */
+  // cm:guard the WHERE must stay scoped by project (and org when known): an id-only UPDATE lets a
+  // caller overwrite another workspace's archived answer with nothing but a guessed alert id.
+  async answer(scope: { orgId?: string; projectId: string; id: string }, answer: string): Promise<number> {
+    const updated = await requireDb()
+      .update(t.agentQuestions)
+      .set({ answer })
+      .where(
+        and(
+          eq(t.agentQuestions.id, scope.id),
+          eq(t.agentQuestions.projectId, scope.projectId),
+          scope.orgId ? eq(t.agentQuestions.orgId, scope.orgId) : undefined,
+        ),
+      )
+      .returning({ rowId: t.agentQuestions.rowId })
+    return updated.length
+  },
+  /** Bound the table: keep only the newest `cap` rows for an org (mirrors toolCallRepo.trim). */
+  async trim(orgId: string, cap: number): Promise<void> {
+    const cutoff = await requireDb()
+      .select({ rowId: t.agentQuestions.rowId })
+      .from(t.agentQuestions)
+      .where(eq(t.agentQuestions.orgId, orgId))
+      .orderBy(desc(t.agentQuestions.rowId))
+      .limit(1)
+      .offset(cap)
+    if (cutoff[0])
+      await requireDb().delete(t.agentQuestions).where(and(eq(t.agentQuestions.orgId, orgId), lte(t.agentQuestions.rowId, cutoff[0].rowId)))
+  },
+  /** One org's NEWEST `limit` questions, returned oldest→newest. */
+  // cm:guard rowId is the tiebreak and must stay: asked_at alone is not unique, and the clustering
+  // quotes a cluster's first three texts — an unstable sort returns different ones each run (AC8).
+  async byOrg(orgId: string, opts: { projectId?: string; since?: number; limit?: number } = {}): Promise<AgentQuestionRow[]> {
+    const rows = await requireDb()
+      .select()
+      .from(t.agentQuestions)
+      .where(
+        and(
+          eq(t.agentQuestions.orgId, orgId),
+          opts.projectId ? eq(t.agentQuestions.projectId, opts.projectId) : undefined,
+          opts.since !== undefined ? gte(t.agentQuestions.askedAt, new Date(opts.since)) : undefined,
+        ),
+      )
+      .orderBy(desc(t.agentQuestions.askedAt), desc(t.agentQuestions.rowId))
+      .limit(opts.limit ?? 5000)
+    rows.reverse()
+    return rows.map((r) => ({
+      id: r.id,
+      orgId: r.orgId,
+      projectId: r.projectId,
+      kind: r.kind,
+      askedAt: r.askedAt.getTime(),
+      text: r.text,
+      tool: r.tool,
+      answer: r.answer,
+    }))
+  },
 }

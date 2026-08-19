@@ -1,4 +1,4 @@
-import { bigserial, index, integer, jsonb, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core'
+import { bigserial, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 import type { OrgBoardEdge, OrgBoardNode, Snapshot, WorkspaceData } from '../../src/store/types'
 import type { Actor } from '../activity'
 
@@ -160,4 +160,61 @@ export const searchItems = pgTable(
     text: text('text').notNull(),
   },
   (t) => [primaryKey({ columns: [t.projectId, t.kind, t.itemId] }), index('search_items_project_idx').on(t.projectId)],
+)
+
+/** One row per MCP tool invocation, written from the single choke point in
+ *  buildMcpServer. Recovery-chain analysis needs an ordering, an outcome and
+ *  something to group consecutive calls by; `id` + `ts` + (`key_id`, `project_id`)
+ *  supply all three without a session, which the stateless /mcp transport does
+ *  not have. */
+export const toolCalls = pgTable(
+  'tool_calls',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
+    orgId: text('org_id').notNull(),
+    // cm:why no FK on org_id/project_id: project_id is read off the wire and may name a project
+    // outside the caller's scope — an FK would fail the insert on a write-behind path.
+    projectId: text('project_id'),
+    keyId: text('key_id').notNull(),
+    actor: text('actor').notNull(),
+    tool: text('tool').notNull(),
+    // cm:guard parameter NAMES only, never an argument value — server/toolLog.ts deriveToolCall is
+    // the only writer and reads args solely via Object.keys; server/toolLog.test.ts pins it.
+    params: jsonb('params').$type<string[]>().notNull().default([]),
+    outcome: text('outcome', { enum: ['ok', 'error'] }).notNull(),
+  },
+  // cm:why not indexed on the run key: both reads filter org_id and order by id (as does trim, on
+  // the write path), and a key_id sitting between the two cannot serve that ordering.
+  (t) => [index('tool_calls_org_idx').on(t.orgId, t.id), index('tool_calls_project_idx').on(t.orgId, t.projectId, t.ts)],
+)
+
+/** The durable corpus behind ask_human clustering. Board alerts are the live
+ *  surface and resolve_question deletes them outright; a row here is written at
+ *  CREATE time, so a dismissal destroys the alert and nothing else. */
+// cm:edge lockstep -> src/shared/board.ts — `resolveQuestion` still filters the alert off the
+// board and that stays intentional; this archive is what makes the deletion non-destructive.
+export const agentQuestions = pgTable(
+  'agent_questions',
+  {
+    // cm:guard the surrogate key is what makes (org_id, project_id, id) scoping possible: with the
+    // alert id as PRIMARY KEY, an id squatted by one org suppresses another org's archive row.
+    rowId: bigserial('row_id', { mode: 'number' }).primaryKey(),
+    /** The alert id, so the archive row and the (deletable) alert are one record. */
+    id: text('id').notNull(),
+    orgId: text('org_id').notNull(),
+    // cm:why no FK on org_id/project_id: the corpus must outlive a deleted project — but org_id is
+    // what keeps that project's rows readable, and therefore trimmable, rather than orphaned.
+    projectId: text('project_id').notNull(),
+    kind: text('kind', { enum: ['question', 'friction'] }).notNull(),
+    askedAt: timestamp('asked_at', { withTimezone: true }).notNull().defaultNow(),
+    text: text('text').notNull(),
+    tool: text('tool'),
+    answer: text('answer'),
+  },
+  (t) => [
+    uniqueIndex('agent_questions_alert_idx').on(t.orgId, t.projectId, t.id),
+    index('agent_questions_org_idx').on(t.orgId, t.askedAt),
+    index('agent_questions_project_idx').on(t.projectId, t.askedAt),
+  ],
 )

@@ -1,6 +1,7 @@
 import { applyCommand, type Command, type Root } from '../src/shared/board'
-import type { Org, OrgBoard, Project, ProjectHeader } from '../src/store/types'
+import type { Alert, Org, OrgBoard, Project, ProjectHeader } from '../src/store/types'
 import { recordChange, recordNote, type Actor } from './activity'
+import { archiveAlert } from './questionLog'
 import { getStore, type Catalog } from './infra/store'
 import { searchRepo } from './infra/repositories'
 import { ProjectRegistry } from './runtime/ProjectRegistry'
@@ -120,6 +121,7 @@ const ORG_BOARD_CMDS = new Set([
 export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<void> {
   let affected: Project | undefined
   let orgBoard: OrgBoard | undefined
+  let preAlerts: Alert[] | undefined
 
   if (CATALOG_CMDS.has(cmd.type)) {
     affected = await applyCatalog(cmd)
@@ -134,10 +136,16 @@ export async function applyAndBroadcast(cmd: Command, actor?: Actor): Promise<vo
     const pid = (cmd as { projectId?: string }).projectId
     const lp = pid ? await registry.acquire(pid) : null
     if (!lp) throw new Error('project not found')
+    // cm:why the PRE-state alerts are captured here, before apply: a dismissal is the last moment
+    // an alert raised before the archive existed can still be read off the board.
+    if (cmd.type === 'resolveQuestion') preAlerts = lp.project.data.alerts
     affected = await lp.apply(cmd)
   }
 
   recordChange(actor, cmd, affected)
+  // cm:edge lockstep -> server/questionLog.ts — archived at CREATE time so resolve_question's
+  // destructive filter in the pure reducer stays as it is and a dismissal loses nothing.
+  archiveAlert(cmd, { orgId: affected?.orgId, alerts: preAlerts })
   const event: ChangeEvent = ORG_BOARD_CMDS.has(cmd.type)
     ? orgBoard
       ? { kind: 'orgboard', board: orgBoard }
