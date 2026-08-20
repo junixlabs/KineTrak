@@ -348,9 +348,10 @@ export function buildMcpServer(key: ApiKey): McpServer {
       const since = sinceDays === undefined ? undefined : Date.now() - sinceDays * 86_400_000
       // cm:why the scoped call reuses the board the guard already loaded instead of orgProjects():
       // a one-board question must not pay for loading every board in the workspace.
+      // cm:guard read the log ORG-wide even when scoped: `truncated` compares the row count against an org-wide cap, so a SQL project filter makes the flag unable to fire. analyzeAdoption attributes by projectId, so extra rows change no number.
       const [scoped, calls, spans] = await Promise.all([
         one ? Promise.resolve([one]) : orgProjects(),
-        readToolCalls(orgId, { projectId, since }),
+        readToolCalls(orgId, { since }),
         readActivitySpans(orgId),
       ])
       const { queries, failed } = splitImpactQueries(calls)
@@ -377,7 +378,8 @@ export function buildMcpServer(key: ApiKey): McpServer {
           `A board counts as a MODEL only when one of ${IMPACT_QUERY_TOOLS.join(' / ')} succeeded against it. A failed call is counted in failedImpactQueries instead — someone asked and got nothing back.`,
           'Board state (nodes, specs, edges, code links) is read live from the board and is complete.',
           'The query half comes from the MCP tool-call log, which is bounded to the newest 20 000 calls per workspace. An older query has been trimmed and its board reads as a drawing.',
-          'The log records MCP calls only. There is today no UI surface that performs an explicit impact query, so nothing is missed on that side — but a future one would need its own instrumentation to appear here.',
+          'The log records MCP calls only, so it sees agents and not people. No UI surface CALLS compute_impact, but src/components/views/SwimlaneView.tsx highlights the downstream zone on selection and the Alerts panel derives impact alerts on every render — a human reading a decision off either of those leaves no row here, and their board is reported as a drawing.',
+          'A recorded impact call counts as a query on its outcome alone, because the log stores tool and parameter NAMES, never results. A call that succeeded but returned an EMPTY impact zone (a focus id with no swimlane entry node) is therefore indistinguishable from one that returned a real answer, and it promotes the board to model. Closing that gap would need result-shape instrumentation this report deliberately does not add.',
           'lastActivityAt comes from the narration log, trimmed to the newest 1000 entries per project: exact as a last-touched time, a floor as a history.',
           sinceDays === undefined
             ? 'No sinceDays window: every retained call counts, so a board is a drawing only if the whole retained log holds no successful impact query against it.'

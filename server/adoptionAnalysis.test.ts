@@ -1,5 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
+import { blankTemplate, sampleTemplate, templateData } from '../src/shared/seed'
+import { computeImpact } from '../src/lib/impact'
 import type { Feature, SwimNode, WorkspaceData } from '../src/shared/types'
 import {
   analyzeAdoption,
@@ -9,6 +11,7 @@ import {
   connectedness,
   IMPACT_QUERY_TOOLS,
   isoWeek,
+  isSeeded,
   QUERY_READY_RUNG,
   RUNGS,
   rungsOf,
@@ -205,7 +208,6 @@ test('stoppedAt names where the drawings stopped and emits every rung', () => {
   ]
   const r = analyzeAdoption({ boards, impactQueries: [{ projectId: 'p4', ts: 1 }], activity: [] })
   assert.deepEqual(r.stoppedAt, [
-    { rung: 'created', boards: 0 },
     { rung: 'drawn', boards: 2 },
     { rung: 'specified', boards: 1 },
     { rung: 'connected', boards: 0 },
@@ -270,7 +272,7 @@ test('an empty workspace returns a zeroed report, not an error', () => {
   assert.equal(r.queryReadyButUnqueried, 0)
   assert.deepEqual(r.trend, [])
   assert.deepEqual(r.boardsDetail, [])
-  assert.equal(r.stoppedAt.length, RUNGS.length - 1)
+  assert.equal(r.stoppedAt.length, RUNGS.length - 2, 'created and queried are structurally empty')
 })
 
 test('an impact query with no project attached is ignored, not attributed at random', () => {
@@ -307,4 +309,82 @@ test('the same rows produce a byte-identical report, and row order does not matt
   assert.deepEqual(a.boardsDetail.map((d) => d.projectId), ['p1', 'p2', 'p3'])
   assert.equal(a.boardsDetail[1].impactQueries, 2)
   assert.equal(a.boardsDetail[1].lastQueryAt, 9, 'the newest query wins regardless of row order')
+})
+
+test('a board that skipped `connected` is NOT query-ready, however deep it got', () => {
+  // cm:guard the regression that matters: `queryReady` must read the connectedness predicate, not
+  // the ladder depth of `furthest`. This board outranks `connected` and can still answer nothing.
+  const d = emptyData()
+  d.features.push(feature('f1', { desc: 'means this', codeRefs: [{ path: 'src/x.ts' }] }))
+  const facts = boardFacts(board('p', d))
+  assert.equal(facts.connected, false)
+  assert.deepEqual(rungsOf(facts, false), ['created', 'drawn', 'specified', 'linked'])
+
+  const got = classifyBoard(facts, [])
+  assert.equal(got.furthest, 'linked', 'deeper on the ladder than `connected`')
+  assert.equal(got.queryReady, false, 'and yet it cannot answer')
+
+  const impact = computeImpact(d, 'f1')
+  assert.deepEqual(impact.entryNodes, [], 'the engine agrees: nothing to walk')
+  assert.deepEqual(impact.downstream, [])
+
+  const r = analyzeAdoption({ boards: [facts], impactQueries: [], activity: [] })
+  assert.equal(r.queryReadyButUnqueried, 0, 'it never promised an answer, so it is not the sharp case')
+})
+
+test('the shipped sample template is seeded, not a fully-modelled drawing', () => {
+  // cm:guard server/index.ts seeds EVERY new account with sampleTemplate, so without this an
+  // account nobody opened reports as a board that was fully modelled and never queried.
+  const facts = boardFacts(board('p-sample', templateData('sample')))
+  assert.equal(facts.seeded, true)
+  assert.ok(facts.nodes > 0 && facts.connected && facts.linked, 'judged on content alone it looks fully modelled')
+
+  const r = analyzeAdoption({ boards: [facts], impactQueries: [], activity: [] })
+  assert.equal(r.seeded, 1)
+  assert.equal(r.drawing, 0, 'nobody built it, so it is not an abandoned drawing')
+  assert.equal(r.queryReadyButUnqueried, 0, 'and it is not modelling that went unused')
+  assert.equal(r.modelRatio, null, 'a workspace of untouched templates has no ratio to report')
+  assert.deepEqual(r.stoppedAt.map((x) => x.boards), [0, 0, 0, 0], 'it stopped nowhere; it never started')
+})
+
+test('the blank template is seeded too, and one edit makes a board somebody work', () => {
+  assert.equal(isSeeded(blankTemplate()), true)
+  const edited = templateData('sample')
+  edited.features.pop()
+  assert.equal(isSeeded(edited), false, 'deleting a single node is an edit')
+  assert.equal(analyzeAdoption({ boards: [boardFacts(board('p', edited))], impactQueries: [], activity: [] }).drawing, 1)
+})
+
+test('seeded detection survives the key reordering a jsonb round-trip performs', () => {
+  // cm:why compared by sorted-key fingerprint, not JSON.stringify: Postgres jsonb does not preserve
+  // insertion order, so a board read back from the database would otherwise never match a template.
+  const reordered = JSON.parse(JSON.stringify(sampleTemplate)) as WorkspaceData
+  reordered.features = reordered.features.map((f) => Object.fromEntries(Object.entries(f).reverse()) as Feature)
+  assert.equal(isSeeded(reordered), true)
+})
+
+test('a seeded board someone actually queried is a model, not a template', () => {
+  const facts = boardFacts(board('p', templateData('sample')))
+  const r = analyzeAdoption({ boards: [facts], impactQueries: [{ projectId: 'p', ts: 1 }], activity: [] })
+  assert.equal(r.model, 1)
+  assert.equal(r.seeded, 0)
+  assert.equal(r.modelRatio, 1)
+})
+
+test('stoppedAt counts drawings only — never empty or seeded boards', () => {
+  const boards = [
+    boardFacts(board('p1', emptyData())),
+    boardFacts(board('p2', emptyData())),
+    boardFacts(board('p3', templateData('sample'))),
+    boardFacts(board('p4', dataAtRung('drawn'))),
+  ]
+  const r = analyzeAdoption({ boards, impactQueries: [], activity: [] })
+  assert.equal(r.empty, 2)
+  assert.equal(r.seeded, 1)
+  assert.equal(r.drawing, 1)
+  assert.equal(
+    r.stoppedAt.reduce((n, x) => n + x.boards, 0),
+    r.drawing,
+    'the histogram sums to the drawing count and nothing else',
+  )
 })

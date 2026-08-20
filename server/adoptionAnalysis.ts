@@ -10,6 +10,7 @@
 // cm:guard no DB import, no clock, no randomness. Every result is a function of the rows passed
 // in, which is what makes the report re-runnable with a byte-identical answer (AC6).
 
+import { blankTemplate, sampleTemplate } from '../src/shared/seed'
 import type { WorkspaceData } from '../src/shared/types'
 
 /** The modelling ladder, shallow → deep. A board's position is the DEEPEST rung
@@ -19,9 +20,9 @@ export type Rung = 'created' | 'drawn' | 'specified' | 'connected' | 'linked' | 
 
 export const RUNGS: readonly Rung[] = ['created', 'drawn', 'specified', 'connected', 'linked', 'queried']
 
-/** From this rung up, `compute_impact` has a real answer to give — so a board at
- *  or past it that was never queried is the sharp case: the whole modelling cost
- *  was paid and nobody asked. */
+/** The rung at which the board becomes answerable, reported so a reader knows which
+ *  part of the ladder `queryReadyButUnqueried` counts. Membership is decided by the
+ *  `connected` predicate itself, never by depth on the ladder — see `classifyBoard`. */
 export const QUERY_READY_RUNG: Rung = 'connected'
 
 /** What the board doc says about itself. Board STATE, not log events: `activity`
@@ -40,6 +41,8 @@ export interface BoardFacts {
   connected: boolean
   /** codeRefs on a feature or step — `link_code` happened. */
   linked: boolean
+  /** The board is still byte-for-byte a freshly seeded template: nobody built it. */
+  seeded: boolean
 }
 
 /** One recorded impact query. `tool_calls` is the only record of these: the tools
@@ -62,16 +65,18 @@ export interface BoardAdoption {
   projectId: string
   name: string
   createdAt: string
-  /** `model` = queried. `drawing` = has nodes, never queried. `empty` = no nodes,
-   *  counted apart so it inflates neither side of the ratio. */
-  verdict: 'model' | 'drawing' | 'empty'
+  /** `model` = queried. `drawing` = someone built it and never queried it.
+   *  `seeded` = still the untouched shipped template. `empty` = no nodes. The last
+   *  two are counted apart so they inflate neither side of the ratio. */
+  verdict: 'model' | 'drawing' | 'seeded' | 'empty'
   furthest: Rung
   rungs: Rung[]
   nodes: number
-  /** True from QUERY_READY_RUNG up: the board could answer, whether or not asked. */
+  /** The impact engine has an edge to walk, so the board CAN answer — asked or not. */
   queryReady: boolean
   impactQueries: number
   lastQueryAt: number | null
+  firstActivityAt: number | null
   lastActivityAt: number | null
   activityRows: number
 }
@@ -82,8 +87,9 @@ export interface Cohort {
   boards: number
   model: number
   drawing: number
+  seeded: number
   empty: number
-  /** model / (model + drawing), or null when the cohort is all-empty. */
+  /** model / (model + drawing), or null when the cohort holds neither. */
   modelRatio: number | null
 }
 
@@ -91,9 +97,13 @@ export interface AdoptionReport {
   boards: number
   model: number
   drawing: number
+  /** Untouched shipped templates. Every new account is seeded with one, so this is
+   *  a count of workspaces nobody opened — NOT of modelling that went unused. */
+  seeded: number
   empty: number
   modelRatio: number | null
-  /** Boards at QUERY_READY_RUNG or deeper that were never queried. */
+  /** Built boards the impact engine could have answered, that nobody asked. Seeded
+   *  and empty boards are excluded: neither represents modelling work someone did. */
   queryReadyButUnqueried: number
   /** Drawing boards grouped by where they stopped, in ladder order. Rungs with
    *  no boards are kept so the shape of the drop-off reads at a glance. */
@@ -124,6 +134,43 @@ export function connectedness(data: WorkspaceData): boolean {
   return data.features.some((f) => (f.crossLinks ?? []).some((l) => l.view === 'swimlane' && l.targetId && nodeIds.has(l.targetId)))
 }
 
+/**
+ * Order-independent structural fingerprint of a board. Object keys are sorted
+ * because a board round-trips through Postgres `jsonb`, which does not preserve
+ * insertion order — a plain JSON.stringify would compare unequal for a board that
+ * is in fact untouched. Array order is preserved (jsonb preserves it too).
+ */
+// cm:guard sort the KEYS, never the arrays: node and edge order is real board content, and sorting
+// it would make two genuinely different boards fingerprint alike.
+function fingerprint(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
+  if (Array.isArray(value)) return `[${value.map(fingerprint).join(',')}]`
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${fingerprint(v)}`).join(',')}}`
+}
+
+/**
+ * Whether the board is still exactly what KineTrak shipped it as.
+ *
+ * This is load-bearing, not cosmetic: `server/index.ts` seeds EVERY new account
+ * with `sampleTemplate` — 27 nodes carrying descriptions, swim edges and codeRefs.
+ * Judged on content alone that board is born at rung `linked` with `connected`
+ * true, so an account nobody ever opened would be reported as a fully modelled
+ * board that nobody queried. The metric would manufacture the exact signal it
+ * exists to detect, in the flattering-to-the-diagnosis direction.
+ *
+ * An exact fingerprint match is used rather than a heuristic because the templates
+ * are constants with stable ids: any edit at all, including deleting one node,
+ * makes the board somebody's work.
+ */
+// cm:edge lockstep -> src/shared/seed.ts — compared against sampleTemplate/blankTemplate BY VALUE, so editing a template makes already-seeded boards read as built; change one and re-read this report's `seeded` count.
+export function isSeeded(data: WorkspaceData): boolean {
+  const fp = fingerprint(data)
+  return fp === fingerprint(sampleTemplate) || fp === fingerprint(blankTemplate())
+}
+
 /** Reduce one board to the facts the ladder needs. Pure over the board doc. */
 export function boardFacts(p: { id: string; name: string; createdAt: string; data: WorkspaceData }): BoardFacts {
   const d = p.data
@@ -140,6 +187,7 @@ export function boardFacts(p: { id: string; name: string; createdAt: string; dat
     specified,
     connected: connectedness(d),
     linked,
+    seeded: isSeeded(d),
   }
 }
 
@@ -155,7 +203,14 @@ export function rungsOf(f: BoardFacts, queried: boolean): Rung[] {
   return out
 }
 
-const rungIndex = (r: Rung): number => RUNGS.indexOf(r)
+/** Verdict precedence: being queried outranks everything (a seeded board someone
+ *  actually asked a question of IS a model), then untouched-template, then built,
+ *  then bare. */
+function verdictOf(f: BoardFacts, queried: boolean): BoardAdoption['verdict'] {
+  if (queried) return 'model'
+  if (f.seeded) return 'seeded'
+  return f.nodes > 0 ? 'drawing' : 'empty'
+}
 
 export function classifyBoard(f: BoardFacts, queries: ImpactQuery[], span?: ActivitySpan): BoardAdoption {
   const queried = queries.length > 0
@@ -165,15 +220,17 @@ export function classifyBoard(f: BoardFacts, queries: ImpactQuery[], span?: Acti
     projectId: f.projectId,
     name: f.name,
     createdAt: f.createdAt,
-    verdict: queried ? 'model' : f.nodes > 0 ? 'drawing' : 'empty',
+    verdict: verdictOf(f, queried),
     furthest,
     rungs,
     nodes: f.nodes,
-    queryReady: rungIndex(furthest) >= rungIndex(QUERY_READY_RUNG),
+    // cm:guard read the connectedness PREDICATE, never the depth of `furthest`: rungs are a set, so a board that linked code without connecting the graph outranks `connected` while computeImpact returns nothing.
+    queryReady: f.connected,
     impactQueries: queries.length,
     // cm:why reduce, not Math.max(...spread): the query list is bounded only by the tool-call log
     // cap, and a spread of that many arguments is a RangeError rather than a slow answer.
     lastQueryAt: queried ? queries.reduce((max, q) => (q.ts > max ? q.ts : max), -Infinity) : null,
+    firstActivityAt: span ? span.firstTs : null,
     lastActivityAt: span ? span.lastTs : null,
     activityRows: span ? span.rows : 0,
   }
@@ -269,13 +326,14 @@ export function analyzeAdoption(input: AdoptionInput, opts: { bucket?: Bucket } 
     .map((f) => classifyBoard(f, queriesByProject.get(f.projectId) ?? [], spanByProject.get(f.projectId)))
     .sort((a, b) => a.projectId.localeCompare(b.projectId))
 
-  const model = boardsDetail.filter((b) => b.verdict === 'model').length
-  const drawing = boardsDetail.filter((b) => b.verdict === 'drawing').length
-  const empty = boardsDetail.filter((b) => b.verdict === 'empty').length
+  const count = (v: BoardAdoption['verdict']) => boardsDetail.filter((b) => b.verdict === v).length
+  const model = count('model')
+  const drawing = count('drawing')
 
   const stoppedCount = new Map<Rung, number>(RUNGS.map((r) => [r, 0]))
+  // cm:guard drawings ONLY: an empty or seeded board's furthest rung is one no drawing can occupy, so admitting other verdicts reads as abandonment where no work happened.
   for (const b of boardsDetail) {
-    if (b.verdict === 'model') continue
+    if (b.verdict !== 'drawing') continue
     stoppedCount.set(b.furthest, (stoppedCount.get(b.furthest) ?? 0) + 1)
   }
 
@@ -283,7 +341,7 @@ export function analyzeAdoption(input: AdoptionInput, opts: { bucket?: Bucket } 
   for (const b of boardsDetail) {
     const key = bucketKey(b.createdAt, bucket)
     let c = cohorts.get(key)
-    if (!c) cohorts.set(key, (c = { bucket: key, boards: 0, model: 0, drawing: 0, empty: 0, modelRatio: null }))
+    if (!c) cohorts.set(key, (c = { bucket: key, boards: 0, model: 0, drawing: 0, seeded: 0, empty: 0, modelRatio: null }))
     c.boards++
     c[b.verdict]++
   }
@@ -293,12 +351,15 @@ export function analyzeAdoption(input: AdoptionInput, opts: { bucket?: Bucket } 
     boards: boardsDetail.length,
     model,
     drawing,
-    empty,
+    seeded: count('seeded'),
+    empty: count('empty'),
     modelRatio: ratio(model, drawing),
-    queryReadyButUnqueried: boardsDetail.filter((b) => b.verdict !== 'model' && b.queryReady).length,
+    queryReadyButUnqueried: boardsDetail.filter((b) => b.verdict === 'drawing' && b.queryReady).length,
     // cm:why every rung is emitted, including zeros: the drop-off is read as a shape, and a rung
     // silently absent looks like a rung nobody stops at rather than one nobody reaches.
-    stoppedAt: RUNGS.filter((r) => r !== 'queried').map((rung) => ({ rung, boards: stoppedCount.get(rung) ?? 0 })),
+    // cm:why `created` and `queried` are both omitted: a drawing has nodes so it never stops at
+    // `created`, and a queried board is a model, so both rows could only ever read zero.
+    stoppedAt: RUNGS.filter((r) => r !== 'created' && r !== 'queried').map((rung) => ({ rung, boards: stoppedCount.get(rung) ?? 0 })),
     trend: [...cohorts.values()].sort((a, b) => a.bucket.localeCompare(b.bucket)),
     boardsDetail,
   }

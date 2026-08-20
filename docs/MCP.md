@@ -142,13 +142,20 @@ Read / memory:
   and `stoppedAt` — where the drawings stopped on the modelling ladder
   `created → drawn → specified → connected → linked → queried`. The rung a board stops at is where
   KineTrak asks for more than it gives back. `queryReadyButUnqueried` is the sharpest number: boards
-  at `connected` or deeper (the impact engine has edges to walk, so the board *can* answer) that
-  nobody ever asked. Read `coverage` before trusting a zero — board state is read live and complete,
-  but the query half comes from the tool-call log, which is bounded to the newest 20 000 calls per
-  workspace and records **MCP calls only**; a `sinceDays` window narrows it further. Only a
-  *successful* impact call counts as a query — failures are reported apart as
-  `failedImpactQueries`, because "someone asked and got nothing back" is worse than never being
-  asked. Read-only, workspace-scoped, re-runnable.
+  someone **built**, whose graph the impact engine can walk (so the board *can* answer), that nobody
+  ever asked.
+  A board still byte-identical to a shipped template is reported as `seeded`, not as a drawing —
+  `server/index.ts` seeds every new account with the 27-node sample (descriptions, edges, codeRefs
+  and all), so on content alone an account nobody opened would otherwise read as fully modelled and
+  abandoned. `seeded` counts workspaces nobody touched; `drawing` counts modelling that went unused.
+  Read `coverage` before trusting a zero — board state is read live and complete, but the query half
+  comes from the tool-call log, which is bounded to the newest 20 000 calls per workspace and records
+  **MCP calls only**, so it sees agents and not people: a human reading the Swimlane's downstream
+  highlight or the Alerts panel leaves no row. A `sinceDays` window narrows it further. Only a
+  *successful* impact call counts as a query — failures are reported apart as `failedImpactQueries`,
+  because "someone asked and got nothing back" is worse than never being asked; and because the log
+  stores names and never results, a call that succeeded but returned an *empty* impact zone cannot be
+  told from a real answer. Read-only, workspace-scoped, re-runnable.
 
 Write (each broadcasts live to the browser):
 - modules: `add_module`, `find_or_create_module` (idempotent), `update_module`, `delete_module`
