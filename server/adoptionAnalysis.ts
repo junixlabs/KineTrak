@@ -171,7 +171,9 @@ export function classifyBoard(f: BoardFacts, queries: ImpactQuery[], span?: Acti
     nodes: f.nodes,
     queryReady: rungIndex(furthest) >= rungIndex(QUERY_READY_RUNG),
     impactQueries: queries.length,
-    lastQueryAt: queried ? Math.max(...queries.map((q) => q.ts)) : null,
+    // cm:why reduce, not Math.max(...spread): the query list is bounded only by the tool-call log
+    // cap, and a spread of that many arguments is a RangeError rather than a slow answer.
+    lastQueryAt: queried ? queries.reduce((max, q) => (q.ts > max ? q.ts : max), -Infinity) : null,
     lastActivityAt: span ? span.lastTs : null,
     activityRows: span ? span.rows : 0,
   }

@@ -343,14 +343,16 @@ export function buildMcpServer(key: ApiKey): McpServer {
       },
     },
     async ({ projectId, bucket, sinceDays }) => {
-      if (projectId && !(await proj(projectId))) return json({ error: 'project not found in this workspace' })
+      const one = projectId ? await proj(projectId) : undefined
+      if (projectId && !one) return json({ error: 'project not found in this workspace' })
       const since = sinceDays === undefined ? undefined : Date.now() - sinceDays * 86_400_000
-      const [projects, calls, spans] = await Promise.all([
-        orgProjects(),
+      // cm:why the scoped call reuses the board the guard already loaded instead of orgProjects():
+      // a one-board question must not pay for loading every board in the workspace.
+      const [scoped, calls, spans] = await Promise.all([
+        one ? Promise.resolve([one]) : orgProjects(),
         readToolCalls(orgId, { projectId, since }),
         readActivitySpans(orgId),
       ])
-      const scoped = projectId ? projects.filter((p) => p.id === projectId) : projects
       const { queries, failed } = splitImpactQueries(calls)
       const report = analyzeAdoption(
         { boards: scoped.map(boardFacts), impactQueries: queries, activity: spans },
@@ -362,6 +364,7 @@ export function buildMcpServer(key: ApiKey): McpServer {
           projectId: projectId ?? null,
           bucket: bucket ?? 'month',
           toolCalls: calls.length,
+          impactQueries: queries.length,
           // cm:why a truncation flag rather than a silent cut: a full window means the query half
           // describes the recent end of the log, and a board queried before it reads as a drawing.
           truncated: calls.length >= READ_LIMIT,
@@ -376,6 +379,9 @@ export function buildMcpServer(key: ApiKey): McpServer {
           'The query half comes from the MCP tool-call log, which is bounded to the newest 20 000 calls per workspace. An older query has been trimmed and its board reads as a drawing.',
           'The log records MCP calls only. There is today no UI surface that performs an explicit impact query, so nothing is missed on that side — but a future one would need its own instrumentation to appear here.',
           'lastActivityAt comes from the narration log, trimmed to the newest 1000 entries per project: exact as a last-touched time, a floor as a history.',
+          sinceDays === undefined
+            ? 'No sinceDays window: every retained call counts, so a board is a drawing only if the whole retained log holds no successful impact query against it.'
+            : `sinceDays=${sinceDays} narrows the query half to that window — a board queried before it reads as a drawing HERE, which is a statement about the window, not about the board.`,
         ],
         // cm:why an empty log returns a zeroed report plus this note, never an error or a 0.0 ratio:
         // on day one nothing is recorded, and "no data" is a different claim from "nobody queried".
