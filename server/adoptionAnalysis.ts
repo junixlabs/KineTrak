@@ -178,6 +178,7 @@ function fingerprint(value: unknown, seen: Set<object> = new Set()): string {
  * makes the board somebody's work.
  */
 // cm:edge lockstep -> src/shared/seed.ts — compared against sampleTemplate/blankTemplate BY VALUE, so editing a template makes already-seeded boards read as built; change one and re-read this report's `seeded` count.
+// cm:why by value and not by a stored provenance flag: recording "this board came from a template" would be a write, which the report is forbidden. The cost is that a board restored to a pre-edit snapshot re-enters `seeded` despite its history — visible in activityRows, and defensible, since it currently holds no modelling.
 export function isSeeded(data: WorkspaceData): boolean {
   const fp = fingerprint(data)
   return TEMPLATE_FINGERPRINTS.includes(fp)
