@@ -133,6 +133,22 @@ Read / memory:
   lower bound), quotes at most 25 of them (`omittedSteps`), and `window.truncated` says when the
   window held more calls than one pass reads. Empty on day one — it fills in as agents use the
   board.
+- `analyze_board_adoption({projectId?, bucket?, sinceDays?})` — the **abandonment signal**: which
+  boards are **models** (someone ran `compute_impact` against them) and which are **drawings**
+  (nodes were created, nobody ever queried them). A drawing is the product failing its own promise
+  (`NORTH-STAR.md` §5) with nobody complaining — board count up, node count up, no error reported,
+  which is why this is measured rather than waited for. Returns the model/drawing ratio, the same
+  ratio per **creation cohort** (`bucket: 'week' | 'month'`) so the direction of travel is visible,
+  and `stoppedAt` — where the drawings stopped on the modelling ladder
+  `created → drawn → specified → connected → linked → queried`. The rung a board stops at is where
+  KineTrak asks for more than it gives back. `queryReadyButUnqueried` is the sharpest number: boards
+  at `connected` or deeper (the impact engine has edges to walk, so the board *can* answer) that
+  nobody ever asked. Read `coverage` before trusting a zero — board state is read live and complete,
+  but the query half comes from the tool-call log, which is bounded to the newest 20 000 calls per
+  workspace and records **MCP calls only**; a `sinceDays` window narrows it further. Only a
+  *successful* impact call counts as a query — failures are reported apart as
+  `failedImpactQueries`, because "someone asked and got nothing back" is worse than never being
+  asked. Read-only, workspace-scoped, re-runnable.
 
 Write (each broadcasts live to the browser):
 - modules: `add_module`, `find_or_create_module` (idempotent), `update_module`, `delete_module`

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Command } from '../src/shared/board'
 import type { Project } from '../src/shared/types'
-import { activityRepo } from './infra/repositories'
+import { activityRepo, type ActivitySpanRow } from './infra/repositories'
 
 // ── Activity log ─────────────────────────────────────────────────────────────
 // A narrative of who changed what, when — so the human can watch/catch-up on an
@@ -58,6 +58,13 @@ function push(entry: Activity) {
 /** Most recent activity for a project (newest last), optionally since a timestamp. */
 export function listActivity(projectId: string, since = 0, limit = 200): Activity[] {
   return log.filter((a) => a.projectId === projectId && a.ts > since).slice(-limit)
+}
+
+/** Per-project narration spans for one org — the liveness input to the
+ *  abandonment report, straight from Postgres rather than the CAP-bounded ring,
+ *  which holds only the newest CAP entries across ALL projects. */
+export function readActivitySpans(orgId: string): Promise<ActivitySpanRow[]> {
+  return activityRepo.spansByOrg(orgId)
 }
 
 /** Explicit agent/human narration (not tied to a mutation). */
