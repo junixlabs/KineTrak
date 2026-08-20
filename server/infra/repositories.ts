@@ -235,6 +235,14 @@ export const orgBoardShareRepo = {
 }
 
 // ── Activity (append-only) ───────────────────────────────────────────────────
+export interface ActivitySpanRow {
+  projectId: string
+  rows: number
+  /** Oldest RETAINED entry, not the board's first ever — the ring is trimmed. */
+  firstTs: number
+  lastTs: number
+}
+
 export const activityRepo = {
   /** The newest `limit` entries (any project), returned oldest→newest to warm
    *  the RAM ring. Note: ORDER BY id DESC + LIMIT selects the *latest* rows, then
@@ -275,6 +283,29 @@ export const activityRepo = {
       .orderBy(asc(t.activity.id))
       .limit(limit)
     return rows.map(rowToActivity)
+  },
+  /** One row per project in the org: how much narration survives in the ring and
+   *  when it starts/ends. Aggregated in SQL, so an org-wide read is one query and
+   *  never loads a board. */
+  // cm:why min/max over the TRIMMED table is still the useful answer: lastTs is exact because trimming only ever drops the oldest rows, while firstTs is merely a floor — the start of the retained window, not the board's first-ever event.
+  async spansByOrg(orgId: string): Promise<ActivitySpanRow[]> {
+    const rows = await requireDb()
+      .select({
+        projectId: t.activity.projectId,
+        rows: sql<number>`count(*)::int`,
+        firstTs: sql<Date>`min(${t.activity.ts})`,
+        lastTs: sql<Date>`max(${t.activity.ts})`,
+      })
+      .from(t.activity)
+      .innerJoin(t.projects, eq(t.activity.projectId, t.projects.id))
+      .where(eq(t.projects.orgId, orgId))
+      .groupBy(t.activity.projectId)
+    return rows.map((r) => ({
+      projectId: r.projectId,
+      rows: r.rows,
+      firstTs: new Date(r.firstTs).getTime(),
+      lastTs: new Date(r.lastTs).getTime(),
+    }))
   },
   /** The newest `limit` entries for one project (oldest→newest). Used for the
    *  initial get_changes_since call (no cursor yet) so it returns recent changes

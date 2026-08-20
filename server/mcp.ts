@@ -10,7 +10,7 @@ import { seedOrgBoardNodes } from '../src/shared/board'
 import { orgBoardIssues } from '../src/shared/orgboard'
 import type { Feature, OrgBoard } from '../src/shared/types'
 import { bearerFrom, verifyKey, type ApiKey } from './keys'
-import { recordNote, type Actor } from './activity'
+import { readActivitySpans, recordNote, type Actor } from './activity'
 import { activityRepo } from './infra/repositories'
 import type { Project, WorkspaceData, WorkspaceSettings } from '../src/shared/types'
 import { makeId, nextNodeCode } from '../src/shared/ids'
@@ -22,6 +22,7 @@ import { boardQualityIssues } from '../src/shared/boardInvariants'
 import { instrumentToolCalls, READ_LIMIT, readToolCalls } from './toolLog'
 import { readQuestions } from './questionLog'
 import { clusterQuestions, frictionByTool, rankTools, RUN_IDLE_GAP_MS } from './toolAnalysis'
+import { analyzeAdoption, boardFacts, IMPACT_QUERY_TOOLS, QUERY_READY_RUNG, RUNGS, splitImpactQueries } from './adoptionAnalysis'
 
 const json = (obj: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(obj, null, 2) }] })
 const dateLabel = () => {
@@ -325,6 +326,79 @@ export function buildMcpServer(key: ApiKey): McpServer {
         // cm:why an empty log returns empty arrays plus this note, never an error: on day one nothing
         // is recorded, and saying so is the honest answer rather than a failure.
         note: ranked.calls === 0 ? 'No tool calls recorded yet in this window — the ranking fills in as agents use the board.' : undefined,
+      })
+    },
+  )
+
+  // cm:why deliberately absent from the 8 kinetrak-* skill allowlists, exactly like analyze_tool_friction: a maintainer read about whether KineTrak is used as a model at all is not a step in operating a board — do not add it to them.
+  server.registerTool(
+    'analyze_board_adoption',
+    {
+      description:
+        "The abandonment signal: which boards in this workspace are MODELS (someone ran compute_impact against them) and which are DRAWINGS (SOMEONE BUILT them and nobody ever queried them). A drawing means the product failed its own promise with nobody complaining — board count up, node count up, no error reported. A board still byte-identical to a shipped template is `seeded`, counted apart from both: every new account is seeded with the 27-node sample, so on content alone an account nobody opened would otherwise read as fully modelled and abandoned. Reports the model/drawing ratio, the same ratio per creation cohort so the direction of travel is visible, and where the drawings STOPPED on the modelling ladder (created → drawn → specified → connected → linked → queried): the rung they stop at is where KineTrak asks for more than it gives back. `queryReadyButUnqueried` is the sharpest number — boards that paid the whole modelling cost and were never asked. Board state is read live; the query half comes from the recorded tool-call log, so read `coverage` before trusting a zero. Read-only, scoped to your workspace, re-runnable.",
+      inputSchema: {
+        projectId: z.string().optional(),
+        bucket: z.enum(['week', 'month']).optional(),
+        sinceDays: z.number().int().min(1).optional(),
+      },
+    },
+    async ({ projectId, bucket, sinceDays }) => {
+      const one = projectId ? await proj(projectId) : undefined
+      if (projectId && !one) return json({ error: 'project not found in this workspace' })
+      const since = sinceDays === undefined ? undefined : Date.now() - sinceDays * 86_400_000
+      // cm:why the scoped call reuses the board the guard already loaded instead of orgProjects():
+      // a one-board question must not pay for loading every board in the workspace.
+      // cm:guard read the log ORG-wide, then narrow IN MEMORY: `truncated` is only meaningful against the org-wide cap the log is trimmed by, so a SQL project filter makes it unable to fire — yet every OTHER number must come from `mine`, or a one-board answer reports another board's queries as its own.
+      const [scoped, orgCalls, spans] = await Promise.all([
+        one ? Promise.resolve([one]) : orgProjects(),
+        readToolCalls(orgId, { since }),
+        readActivitySpans(orgId),
+      ])
+      const mine = projectId ? orgCalls.filter((c) => c.projectId === projectId) : orgCalls
+      const { queries, failed } = splitImpactQueries(mine)
+      const report = analyzeAdoption(
+        { boards: scoped.map(boardFacts), impactQueries: queries, activity: spans },
+        { bucket },
+      )
+      return json({
+        window: {
+          sinceDays: sinceDays ?? null,
+          projectId: projectId ?? null,
+          bucket: bucket ?? 'month',
+          toolCalls: mine.length,
+          impactQueries: queries.length,
+          /** Calls across the whole workspace — the basis of `truncated`, which is a fact about the
+           *  org-wide ring, not about the scoped board. */
+          orgToolCalls: orgCalls.length,
+          // cm:why a truncation flag rather than a silent cut: a full window means the query half
+          // describes the recent end of the log, and a board queried before it reads as a drawing.
+          truncated: orgCalls.length >= READ_LIMIT,
+        },
+        ladder: RUNGS,
+        queryReadyFrom: QUERY_READY_RUNG,
+        ...report,
+        failedImpactQueries: failed,
+        coverage: [
+          `A board counts as a MODEL only when one of ${IMPACT_QUERY_TOOLS.join(' / ')} succeeded against it. A failed call is counted in failedImpactQueries instead — someone asked and got nothing back.`,
+          'Board state (nodes, specs, edges, code links) is read live from the board and is complete.',
+          'The query half comes from the MCP tool-call log, which is bounded to the newest 20 000 calls per workspace. An older query has been trimmed and its board reads as a drawing.',
+          'The log records MCP calls only, so it sees agents and not people. No UI surface CALLS compute_impact, but src/components/views/SwimlaneView.tsx highlights the downstream zone on selection and the Alerts panel derives impact alerts on every render — a human reading a decision off either of those leaves no row here, and their board is reported as a drawing.',
+          'A recorded impact call counts as a query on its outcome alone, because the log stores tool and parameter NAMES, never results. A call that succeeded but returned an EMPTY impact zone (a focus id with no swimlane entry node) is therefore indistinguishable from one that returned a real answer, and it promotes the board to model. Closing that gap would need result-shape instrumentation this report deliberately does not add.',
+          'lastActivityAt comes from the narration log, trimmed to the newest 1000 entries per project: exact as a last-touched time, a floor as a history.',
+          'seeded means the board is byte-identical to a shipped template, so ANY edit — dragging one node — makes it a drawing carrying the template\'s whole node count. drawingsBarelyEdited counts the drawings with at most one retained narration entry, which is where a nudged template lands. Treat it as a hint and read boardsDetail: because the narration log is trimmed, a board older than the log has no entries either.',
+          'On a project-scoped call every number is that board\'s own. window.orgToolCalls is the one workspace-wide figure, because `truncated` is a fact about the shared ring, not about the board.',
+          sinceDays === undefined
+            ? 'No sinceDays window: every retained call counts, so a board is a drawing only if the whole retained log holds no successful impact query against it.'
+            : `sinceDays=${sinceDays} narrows the query half to that window — a board queried before it reads as a drawing HERE, which is a statement about the window, not about the board.`,
+        ],
+        // cm:why an empty log returns a zeroed report plus this note, never an error or a 0.0 ratio:
+        // on day one nothing is recorded, and "no data" is a different claim from "nobody queried".
+        note:
+          report.boards === 0
+            ? 'No boards in this workspace yet.'
+            : mine.length === 0
+              ? `No tool calls recorded in this window${projectId ? ' for this project' : ''} — ${projectId ? 'it' : 'every board'} therefore reads as a drawing because the query log is empty, NOT because it was never queried. Widen sinceDays or wait for agent traffic.`
+              : undefined,
       })
     },
   )

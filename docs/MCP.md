@@ -133,6 +133,31 @@ Read / memory:
   lower bound), quotes at most 25 of them (`omittedSteps`), and `window.truncated` says when the
   window held more calls than one pass reads. Empty on day one — it fills in as agents use the
   board.
+- `analyze_board_adoption({projectId?, bucket?, sinceDays?})` — the **abandonment signal**: which
+  boards are **models** (someone ran `compute_impact` against them) and which are **drawings**
+  (nodes were created, nobody ever queried them). A drawing is the product failing its own promise
+  (`NORTH-STAR.md` §5) with nobody complaining — board count up, node count up, no error reported,
+  which is why this is measured rather than waited for. Returns the model/drawing ratio, the same
+  ratio per **creation cohort** (`bucket: 'week' | 'month'`) so the direction of travel is visible,
+  and `stoppedAt` — where the drawings stopped on the modelling ladder
+  `created → drawn → specified → connected → linked → queried`. The rung a board stops at is where
+  KineTrak asks for more than it gives back. `queryReadyButUnqueried` is the sharpest number: boards
+  someone **built**, whose graph the impact engine can walk (so the board *can* answer), that nobody
+  ever asked.
+  A board still byte-identical to a shipped template is reported as `seeded`, not as a drawing —
+  `server/index.ts` seeds every new account with the 27-node sample (descriptions, edges, codeRefs
+  and all), so on content alone an account nobody opened would otherwise read as fully modelled and
+  abandoned. `seeded` counts workspaces nobody touched; `drawing` counts modelling that went unused.
+  On a project-scoped call every reported number is that board's own; `window.orgToolCalls` is the
+  one workspace-wide figure, because `truncated` is a fact about the shared ring and not about the
+  board. Read `coverage` before trusting a zero — board state is read live and complete, but the query half
+  comes from the tool-call log, which is bounded to the newest 20 000 calls per workspace and records
+  **MCP calls only**, so it sees agents and not people: a human reading the Swimlane's downstream
+  highlight or the Alerts panel leaves no row. A `sinceDays` window narrows it further. Only a
+  *successful* impact call counts as a query — failures are reported apart as `failedImpactQueries`,
+  because "someone asked and got nothing back" is worse than never being asked; and because the log
+  stores names and never results, a call that succeeded but returned an *empty* impact zone cannot be
+  told from a real answer. Read-only, workspace-scoped, re-runnable.
 
 Write (each broadcasts live to the browser):
 - modules: `add_module`, `find_or_create_module` (idempotent), `update_module`, `delete_module`

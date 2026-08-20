@@ -87,6 +87,16 @@ run('activity recent() returns the NEWEST entries (oldest→newest); trim bounds
   )
 })
 
+run('activity spansByOrg aggregates per project and scopes to the org', async () => {
+  const spans = await activityRepo.spansByOrg(oid)
+  const mine = spans.find((s) => s.projectId === pid)
+  assert.ok(mine, 'the org’s project has a span row')
+  // cm:guard depends on the preceding trim test leaving exactly e4 and e5: these run in file order against one shared project, so moving this above that test changes the expected count.
+  assert.equal(mine!.rows, 2, 'rows counts what survived the trim')
+  assert.ok(mine!.lastTs >= mine!.firstTs, 'max(ts) is not before min(ts)')
+  assert.equal((await activityRepo.spansByOrg('other-org')).length, 0, 'scoped to the org')
+})
+
 run('session insert + delete', async () => {
   await sessionRepo.insert({ token: 'sess_test', userId: uid, expiresAt: Date.now() + 1000 })
   assert.ok((await sessionRepo.all()).find((s) => s.token === 'sess_test'))
