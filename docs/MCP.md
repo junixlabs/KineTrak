@@ -148,7 +148,9 @@ Read / memory:
   `server/index.ts` seeds every new account with the 27-node sample (descriptions, edges, codeRefs
   and all), so on content alone an account nobody opened would otherwise read as fully modelled and
   abandoned. `seeded` counts workspaces nobody touched; `drawing` counts modelling that went unused.
-  Read `coverage` before trusting a zero — board state is read live and complete, but the query half
+  On a project-scoped call every reported number is that board's own; `window.orgToolCalls` is the
+  one workspace-wide figure, because `truncated` is a fact about the shared ring and not about the
+  board. Read `coverage` before trusting a zero — board state is read live and complete, but the query half
   comes from the tool-call log, which is bounded to the newest 20 000 calls per workspace and records
   **MCP calls only**, so it sees agents and not people: a human reading the Swimlane's downstream
   highlight or the Alerts panel leaves no row. A `sinceDays` window narrows it further. Only a

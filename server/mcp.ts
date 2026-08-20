@@ -348,13 +348,14 @@ export function buildMcpServer(key: ApiKey): McpServer {
       const since = sinceDays === undefined ? undefined : Date.now() - sinceDays * 86_400_000
       // cm:why the scoped call reuses the board the guard already loaded instead of orgProjects():
       // a one-board question must not pay for loading every board in the workspace.
-      // cm:guard read the log ORG-wide even when scoped: `truncated` compares the row count against an org-wide cap, so a SQL project filter makes the flag unable to fire. analyzeAdoption attributes by projectId, so extra rows change no number.
-      const [scoped, calls, spans] = await Promise.all([
+      // cm:guard read the log ORG-wide, then narrow IN MEMORY: `truncated` is only meaningful against the org-wide cap the log is trimmed by, so a SQL project filter makes it unable to fire — yet every OTHER number must come from `mine`, or a one-board answer reports another board's queries as its own.
+      const [scoped, orgCalls, spans] = await Promise.all([
         one ? Promise.resolve([one]) : orgProjects(),
         readToolCalls(orgId, { since }),
         readActivitySpans(orgId),
       ])
-      const { queries, failed } = splitImpactQueries(calls)
+      const mine = projectId ? orgCalls.filter((c) => c.projectId === projectId) : orgCalls
+      const { queries, failed } = splitImpactQueries(mine)
       const report = analyzeAdoption(
         { boards: scoped.map(boardFacts), impactQueries: queries, activity: spans },
         { bucket },
@@ -364,11 +365,14 @@ export function buildMcpServer(key: ApiKey): McpServer {
           sinceDays: sinceDays ?? null,
           projectId: projectId ?? null,
           bucket: bucket ?? 'month',
-          toolCalls: calls.length,
+          toolCalls: mine.length,
           impactQueries: queries.length,
+          /** Calls across the whole workspace — the basis of `truncated`, which is a fact about the
+           *  org-wide ring, not about the scoped board. */
+          orgToolCalls: orgCalls.length,
           // cm:why a truncation flag rather than a silent cut: a full window means the query half
           // describes the recent end of the log, and a board queried before it reads as a drawing.
-          truncated: calls.length >= READ_LIMIT,
+          truncated: orgCalls.length >= READ_LIMIT,
         },
         ladder: RUNGS,
         queryReadyFrom: QUERY_READY_RUNG,
@@ -390,8 +394,8 @@ export function buildMcpServer(key: ApiKey): McpServer {
         note:
           report.boards === 0
             ? 'No boards in this workspace yet.'
-            : calls.length === 0
-              ? 'No tool calls recorded in this window — every board therefore reads as a drawing because the query log is empty, NOT because it was never queried. Widen sinceDays or wait for agent traffic.'
+            : mine.length === 0
+              ? `No tool calls recorded in this window${projectId ? ' for this project' : ''} — ${projectId ? 'it' : 'every board'} therefore reads as a drawing because the query log is empty, NOT because it was never queried. Widen sinceDays or wait for agent traffic.`
               : undefined,
       })
     },

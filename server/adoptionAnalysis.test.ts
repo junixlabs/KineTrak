@@ -388,3 +388,39 @@ test('stoppedAt counts drawings only — never empty or seeded boards', () => {
     'the histogram sums to the drawing count and nothing else',
   )
 })
+
+test('splitImpactQueries over a project-filtered slice counts only that project', () => {
+  // cm:guard the counting slice and the truncation slice are NOT the same rows: the report reads the
+  // whole org so `truncated` can fire, and every other number must be narrowed first.
+  const orgRows: ToolCallLike[] = [
+    { projectId: 'P', tool: 'get_board', outcome: 'ok', ts: 1 },
+    { projectId: 'Q', tool: 'compute_impact', outcome: 'ok', ts: 2 },
+    { projectId: 'Q', tool: 'compute_impact', outcome: 'error', ts: 3 },
+  ]
+  const mine = orgRows.filter((c) => c.projectId === 'P')
+  const scoped = splitImpactQueries(mine)
+  assert.equal(scoped.queries.length, 0, "P was never queried")
+  assert.equal(scoped.failed, 0, "and Q's failure is not P's")
+  assert.equal(mine.length, 1, 'the scoped window is one call, not the org-wide three')
+
+  const orgWide = splitImpactQueries(orgRows)
+  assert.equal(orgWide.queries.length, 1)
+  assert.equal(orgWide.failed, 1)
+})
+
+test('drawingsBarelyEdited flags a nudged template without reclassifying it', () => {
+  const nudged = templateData('sample')
+  nudged.swimNodes[0].x += 1
+  const boards = [
+    boardFacts(board('p-nudged', nudged)),
+    boardFacts(board('p-built', dataAtRung('linked'))),
+  ]
+  const activity: ActivitySpan[] = [
+    { projectId: 'p-nudged', rows: 1, firstTs: 10, lastTs: 10 },
+    { projectId: 'p-built', rows: 40, firstTs: 10, lastTs: 900 },
+  ]
+  const r = analyzeAdoption({ boards, impactQueries: [], activity })
+  assert.equal(r.drawing, 2, 'one edit breaks the fingerprint, so both are drawings')
+  assert.equal(r.drawingsBarelyEdited, 1, 'and the one-edit board is flagged as probably not real work')
+  assert.equal(r.queryReadyButUnqueried, 2, 'the verdict itself is unchanged — the hint does not reclassify')
+})

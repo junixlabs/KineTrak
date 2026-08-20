@@ -105,6 +105,11 @@ export interface AdoptionReport {
   /** Built boards the impact engine could have answered, that nobody asked. Seeded
    *  and empty boards are excluded: neither represents modelling work someone did. */
   queryReadyButUnqueried: number
+  /** Drawings carrying at most one retained narration entry — a template somebody
+   *  nudged once reads as built work, because any edit at all breaks the seeded
+   *  fingerprint. A HINT, not a verdict: the narration log is trimmed, and a board
+   *  older than it has none, so a high number here means read `boardsDetail`. */
+  drawingsBarelyEdited: number
   /** Drawing boards grouped by where they stopped, in ladder order. Rungs with
    *  no boards are kept so the shape of the drop-off reads at a glance. */
   stoppedAt: { rung: Rung; boards: number }[]
@@ -142,13 +147,20 @@ export function connectedness(data: WorkspaceData): boolean {
  */
 // cm:guard sort the KEYS, never the arrays: node and edge order is real board content, and sorting
 // it would make two genuinely different boards fingerprint alike.
-function fingerprint(value: unknown): string {
+// cm:why a `seen` set although no current caller can pass a cycle (boards come from jsonb or the acyclic seed constants): isSeeded is exported, and for a caller handing it an in-memory graph a marker beats a hang.
+function fingerprint(value: unknown, seen: Set<object> = new Set()): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
-  if (Array.isArray(value)) return `[${value.map(fingerprint).join(',')}]`
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${fingerprint(v)}`).join(',')}}`
+  if (seen.has(value)) return '"[cycle]"'
+  seen.add(value)
+  const out = Array.isArray(value)
+    ? `[${value.map((v) => fingerprint(v, seen)).join(',')}]`
+    : `{${Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([k, v]) => `${JSON.stringify(k)}:${fingerprint(v, seen)}`)
+        .join(',')}}`
+  seen.delete(value)
+  return out
 }
 
 /**
@@ -168,8 +180,12 @@ function fingerprint(value: unknown): string {
 // cm:edge lockstep -> src/shared/seed.ts — compared against sampleTemplate/blankTemplate BY VALUE, so editing a template makes already-seeded boards read as built; change one and re-read this report's `seeded` count.
 export function isSeeded(data: WorkspaceData): boolean {
   const fp = fingerprint(data)
-  return fp === fingerprint(sampleTemplate) || fp === fingerprint(blankTemplate())
+  return TEMPLATE_FINGERPRINTS.includes(fp)
 }
+
+/** Computed once: the templates are constants, and an org-wide report would otherwise
+ *  re-fingerprint a 27-node board twice per project. */
+const TEMPLATE_FINGERPRINTS: readonly string[] = [fingerprint(sampleTemplate), fingerprint(blankTemplate())]
 
 /** Reduce one board to the facts the ladder needs. Pure over the board doc. */
 export function boardFacts(p: { id: string; name: string; createdAt: string; data: WorkspaceData }): BoardFacts {
@@ -355,6 +371,7 @@ export function analyzeAdoption(input: AdoptionInput, opts: { bucket?: Bucket } 
     empty: count('empty'),
     modelRatio: ratio(model, drawing),
     queryReadyButUnqueried: boardsDetail.filter((b) => b.verdict === 'drawing' && b.queryReady).length,
+    drawingsBarelyEdited: boardsDetail.filter((b) => b.verdict === 'drawing' && b.activityRows <= 1).length,
     // cm:why every rung is emitted, including zeros: the drop-off is read as a shape, and a rung
     // silently absent looks like a rung nobody stops at rather than one nobody reaches.
     // cm:why `created` and `queried` are both omitted: a drawing has nodes so it never stops at
