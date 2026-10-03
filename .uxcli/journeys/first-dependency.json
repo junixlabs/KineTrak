@@ -1,0 +1,55 @@
+{
+ "schema_version": 2,
+ "id": "first-dependency",
+ "goal": "From an empty board to a first dependency the board can answer with",
+ "actor": "newcomer",
+ "requires": { "identityProfile": null, "dataProfiles": [] },
+ "trace": ["I-003", "I-001"],
+ "states": {
+  "newcomer.home": {
+   "signals": [ { "observer": "dom", "selector": "[data-uxcli=start-blank]", "visible": true } ],
+   "strength": "weak",
+   "mustNotMatch": ["a project already open"]
+  },
+  "newcomer.two_features": {
+   "signals": [ { "observer": "dom", "selector": "[data-uxcli=feature-node]", "visible": true } ],
+   "strength": "weak",
+   "mustNotMatch": ["a board with no feature"]
+  },
+  "newcomer.dependency_declared": {
+   "signals": [
+    { "observer": "dom", "selector": "[data-uxcli=dependency-chip]", "visible": true },
+    { "observer": "dom", "selector": "[data-uxcli=impact-answer]", "visible": true }
+   ],
+   "strength": "weak",
+   "mustNotMatch": ["a dependency drawn only as a picture, which the impact answer does not count"]
+  }
+ },
+ "workflows": [
+  {
+   "id": "blank-to-dependency",
+   "kind": "happy",
+   "steps": [
+    {
+     "id": "s1", "before": "newcomer.home", "action": "start a blank board and add two features",
+     "interactions": [
+      { "type": "ui", "target": "[data-uxcli=start-blank]" },
+      { "type": "ui", "target": "[data-uxcli=quick-add]", "fill": "Checkout" },
+      { "type": "ui", "target": "[data-uxcli=quick-add]", "fill": "Payment gateway" }
+     ],
+     "after": "newcomer.two_features", "next": "s2"
+    },
+    {
+     "id": "s2", "before": "newcomer.two_features", "action": "say that Checkout depends on Payment gateway",
+     "interactions": [
+      { "type": "ui", "target": "[data-uxcli=feature-node]" },
+      { "type": "ui", "target": "[data-uxcli=add-dependency]" },
+      { "type": "ui", "target": "[data-uxcli=dependency-option]" }
+     ],
+     "after": "newcomer.dependency_declared", "next": null
+    }
+   ]
+  }
+ ],
+ "note": "Drafted by an agent (Claude) on the owner's say-so, 2026-10-03. The leading indicator of NORTH-STAR §5 walked as a journey; its keystroke-level estimate is the number to watch. Hooks are the redesign's."
+}

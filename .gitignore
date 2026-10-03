@@ -10,3 +10,12 @@ server/data
 # Artefact runtime của playwright-mcp — không phải nguồn
 .playwright-mcp/
 mcp-needs-auth-cache.json
+
+# uxcli: walks, pictures and generated pages are local; declarations and drawings are kept
+.uxcli/runs/
+.uxcli/index.json
+.uxcli/mockups/.shots/
+.uxcli/mockups/index.html
+.uxcli/studio/
+.uxcli/dashboard/
+.uxcli/experience/

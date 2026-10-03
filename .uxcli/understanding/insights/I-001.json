@@ -1,0 +1,26 @@
+{
+ "schema_version": 1,
+ "id": "I-001",
+ "about": "actor:change_owner",
+ "claim": "A person in the browser cannot ask the board what a change touches, nor declare the dependency that would let it answer: both exist only for agents over MCP.",
+ "source": {
+  "type": "code",
+  "ref": "junixlabs/kinetrak@d7dc11a"
+ },
+ "evidence": [
+  "server/mcp.ts:385 — 'No UI surface CALLS compute_impact'",
+  "src/shared/board.ts:68 — the setDependency command has no caller under src/components/",
+  "src/components/panel/DetailPanel.tsx:200 — Dependencies renders the list read-only, and nothing when it is empty",
+  "the Swimlane view highlights a downstream zone on hover only, and only for steps"
+ ],
+ "confidence": "high",
+ "wouldChangeIf": {
+  "kind": "predicate",
+  "text": "a file under src/components/ dispatches setDependency or calls computeImpact (grep -rn \"setDependency\\|computeImpact\" src/components)"
+ },
+ "lastCheck": {
+  "at": "2026-10-03T18:49:21Z",
+  "fired": false,
+  "observed": 0
+ }
+}

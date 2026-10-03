@@ -1,0 +1,9 @@
+{
+ "schema_version": 1,
+ "id": "I-003",
+ "about": "actor:newcomer",
+ "claim": "The leading indicator is the time from sign-up to a first board with at least one dependency; the target is under 15 minutes.",
+ "source": { "type": "doc", "ref": "NORTH-STAR.md §5" },
+ "evidence": ["owner's target; nothing measures it today, and through the UI alone it cannot be reached (I-001)"],
+ "confidence": "hypothesis"
+}

@@ -1,0 +1,38 @@
+{
+ "id": "P-0001",
+ "kind": "redesign",
+ "proposedBy": {
+  "type": "agent",
+  "ref": "claude",
+  "at": "2026-10-03",
+  "onBehalfOf": "the owner (KineTrak), on their request to review and propose"
+ },
+ "statement": "Answer \"what does changing this touch\" in the feature panel (variant a-panel), with the canvas outlining the same items in sync, the list grouped by how directly each is touched (taken from c-ask), and a link into Swimlane with the downstream zone lit. The panel opens beside the selected node, never over it.",
+ "trace": [
+  "I-001",
+  "I-002",
+  "journeys/ask-impact.json"
+ ],
+ "evidence": [
+  {
+   "what": "server/mcp.ts:385 — no UI surface calls compute_impact; a human cannot ask the question the product exists to answer"
+  },
+  {
+   "what": "keystroke-level estimate from a feature on screen to the answer (Card, Moran & Newell operators): a-panel 2.65 s (point, click, mental) · b-canvas 3.95 s (adds a second point-and-click to enter the mode) · c-ask about 4.4 s (open, type ~10 characters, choose) — a-panel is the shortest because the answer appears where the person already looks"
+  },
+  {
+   "what": "side panels keep the visual connection between the detail and the main view; dialogs interrupt and are wrong for decisions that need other information on screen (NN/g, via design-system guidance) — c-ask is a dialog over the board it is about"
+  },
+  {
+   "what": "dependency tools put relations in the detail side panel (Linear: Blocks / Blocked by in the issue panel) and synchronise graph and list views for impact (Cambridge Intelligence impact analysis; Grafana knowledge graph)"
+  },
+  {
+   "what": "Shneiderman, The Eyes Have It (1996): overview first, zoom and filter, then details on demand — the canvas keeps the overview, the panel holds the details"
+  },
+  {
+   "what": "on the current build the panel covers the node just selected (scratch screenshot detail.png); a panel answer must keep its feature in view"
+  }
+ ],
+ "status": "proposed",
+ "target": "owner.impact_shown"
+}

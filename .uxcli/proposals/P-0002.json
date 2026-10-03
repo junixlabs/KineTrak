@@ -1,0 +1,23 @@
+{
+ "id": "P-0002",
+ "kind": "instrumentation",
+ "proposedBy": {
+  "type": "agent",
+  "ref": "claude",
+  "at": "2026-10-03",
+  "onBehalfOf": "the owner (KineTrak), on their request to review and propose"
+ },
+ "statement": "Record a person's impact query (opening the impact answer in the panel) in the same log as agents' compute_impact calls, so the north star counts people who decide by it.",
+ "trace": [
+  "I-004"
+ ],
+ "evidence": [
+  {
+   "what": "server/mcp.ts:385 — the tool log records MCP calls only; a human reading a decision off the board leaves no row and the board is reported as a drawing"
+  },
+  {
+   "what": "NORTH-STAR §5 counts non-owners who decided by compute_impact; §7 requires every visual round to carry work that moves §5"
+  }
+ ],
+ "status": "proposed"
+}

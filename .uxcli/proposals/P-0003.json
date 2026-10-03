@@ -1,0 +1,32 @@
+{
+ "id": "P-0003",
+ "kind": "redesign",
+ "proposedBy": {
+  "type": "agent",
+  "ref": "claude",
+  "at": "2026-10-03",
+  "onBehalfOf": "the owner (KineTrak), on their request to review and propose"
+ },
+ "statement": "Dependencies for people, while agents keep declaring them: (1) show both directions in the panel — Depends on, and Needed by; (2) an empty state that says none is declared and how one gets there, instead of rendering nothing; (3) say who declared each one and when (agent or person, from the activity log), and let a person remove a wrong one with undo; (4) adding by a type-to-find list (variant a-picker), not by dragging on the canvas; (5) draw the selected feature's dependencies on the Mindmap only while it is selected; (6) give the Sample board two or three dependencies so a newcomer sees one.",
+ "trace": [
+  "I-001",
+  "I-003",
+  "journeys/first-dependency.json"
+ ],
+ "evidence": [
+  {
+   "what": "src/components/panel/DetailPanel.tsx:200 — Dependencies returns null when empty and has no remove or add; no view draws dependsOn on the canvas"
+  },
+  {
+   "what": "the board is the agent's memory: a person reviewing it must see where a dependency came from and correct a wrong one, or the impact answer inherits the mistake"
+  },
+  {
+   "what": "b-connect overloads the canvas gesture the Swimlane already uses for flow arrows (blue dots), and needs precise dragging (Fitts); a-picker is keyboard-reachable — Linear adds relations from the panel and the command menu"
+  },
+  {
+   "what": "src/shared/seed.ts sampleTemplate: 0 of 12 features declare dependsOn, so the Sample never shows a dependency"
+  }
+ ],
+ "status": "proposed",
+ "target": "owner.feature_open"
+}
