@@ -1,0 +1,18 @@
+{
+ "schema_version": 1,
+ "actor": "newcomer",
+ "roles": ["someone who is not the owner, trying KineTrak on a project of their own"],
+ "contexts": ["first session, no agent connected yet", "comparing it with a free diagram tool (openflowkit) beside it"],
+ "jobs": ["get a board of their own project with at least one dependency", "ask the board one question it can answer"],
+ "behaviors": [],
+ "habits": [],
+ "expectations": ["a diagram at least as good as the free tool next to it (NORTH-STAR §3.1)"],
+ "pains": [],
+ "constraints": [],
+ "unknowns": [
+  "How long does a newcomer take today from sign-up to a board with one dependency — the leading indicator, target under 15 minutes (NORTH-STAR §5)?",
+  "Do newcomers start from the Sample, a Blank board, or a pasted diagram?",
+  "Who is the first newcomer the owner can watch use it?"
+ ],
+ "note": "Written by an agent (Claude) on the owner's say-so, 2026-10-03, from NORTH-STAR.md §5."
+}

@@ -1,0 +1,9 @@
+{
+ "schema_version": 1,
+ "question": "Before changing a feature, the person wants to know what else the change touches — on the Sample board, changing F6 touches 1 feature and 6 workflow steps.",
+ "variants": {
+  "a-panel": "The answer is a section of the feature panel, under its dependencies; the canvas outlines the touched items in red.",
+  "b-canvas": "The canvas is the answer: everything the change does not touch fades, and a bar at the bottom says what is lit in one sentence.",
+  "c-ask": "A question box asked from the header in any view, answering as a list grouped by how directly each item is touched."
+ }
+}

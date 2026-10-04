@@ -1,0 +1,27 @@
+/* KineTrak's palette (tailwind.config.js, docs/PRODUCT.md §7), shared by every mockup. --faint is
+   darkened from the build's #9aa2ad, which uxcli measured at 2.57:1 on white (1.4.3 fail). */
+:root{--ink:#14181f;--dim:#5b6472;--faint:#6b7480;--bg:#eef1f5;--canvas:#f6f8fb;--surface:#fff;--line:#e5e8ec;--brand:#2f6fed;--brand-ink:#2a4a8f;--brand-soft:#eef1ff;--grape:#7c5cff;--grape-soft:#f1edff;--grape-ink:#5b3ec4;--teal:#0d9488;--amber:#f59e0b;--amber-soft:#fff7e6;--amber-ink:#8a5a00;--red:#e5484d;--red-soft:#fdecec;--ok:#16a34a;--ok-soft:#eaf6ef}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 "Hanken Grotesk",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--ink);background:var(--canvas)}
+.top{display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--line);white-space:nowrap}
+.brandmark{width:28px;height:28px;border-radius:8px;background:var(--brand);display:inline-block}
+.proj{font-weight:700}.sp{flex:1}
+.tabs{display:flex;gap:2px;background:var(--bg);border-radius:10px;padding:3px}
+.tabs b,.tabs span{padding:6px 12px;border-radius:8px;font-size:13px}.tabs b{background:var(--surface)}.tabs span{color:var(--dim)}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:7px 12px;font:600 13px inherit;font-family:inherit;cursor:pointer}
+.btn.p{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.g{border-color:transparent;background:transparent;color:var(--brand)}
+.k{font-size:11px;font-weight:700;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600}
+.chip.dep{background:var(--grape-soft);color:var(--grape-ink)}
+.chip.st{background:var(--amber-soft);color:var(--amber-ink)}
+.node{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-weight:600;font-size:13px;box-shadow:0 1px 2px rgba(20,24,31,.06)}
+.node .m{display:block;font-size:11px;font-weight:500;color:var(--dim)}
+.node.hit{border-color:var(--red);box-shadow:0 0 0 3px var(--red-soft)}
+.node.focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.node.dim{opacity:.35}
+.panel{position:absolute;top:0;right:0;bottom:0;width:400px;background:var(--surface);border-left:1px solid var(--line);overflow:auto;padding:16px 18px}
+.panel h2{font-size:18px;margin:6px 0 10px}
+.sec{border-top:1px solid var(--line);padding:14px 0}
+.list{margin:6px 0 0;padding:0;list-style:none}.list li{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:13px}.list li:first-child{border-top:0}
+.list .w{color:var(--dim);font-size:12px}

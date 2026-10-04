@@ -1,0 +1,22 @@
+{
+ "id": "P-0004",
+ "kind": "redesign",
+ "proposedBy": {
+  "type": "agent",
+  "ref": "claude",
+  "at": "2026-10-03",
+  "onBehalfOf": "the owner (KineTrak), on their request to review and propose"
+ },
+ "statement": "Fix two measured defects on the way: the faint text token #9aa2ad (2.57:1 on white, WCAG 1.4.3 fail on Home, 5 nodes) to a value at 4.5:1 or more, and the header overflowing at 1440×900 (Present cut off, All roles wrapping).",
+ "trace": [],
+ "evidence": [
+  {
+   "run": "runs/R-2026-10-03T18-48-01Z-wcikh1",
+   "what": "uxcli run http://localhost:5199/ — 1.4.3 FAIL, 9 text nodes in 4 colour pairs; text-overlap finding on the logo"
+  },
+  {
+   "what": "header screenshot at 1440×900 (scratch mindmap.png): the Present button cut at the right edge"
+  }
+ ],
+ "status": "proposed"
+}

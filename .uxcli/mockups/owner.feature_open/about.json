@@ -1,0 +1,8 @@
+{
+ "schema_version": 1,
+ "question": "The person has opened a feature and wants to say what it depends on, so the board can answer what a change touches.",
+ "variants": {
+  "a-picker": "Dependencies come first in the panel; adding one is a type-to-find list of the board's features, grouped by module.",
+  "b-connect": "A dependency is drawn on the canvas, dragging from a feature's purple dot onto the feature it depends on; the panel lists them."
+ }
+}

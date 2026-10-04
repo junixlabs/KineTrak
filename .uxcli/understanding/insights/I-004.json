@@ -1,0 +1,18 @@
+{
+ "schema_version": 1,
+ "id": "I-004",
+ "about": "actor:change_owner",
+ "claim": "A board that is drawn but never queried is the product failing its promise with nobody complaining.",
+ "source": {
+  "type": "code",
+  "ref": "server/mcp.ts:338 (adoption analysis tool description)"
+ },
+ "evidence": [
+  "the product already measures boards as MODELS (queried) or DRAWINGS (never queried) — for agents' calls only"
+ ],
+ "confidence": "medium",
+ "wouldChangeIf": {
+  "kind": "predicate",
+  "text": "the adoption analysis reports a board whose decision was taken without any compute_impact call being logged, recorded by its owner"
+ }
+}

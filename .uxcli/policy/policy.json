@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "note": "written by uxcli init --apply on 2026-10-03T18:43:47.497Z, on Claude's say-so; the floor — raise reachMax only by editing this file",
+  "defaultEnvironment": "local",
+  "project": {
+    "reachMax": "observe",
+    "constraints": []
+  },
+  "environments": {
+    "local": {
+      "origin": "http://localhost:5199",
+      "reachMax": "observe",
+      "constraints": []
+    }
+  },
+  "workflows": {},
+  "effects": {
+    "core": [
+      "database_write",
+      "external_email",
+      "external_sms",
+      "payment",
+      "webhook",
+      "file_write",
+      "file_delete",
+      "account_mutation",
+      "external_api"
+    ]
+  },
+  "testIdentity": {
+    "mode": "provided"
+  },
+  "authority": {
+    "project": {
+      "type": "person",
+      "ref": "Claude"
+    },
+    "environments": {
+      "type": "person",
+      "ref": "Claude"
+    },
+    "workflows": {
+      "type": "person",
+      "ref": "Claude"
+    }
+  }
+}

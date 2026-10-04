@@ -1,0 +1,9 @@
+{
+ "schema_version": 1,
+ "id": "I-002",
+ "about": "actor:change_owner",
+ "claim": "The question the product exists to answer is 'if I change this, what else breaks?' — asked before the change.",
+ "source": { "type": "doc", "ref": "NORTH-STAR.md §1, §2" },
+ "evidence": ["the owner's statement of the product's purpose; no interview or usage record behind it yet"],
+ "confidence": "hypothesis"
+}

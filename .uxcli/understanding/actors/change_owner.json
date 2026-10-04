@@ -1,0 +1,18 @@
+{
+ "schema_version": 1,
+ "actor": "change_owner",
+ "roles": ["PM", "BA", "tech lead"],
+ "contexts": ["about to change a feature in a system they did not build all of", "explaining the project to an agent at the start of every session"],
+ "jobs": ["find out what else a change touches before making it", "keep PM, BA and the code's understanding of the product logic in one place", "hand an agent the project's context without re-explaining it"],
+ "behaviors": ["opens the board to look up a feature before changing it"],
+ "habits": [],
+ "expectations": ["the answer to 'what breaks if I change this' in the place where they look at the feature"],
+ "pains": ["product logic split between PM, BA and code, none of them checkable (NORTH-STAR §2.1)", "the agent forgets every session and they remember for it (NORTH-STAR §2.2)"],
+ "constraints": [],
+ "unknowns": [
+  "How often per week does a change_owner ask 'what does this touch' before a change, and what do they do today to answer it?",
+  "Do they decide on the board with an agent present, or alone in the browser?",
+  "Which view do they open first when looking up a feature: Mindmap, Story Map, Swimlane or Overview?"
+ ],
+ "note": "Written by an agent (Claude) on the owner's say-so in the uxcli session of 2026-10-03, from NORTH-STAR.md §2; every line under pains is the owner's statement, not a measured fact."
+}
