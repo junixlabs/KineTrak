@@ -120,7 +120,7 @@ export default function Home() {
           </div>
           <div className="flex flex-col leading-none">
             <span className="text-[15px] font-extrabold tracking-tight">KineTrak</span>
-            <span className="mt-0.5 text-[8.5px] font-bold tracking-[2px] text-faint">PLATFORM</span>
+            <span className="mt-[3px] text-[8.5px] font-bold tracking-[2px] text-faint">PLATFORM</span>
           </div>
         </div>
 
@@ -193,7 +193,7 @@ export default function Home() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 flex-none items-center gap-3 border-b border-line bg-white px-6">
           <span className="text-[15px] font-extrabold tracking-tight text-ink">Workspace</span>
-          <span className="rounded-md bg-[#eef1ff] px-2 py-0.5 text-[11px] font-bold text-brand">Free</span>
+          <span className="rounded-md bg-[#eef1ff] px-2 py-0.5 text-[11px] font-bold text-brand-dark">Free</span>
           <div className="flex-1" />
           <button onClick={goGuide} className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]">
             <BookOpen size={15} strokeWidth={2} /> Guide
@@ -217,7 +217,7 @@ export default function Home() {
             <Bell size={16} strokeWidth={2} />
           </button>
           <div className="relative">
-            <button onClick={() => setAvatarOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-full bg-grape text-[12px] font-bold text-white hover:opacity-90">
+            <button onClick={() => setAvatarOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-full bg-[#6a48f0] text-[12px] font-bold text-white hover:opacity-90">
               {initials}
             </button>
             {avatarOpen && (
@@ -265,10 +265,10 @@ export default function Home() {
           <div className="mb-8">
             <h2 className="mb-3 text-[15px] font-bold text-ink">Start a new project</h2>
             <div className="flex gap-3">
-              <TemplateCard label="Blank board" sub="Empty scaffold" onClick={() => create('blank')} accent="#2f6fed">
+              <TemplateCard label="Blank board" sub="Empty scaffold" onClick={() => create('blank')} accent="#2f6fed" hook="start-blank">
                 <Plus size={26} className="text-brand" strokeWidth={2} />
               </TemplateCard>
-              <TemplateCard label="Sample data" sub="KineTrak demo" onClick={() => create('sample')} accent="#7c5cff">
+              <TemplateCard label="Sample data" sub="KineTrak demo" onClick={() => create('sample')} accent="#7c5cff" hook="start-sample">
                 <div className="flex gap-1.5">
                   <Network size={18} className="text-brand" />
                   <LayoutGrid size={18} className="text-grape" />
@@ -416,9 +416,9 @@ function SideItem({ active, onClick, icon, label }: { active: boolean; onClick: 
   )
 }
 
-function TemplateCard({ label, sub, onClick, accent, children }: { label: string; sub: string; onClick: () => void; accent: string; children: React.ReactNode }) {
+function TemplateCard({ label, sub, onClick, accent, hook, children }: { label: string; sub: string; onClick: () => void; accent: string; hook?: string; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className="w-[170px] overflow-hidden rounded-xl border border-line bg-white text-left shadow-card transition-shadow hover:shadow-pop">
+    <button onClick={onClick} data-uxcli={hook} className="w-[170px] overflow-hidden rounded-xl border border-line bg-white text-left shadow-card transition-shadow hover:shadow-pop">
       <div className="flex h-[92px] items-center justify-center" style={{ background: `${accent}0f` }}>{children}</div>
       <div className="px-3 py-2.5">
         <div className="text-[13px] font-bold text-ink">{label}</div>

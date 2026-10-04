@@ -283,9 +283,10 @@ export function bucketKey(createdAt: string, bucket: Bucket): string {
 /** The tools that constitute "someone asked the board a question". Both are pure
  *  reads over the impact engine, which is exactly why `tool_calls` is the only
  *  place they appear — neither writes an `activity` row. */
-// cm:edge contract -> server/mcp.ts — these are literal registerTool names. Renaming a tool there
+// cm:edge contract -> server/mcp.ts — the first two are literal registerTool names. Renaming a tool there
 // without renaming it here makes every board read as never-queried, which looks like data, not a bug.
-export const IMPACT_QUERY_TOOLS: readonly string[] = ['compute_impact', 'compute_org_impact']
+// cm:edge contract -> server/toolLog.ts PANEL_IMPACT_QUERY — a person asking from the feature panel.
+export const IMPACT_QUERY_TOOLS: readonly string[] = ['compute_impact', 'compute_org_impact', 'panel_impact_query']
 
 export interface ToolCallLike {
   projectId: string | null

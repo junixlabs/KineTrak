@@ -17,6 +17,7 @@ import {
   projectRoot,
   scopedRootForUser,
 } from './state'
+import { recordPanelImpactQuery } from './toolLog'
 import { createOrgBoardShare, hydrateOrgBoardShares, orgBoardIdForToken, revokeOrgBoardShare, shareForOrgBoard } from './orgBoardShares'
 import { registerMcp } from './mcp'
 import { registerWebhooks } from './webhook'
@@ -223,6 +224,16 @@ app.get('/api/projects/:id/activity', requireUser, (req: AuthedRequest, res) => 
   if (!ownsProject(req.user!.id, id)) return res.status(404).json({ ok: false })
   const since = Number(req.query.since) || 0
   res.json({ ok: true, items: listActivity(id, since) })
+})
+
+// A person asked the board what a change touches (the feature panel): counted with the agents'
+// compute_impact calls by the adoption analysis (NORTH-STAR §5). Fire-and-forget from the client.
+app.post('/api/projects/:id/impact-query', requireUser, (req: AuthedRequest, res) => {
+  const id = req.params.id as string
+  const orgId = projectHeader(id)?.orgId
+  if (!orgId || !ownsProject(req.user!.id, id)) return res.status(404).json({ ok: false })
+  recordPanelImpactQuery({ orgId, userId: req.user!.id, actor: req.user!.name }, id)
+  res.json({ ok: true })
 })
 
 // VCS webhooks (GitHub/GitLab) → flag outdated board nodes.

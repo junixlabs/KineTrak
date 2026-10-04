@@ -14,7 +14,7 @@ export default function RoleFilter() {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex h-8 items-center gap-2 rounded-lg border px-[11px] hover:bg-[#f4f6f9]"
+        className="flex h-8 flex-none items-center gap-2 whitespace-nowrap rounded-lg border px-[11px] hover:bg-[#f4f6f9]"
         style={{
           borderColor: roleFilter ? '#c9d8ff' : '#e5e8ec',
           background: roleFilter ? '#f1f5ff' : '#fff',

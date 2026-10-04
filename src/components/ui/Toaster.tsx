@@ -4,6 +4,7 @@ import { useToast } from '@/store/useToast'
 /** Bottom-center transient toast stack. */
 export default function Toaster() {
   const toasts = useToast((s) => s.toasts)
+  const dismiss = useToast((s) => s.dismiss)
   return (
     <div className="pointer-events-none fixed bottom-6 left-1/2 z-[100] flex -translate-x-1/2 flex-col items-center gap-2">
       {toasts.map((t) => (
@@ -13,6 +14,17 @@ export default function Toaster() {
         >
           <Check size={15} className="text-[#5bd98a]" strokeWidth={2.5} />
           {t.msg}
+          {t.action && (
+            <button
+              onClick={() => {
+                t.action!.run()
+                dismiss(t.id)
+              }}
+              className="ml-1.5 rounded-md px-2 py-0.5 text-[12.5px] font-bold text-[#9cc0ff] hover:bg-white/10"
+            >
+              {t.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>

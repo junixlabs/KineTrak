@@ -38,8 +38,12 @@ test('deriveImpactAlerts flags only committed features above the threshold', () 
   assert.ok('selection' in action && action.selection?.id === 'E', 'action navigates to the entry node')
 })
 
-test('a high threshold suppresses all impact alerts', () => {
-  assert.equal(deriveImpactAlerts(sample, 100).length, 0)
+test('a high threshold suppresses all swimlane-footprint impact alerts', () => {
+  // declared dependents raise an alert at any threshold (by design), so the threshold is read on a
+  // copy of the Sample without its dependencies
+  const noDeps = { ...sample, features: sample.features.map((f) => ({ ...f, dependsOn: [] })) }
+  assert.equal(deriveImpactAlerts(noDeps, 100).length, 0)
+  assert.deepEqual(deriveImpactAlerts(sample, 100).map((a) => a.id), ['impact:f6'], 'f8 depends on f6')
 })
 
 test('marking the feature done clears its impact alert (derived, not stored)', () => {
@@ -113,4 +117,39 @@ test('deriveDodAlerts flags committed features with unmet acceptance criteria', 
   let root: Root = { orgs: [], projects: [{ id: 'p1', orgId: 'o1', name: 'p', createdAt: 'x', data: structuredClone(sample), snapshots: [] }] }
   for (let i = 0; i < 3; i++) root = applyCommand(root, { type: 'checkAcceptance', projectId: 'p1', target: 'feature', id: 'f6', index: i, done: true })
   assert.equal(deriveDodAlerts(root.projects[0].data).some((a) => a.id === 'dod:f6'), false)
+})
+
+// ── The answer a person reads in the feature panel ─────────────────────────
+import { impactAnswer, dependencyCandidates } from '../src/lib/impact'
+
+test('impactAnswer on the Sample: f6 touches f8 directly, the six steps after E, in flow order', () => {
+  const a = impactAnswer(sample, 'f6')
+  assert.deepEqual(a.direct, ['f8'])
+  assert.deepEqual(a.indirect, [])
+  assert.deepEqual(a.viaWorkflow, [], 'f8 is reached by its dependency first, so it is not listed twice')
+  assert.equal(a.steps.length, 6)
+  assert.equal(a.steps[a.steps.length - 1], 'K', 'End is read last')
+  assert.match(a.sentence, /touches 1 feature, 6 workflow steps and \d+ lanes/)
+})
+
+test('impactAnswer says so when nothing is touched, still with the word "touch"', () => {
+  const a = impactAnswer(sample, 'f1')
+  assert.deepEqual([a.direct, a.indirect, a.viaWorkflow, a.steps], [[], [], [], []])
+  assert.match(a.sentence, /touches nothing else on this board/)
+})
+
+test('impactAnswer separates direct from indirect dependents', () => {
+  const d = templateData('blank')
+  d.modules = [{ id: 'm', name: 'M', color: '#000', backbone: { name: '', sub: '' }, owners: [] }]
+  d.features = [
+    { id: 'a', moduleId: 'm', name: 'A', status: 'must', releaseId: 'mvp' },
+    { id: 'b', moduleId: 'm', name: 'B', status: 'must', releaseId: 'mvp', dependsOn: ['a'] },
+    { id: 'c', moduleId: 'm', name: 'C', status: 'must', releaseId: 'mvp', dependsOn: ['b'] },
+  ]
+  const a = impactAnswer(d, 'a')
+  assert.deepEqual([a.direct, a.indirect], [['b'], ['c']])
+  assert.equal(a.sentence, 'Changing it touches 2 features.')
+  // c already depends on a through b: offering a → c would make a cycle
+  assert.deepEqual(dependencyCandidates(d, 'a'), [])
+  assert.deepEqual(dependencyCandidates(d, 'c'), ['a'], 'b is already declared, a is not')
 })

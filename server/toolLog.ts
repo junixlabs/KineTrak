@@ -164,6 +164,19 @@ export function instrumentToolCalls(server: McpServer, ctx: ToolCallContext, opt
   return true
 }
 
+/** The name a person's impact question is logged under (the feature panel's "Show what it touches"). */
+export const PANEL_IMPACT_QUERY = 'panel_impact_query'
+
+/**
+ * A person asked the board what a change touches, from the feature panel. It goes in the same log
+ * as an agent's compute_impact call, so the adoption analysis counts people who decide by the board
+ * too (NORTH-STAR §5). The key is `web:<userId>`, so a person's row never joins an agent's run in the
+ * recovery-chain analysis. Names only, like every other row: no feature id is recorded.
+ */
+export function recordPanelImpactQuery(ctx: { orgId: string; userId: string; actor: string }, projectId: string, sink: ToolCallSink = persistToolCall): void {
+  sink({ orgId: ctx.orgId, keyId: `web:${ctx.userId}`, actor: ctx.actor }, { tool: PANEL_IMPACT_QUERY, params: [], outcome: 'ok', projectId })
+}
+
 /** The recorded calls for one org, oldest→newest — the analysis input. Newest
  *  READ_LIMIT rows of the window, so a long history analyses its recent end. */
 export function readToolCalls(orgId: string, opts: { projectId?: string; since?: number } = {}): Promise<ToolCallRow[]> {

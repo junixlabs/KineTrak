@@ -231,3 +231,15 @@ test('a server with no tools reports that the instrument was NOT installed', () 
   const server = new McpServer({ name: 'test', version: '1.0.0' })
   assert.equal(instrumentToolCalls(server, ctx, { sink: () => {} }), false, 'silent absence is the one failure mode worth shouting about')
 })
+
+// ── A person's impact question (feature panel) lands in the same log ────────
+import { recordPanelImpactQuery, PANEL_IMPACT_QUERY, type ToolCallContext } from './toolLog'
+import { splitImpactQueries } from './adoptionAnalysis'
+
+test('a panel impact query is a names-only row under the person\'s own key, and counts as a query', () => {
+  const rows: { ctx: ToolCallContext; rec: ToolCallRecord }[] = []
+  recordPanelImpactQuery({ orgId: 'o1', userId: 'u7', actor: 'Lan' }, 'p1', (ctx, rec) => rows.push({ ctx, rec }))
+  assert.deepEqual(rows, [{ ctx: { orgId: 'o1', keyId: 'web:u7', actor: 'Lan' }, rec: { tool: PANEL_IMPACT_QUERY, params: [], outcome: 'ok', projectId: 'p1' } }])
+  const { queries, failed } = splitImpactQueries([{ ...rows[0].rec, ts: 1 }])
+  assert.deepEqual([queries, failed], [[{ projectId: 'p1', ts: 1 }], 0])
+})

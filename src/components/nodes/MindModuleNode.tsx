@@ -22,6 +22,8 @@ export default function MindModuleNode({ data }: { data: MindModuleData }) {
 
   return (
     <div
+      data-uxcli="module-node"
+      data-id={data.id}
       className="group relative flex h-[56px] w-[216px] flex-col justify-center gap-[7px] overflow-hidden rounded-[13px] border bg-white pl-[18px] pr-3.5 transition-[opacity,box-shadow,border-color] duration-200"
       style={{
         borderColor: data.highlight ? data.color : data.recent ? '#f59e0b' : '#e5e8ec',

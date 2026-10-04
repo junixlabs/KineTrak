@@ -175,8 +175,8 @@ test('only a successful impact call counts as a query; failures are reported apa
   assert.equal(failed, 1)
 })
 
-test('the impact tool names are the ones the MCP layer registers', () => {
-  assert.deepEqual([...IMPACT_QUERY_TOOLS], ['compute_impact', 'compute_org_impact'])
+test('the impact tool names are the ones the MCP layer registers, plus a person asking from the panel', () => {
+  assert.deepEqual([...IMPACT_QUERY_TOOLS], ['compute_impact', 'compute_org_impact', 'panel_impact_query'])
 })
 
 test('the report splits model / drawing / empty and never counts empty in the ratio', () => {

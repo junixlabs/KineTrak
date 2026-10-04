@@ -99,6 +99,56 @@ export function computeImpact(data: WorkspaceData, focusId: string): ImpactResul
   return { focus: focusId, entryNodes, downstream, affectedLanes, affectedFeatures, affectedModules }
 }
 
+/** What changing a feature touches, grouped by how directly — the answer a person reads in the
+ *  feature panel. Built on computeImpact, so it says exactly what an agent's compute_impact says. */
+export interface ImpactAnswer {
+  impact: ImpactResult
+  /** Features that declared a dependency on this one. */
+  direct: string[]
+  /** Features that depend on it through another feature. */
+  indirect: string[]
+  /** Features reached only through the workflow (linked to a step downstream of this one). */
+  viaWorkflow: string[]
+  /** Downstream steps in the order a person reads the flow (left to right). */
+  steps: string[]
+  /** One sentence with the counts; always contains "touch", including when nothing is touched. */
+  sentence: string
+}
+
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+const list = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
+
+export function impactAnswer(data: WorkspaceData, featureId: string): ImpactAnswer {
+  const impact = computeImpact(data, featureId)
+  const direct = data.features.filter((f) => (f.dependsOn ?? []).includes(featureId) && f.id !== featureId).map((f) => f.id)
+  const all = dependentsOf(data, featureId)
+  all.delete(featureId)
+  const indirect = [...all].filter((id) => !direct.includes(id))
+  const viaWorkflow = impact.affectedFeatures.filter((id) => !all.has(id))
+  const pos = new Map(data.swimNodes.map((n) => [n.id, n.x]))
+  const steps = [...impact.downstream].sort((a, b) => (pos.get(a) ?? 0) - (pos.get(b) ?? 0) || a.localeCompare(b))
+  const features = impact.affectedFeatures.length
+  const parts = [
+    features ? count(features, 'feature') : '',
+    steps.length ? count(steps.length, 'workflow step') : '',
+    impact.affectedLanes.length ? count(impact.affectedLanes.length, 'lane') : '',
+  ].filter(Boolean)
+  const sentence = parts.length
+    ? `Changing it touches ${list(parts)}.`
+    : `Changing it touches nothing else on this board: no feature depends on it${impact.entryNodes.length ? ' and nothing follows its step in the workflow' : ' and it is not linked into the workflow'}.`
+  return { impact, direct, indirect, viaWorkflow, steps, sentence }
+}
+
+/** The features `featureId` may be declared to depend on: not itself, not one it already depends on,
+ *  and not one that already depends on it (directly or not) — that would make a cycle. */
+export function dependencyCandidates(data: WorkspaceData, featureId: string): string[] {
+  const f = data.features.find((x) => x.id === featureId)
+  if (!f) return []
+  const have = new Set(f.dependsOn ?? [])
+  const above = dependentsOf(data, featureId)
+  return data.features.filter((x) => x.id !== featureId && !have.has(x.id) && !above.has(x.id)).map((x) => x.id)
+}
+
 export const DEFAULT_IMPACT_THRESHOLD = 3
 
 /**

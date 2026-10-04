@@ -30,7 +30,7 @@ export default function Header() {
         </div>
         <div className="flex flex-col items-start leading-none">
           <span className="text-[15px] font-extrabold tracking-tight">KineTrak</span>
-          <span className="mt-0.5 text-[8.5px] font-bold tracking-[2px] text-faint">PLATFORM</span>
+          <span className="mt-[3px] text-[8.5px] font-bold tracking-[2px] text-faint">PLATFORM</span>
         </div>
       </button>
 
@@ -40,7 +40,7 @@ export default function Header() {
       <SnapshotMenu />
       <span
         title={syncStatus === 'live' ? 'Connected to the KineTrak server — agents can co-edit and changes appear live' : syncStatus === 'local' ? 'No server — changes stay in this browser' : 'Connecting to the server…'}
-        className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-bold"
+        className="flex h-8 flex-none items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-[12px] font-bold"
         style={{ color: sync.color, background: sync.bg }}
       >
         <span className="h-[7px] w-[7px] rounded-full" style={{ background: sync.dot }} />
@@ -66,22 +66,26 @@ export default function Header() {
       <button
         onClick={goConnect}
         title="Connect an AI agent over MCP"
-        className="flex h-[34px] items-center gap-[7px] rounded-[9px] border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]"
+        aria-label="Connect an AI agent"
+        className="flex h-[34px] flex-none items-center gap-[7px] rounded-[9px] border border-line bg-white px-2.5 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9] 2xl:px-3"
       >
         <Plug size={14} className="text-brand" />
-        Connect
+        {/* below 1536 px the header holds icons only, so nothing is cut off at 1440 (P-0004) */}
+        <span className="hidden 2xl:inline">Connect</span>
       </button>
 
       <button
         onClick={() => setPresent(true)}
-        className="flex h-[34px] items-center gap-[7px] rounded-[9px] border border-line bg-white px-3 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9]"
+        title="Present"
+        aria-label="Present"
+        className="flex h-[34px] flex-none items-center gap-[7px] rounded-[9px] border border-line bg-white px-2.5 text-[13px] font-semibold text-ink hover:bg-[#f4f6f9] 2xl:px-3"
       >
         <Play size={14} className="fill-brand text-brand" />
-        Present
+        <span className="hidden 2xl:inline">Present</span>
       </button>
 
       {/* Avatar stack */}
-      <div className="flex items-center">
+      <div className="hidden flex-none items-center 2xl:flex">
         <div className="flex h-[30px] w-[30px] items-center justify-center rounded-full border-2 border-white bg-brand-light text-[11px] font-bold text-white">
           PA
         </div>

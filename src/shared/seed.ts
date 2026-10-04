@@ -77,9 +77,10 @@ export const sampleTemplate: WorkspaceData = {
       ],
       codeRefs: [{ path: 'src/lib/impact.ts', symbol: 'computeImpact' }],
     },
-    { id: 'f7', moduleId: 'm3', name: 'Dynamic release lanes', status: 'progress', releaseId: 'r1' },
+    // cm:why the Sample declares three dependencies so a newcomer sees one before declaring their own
+    { id: 'f7', moduleId: 'm3', name: 'Dynamic release lanes', status: 'progress', releaseId: 'r1', dependsOn: ['f5'] },
     {
-      id: 'f8', moduleId: 'm3', name: 'Real-time sync with workflow', status: 'must', releaseId: 'mvp',
+      id: 'f8', moduleId: 'm3', name: 'Real-time sync with workflow', status: 'must', releaseId: 'mvp', dependsOn: ['f6'],
       desc: 'Real-time sync between Story Map and Swimlane: a status change in one view reflects instantly in the others via SSOT.',
       constraints: ['WebSocket channel per project.', 'Reconcile on reconnect.'],
       crossLinks: [{ view: 'swimlane', label: 'Swimlane · J · Update & save', targetId: 'J' }],
@@ -87,7 +88,7 @@ export const sampleTemplate: WorkspaceData = {
     { id: 'f9', moduleId: 'm3', name: 'Color-coded task cards', status: 'done', releaseId: 'r2' },
     { id: 'f10', moduleId: 'm4', name: 'Comment threads', status: 'nice', releaseId: 'r1' },
     { id: 'f11', moduleId: 'm4', name: 'Live presentation mode', status: 'nice', releaseId: 'r2' },
-    { id: 'f12', moduleId: 'm4', name: 'Role-based view settings', status: 'progress', releaseId: 'r2' },
+    { id: 'f12', moduleId: 'm4', name: 'Role-based view settings', status: 'progress', releaseId: 'r2', dependsOn: ['f3'] },
   ],
   lanes: standardLanes,
   swimNodes: sampleSwimNodes,

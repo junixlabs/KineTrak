@@ -25,6 +25,9 @@ export default function ViewTabs() {
         <button
           key={id}
           onClick={() => setView(id)}
+          data-uxcli="view-tab"
+          data-view={id}
+          aria-pressed={activeView === id}
           className="relative z-[1] flex h-[30px] items-center justify-center gap-[7px] whitespace-nowrap text-[13px] font-semibold"
           style={{ width: TAB_W, color: activeView === id ? '#14181f' : '#5b6470' }}
         >
