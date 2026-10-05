@@ -3,23 +3,30 @@ import { featureStatusMeta } from '@/theme/tokens'
 import type { FeatureStatus } from '@/shared/types'
 
 export interface MindFeatureData {
+  id: string
   name: string
   status: FeatureStatus
   dim: boolean
   selected: boolean
   recent?: boolean
+  /** touched by the change whose impact answer is open in the panel */
+  hit?: boolean
 }
 
 export default function MindFeatureNode({ data }: { data: MindFeatureData }) {
   const meta = featureStatusMeta[data.status]
   return (
     <div
+      data-uxcli="feature-node"
+      data-id={data.id}
       className="relative flex h-[46px] w-[256px] items-center gap-[9px] rounded-[10px] border bg-white px-3 transition-[opacity,box-shadow,border-color] duration-200"
       style={{
-        borderColor: data.selected ? '#2f6fed' : data.recent ? '#f59e0b' : '#e5e8ec',
+        borderColor: data.selected ? '#2f6fed' : data.hit ? '#e5484d' : data.recent ? '#f59e0b' : '#e5e8ec',
         boxShadow: data.selected
           ? '0 0 0 3px rgba(47,111,237,.14), 0 6px 16px rgba(47,111,237,.18)'
-          : data.recent
+          : data.hit
+            ? '0 0 0 3px rgba(229,72,77,.18), 0 4px 12px rgba(229,72,77,.16)'
+            : data.recent
             ? '0 0 0 3px rgba(245,158,11,.20), 0 4px 12px rgba(245,158,11,.18)'
             : '0 1px 2px rgba(20,24,31,.07)',
         opacity: data.dim ? 0.3 : 1,

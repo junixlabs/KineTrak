@@ -77,7 +77,7 @@ export default function GuidePage() {
           </div>
           <div className="flex flex-col items-start leading-none">
             <span className="text-[15px] font-extrabold tracking-tight">KineTrak</span>
-            <span className="mt-0.5 text-[8.5px] font-bold tracking-[2px] text-faint">PLATFORM</span>
+            <span className="mt-[3px] text-[8.5px] font-bold tracking-[2px] text-faint">PLATFORM</span>
           </div>
         </button>
         <div className="h-6 w-px bg-line" />

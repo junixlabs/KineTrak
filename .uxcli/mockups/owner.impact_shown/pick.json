@@ -1,0 +1,15 @@
+{
+ "schema_version": 1,
+ "pick": "a-panel",
+ "sha256": "82418043641b11b0992b9c312b2f914438ce9f3916c890054ff06fa12ec5e7f4",
+ "parts": {
+  "c-ask": "the list grouped by how directly each item is touched"
+ },
+ "by": {
+  "type": "agent",
+  "ref": "claude",
+  "onBehalfOf": "the owner (KineTrak), who asked the agent to pick and build: \"Bạn chọn giúp tôi phương án rồi code luôn đi\""
+ },
+ "note": "Picked as P-0001 argues: the answer appears where the person already looks (keystroke-level 2.65 s against 3.95 s and about 4.4 s), the canvas keeps the overview. Picked by an agent on the owner's say-so; the owner can delete this file to pick again.",
+ "when": "2026-10-04"
+}

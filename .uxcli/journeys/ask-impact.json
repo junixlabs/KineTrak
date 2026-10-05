@@ -3,32 +3,84 @@
  "id": "ask-impact",
  "goal": "Before changing a feature, see what else the change touches",
  "actor": "change_owner",
- "requires": { "identityProfile": null, "dataProfiles": [] },
- "trace": ["I-001", "I-002", "I-004"],
+ "requires": {
+  "identityProfile": null,
+  "dataProfiles": []
+ },
+ "trace": [
+  "I-001",
+  "I-002",
+  "I-004"
+ ],
  "states": {
-  "owner.board_open": {
+  "owner.home": {
    "signals": [
-    { "observer": "dom", "selector": "[data-uxcli=board-canvas]", "visible": true }
+    {
+     "observer": "url",
+     "path": "/"
+    },
+    {
+     "observer": "dom",
+     "selector": "[data-uxcli=start-sample]",
+     "visible": true
+    }
    ],
    "strength": "weak",
-   "mustNotMatch": ["the Home screen, where no project is open"],
-   "note": "KineTrak keeps the screen in its store, not in the URL, so no url signal is possible; the hook is proposed with the redesign."
+   "mustNotMatch": [
+    "a project already open"
+   ]
+  },
+  "owner.board_open": {
+   "signals": [
+    {
+     "observer": "dom",
+     "selector": "[data-uxcli=board-canvas]",
+     "visible": true
+    }
+   ],
+   "strength": "weak",
+   "mustNotMatch": [
+    "the Home screen, where no project is open"
+   ],
+   "note": "KineTrak keeps the screen in its store, not in the URL, so no url signal is possible."
   },
   "owner.feature_open": {
    "signals": [
-    { "observer": "dom", "selector": "[data-uxcli=feature-panel]", "visible": true },
-    { "observer": "dom", "selector": "[data-uxcli=feature-dependencies]", "visible": true }
+    {
+     "observer": "dom",
+     "selector": "[data-uxcli=feature-panel]",
+     "visible": true
+    },
+    {
+     "observer": "dom",
+     "selector": "[data-uxcli=feature-dependencies]",
+     "visible": true
+    }
    ],
    "strength": "weak",
-   "mustNotMatch": ["a module selected instead of a feature", "the panel closed"]
+   "mustNotMatch": [
+    "a module selected instead of a feature",
+    "the panel closed"
+   ]
   },
   "owner.impact_shown": {
    "signals": [
-    { "observer": "dom", "selector": "[data-uxcli=impact-answer]", "visible": true },
-    { "observer": "text", "selector": "[data-uxcli=impact-answer]", "contains": "touch" }
+    {
+     "observer": "dom",
+     "selector": "[data-uxcli=impact-answer]",
+     "visible": true
+    },
+    {
+     "observer": "text",
+     "selector": "[data-uxcli=impact-answer]",
+     "contains": "touch"
+    }
    ],
    "strength": "weak",
-   "mustNotMatch": ["before the person asked", "a feature nothing depends on, where the answer must say so instead of listing nothing"]
+   "mustNotMatch": [
+    "before the person asked",
+    "a feature nothing depends on, where the answer must say so instead of listing nothing"
+   ]
   }
  },
  "workflows": [
@@ -37,18 +89,63 @@
    "kind": "happy",
    "steps": [
     {
-     "id": "s1", "before": "owner.board_open", "action": "open the feature they are about to change",
-     "interactions": [ { "type": "ui", "target": "[data-uxcli=feature-node][data-id=f6]" } ],
-     "after": "owner.feature_open", "next": "s2"
+     "id": "s0",
+     "before": "owner.home",
+     "action": "open the Sample board",
+     "interactions": [
+      {
+       "type": "ui",
+       "target": "[data-uxcli=start-sample]"
+      }
+     ],
+     "after": "owner.board_open",
+     "next": "s1"
     },
     {
-     "id": "s2", "before": "owner.feature_open", "action": "ask what changing it touches",
-     "interactions": [ { "type": "ui", "target": "[data-uxcli=ask-impact]", "expect": { "inViewportWithoutScroll": true } } ],
-     "expectations": [ { "kind": "timing", "expr": "toStable <= 1000ms" } ],
-     "after": "owner.impact_shown", "next": null
+     "id": "s1",
+     "before": "owner.board_open",
+     "action": "open the feature they are about to change, from the Mindmap",
+     "interactions": [
+      {
+       "type": "ui",
+       "target": "[data-uxcli=view-tab][data-view=mindmap]"
+      },
+      {
+       "type": "ui",
+       "target": "[data-uxcli=module-node][data-id=m2]"
+      },
+      {
+       "type": "ui",
+       "target": "[data-uxcli=feature-node][data-id=f6]"
+      }
+     ],
+     "after": "owner.feature_open",
+     "next": "s2"
+    },
+    {
+     "id": "s2",
+     "before": "owner.feature_open",
+     "action": "ask what changing it touches",
+     "interactions": [
+      {
+       "type": "ui",
+       "target": "[data-uxcli=ask-impact]",
+       "expect": {
+        "inViewportWithoutScroll": true
+       }
+      }
+     ],
+     "expectations": [
+      {
+       "kind": "timing",
+       "expr": "toStable <= 1000ms"
+      }
+     ],
+     "after": "owner.impact_shown",
+     "next": null
     }
    ]
   }
  ],
- "note": "Drafted by an agent (Claude) on the owner's say-so, 2026-10-03. f6 is 'Automatic impact calculation' in the Sample board; the hooks are the redesign's and do not exist on the current build (I-001)."
+ "note": "Drafted by an agent (Claude) on the owner's say-so, 2026-10-03. f6 is 'Automatic impact calculation' in the Sample board; the hooks are the redesign's and do not exist on the current build (I-001). 2026-10-04: s0 added and s1 given the clicks that reach f6 (Mindmap tab, then its module), because the journey could not start from a fresh browser: a walk blocked at s1.before, owner.board_open not held. The states and their signals are unchanged."
 }

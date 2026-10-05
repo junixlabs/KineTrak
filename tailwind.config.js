@@ -14,7 +14,7 @@ export default {
         amber: { DEFAULT: '#f59e0b' },
         ink: '#14181f',
         muted: '#5b6470',
-        faint: '#9aa2ad',
+        faint: '#646c78',
         line: '#e5e8ec',
         app: '#eef1f5',
         // status semantics

@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "pick": "a-picker",
+ "sha256": "97989471ec966ea97c8c5a5e383868145062bdad74679e8f099d26e1aa6b6698",
+ "by": {
+  "type": "agent",
+  "ref": "claude",
+  "onBehalfOf": "the owner (KineTrak), who asked the agent to pick and build: \"Bạn chọn giúp tôi phương án rồi code luôn đi\""
+ },
+ "note": "Picked as P-0003 argues: keyboard-reachable, does not overload the Swimlane's connect gesture, and needs no precise drag. Picked by an agent on the owner's say-so; the owner can delete this file to pick again.",
+ "when": "2026-10-04"
+}

@@ -1,7 +1,8 @@
-import { X, Link2, ChevronRight, Trash2, FileCode2, GitBranch, AlertTriangle, Boxes } from 'lucide-react'
+import { X, Link2, ChevronRight, Trash2, FileCode2, AlertTriangle, Boxes } from 'lucide-react'
 import { useWorkspace } from '@/store/useWorkspace'
 import { featureStatusMeta, featureStatusOrder, nodeStatusColor, hexA } from '@/theme/tokens'
 import { FieldLabel, TextField, SelectField, ListEditor, ChecklistEditor, RoleChips } from './fields'
+import { Dependencies, ImpactAnswer } from './ImpactPanel'
 import { MarkdownField } from './Markdownish'
 import type { CodeRef, CrossLink, FeatureStatus, NodeKind, NodeStatus } from '@/shared/types'
 import type { Selection } from '@/store/types'
@@ -57,7 +58,11 @@ export default function DetailPanel() {
   if (!data || body === null) return null
 
   return (
-    <div className="absolute bottom-0 right-0 top-0 z-30 flex w-[384px] animate-panelIn flex-col border-l border-line bg-white shadow-panel">
+    <div
+      data-uxcli={selected.type === 'feature' ? 'feature-panel' : undefined}
+      aria-label={selected.type === 'feature' ? 'Feature' : undefined}
+      className="absolute bottom-0 right-0 top-0 z-30 flex w-[384px] animate-panelIn flex-col border-l border-line bg-white shadow-panel"
+    >
       <div className="flex flex-none items-center justify-end px-4 pt-3">
         <button
           onClick={clearSelection}
@@ -196,26 +201,6 @@ function CodeRefs({ refs }: { refs: CodeRef[] }) {
   )
 }
 
-/** Read-only display of feature→feature dependencies. */
-function Dependencies({ ids }: { ids: string[] }) {
-  const data = useWorkspace((s) => s.currentData())
-  if (!ids.length) return null
-  const name = (id: string) => data.features.find((f) => f.id === id)?.name ?? id
-  return (
-    <div className="mt-4">
-      <FieldLabel>DEPENDS ON</FieldLabel>
-      <div className="flex flex-wrap gap-1.5">
-        {ids.map((id) => (
-          <span key={id} className="flex items-center gap-1 rounded-full bg-[#f1edff] px-[9px] py-[3px] text-[11.5px] font-semibold text-[#5b3ec4]">
-            <GitBranch size={12} strokeWidth={2} />
-            {name(id)}
-          </span>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 /** Org-board integrations anchored to this feature (cross-project joints).
  *  Read-only here; click through to the org board with the edge focused. */
 function OrgIntegrations({ featureId }: { featureId: string }) {
@@ -299,6 +284,10 @@ function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: strin
         {!readOnly && <SsotNote />}
       </div>
 
+      {/* what it depends on comes first: the impact answer under it is computed from it */}
+      <Dependencies featureId={f.id} readOnly={readOnly} />
+      <ImpactAnswer featureId={f.id} />
+
       <Divider />
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -334,7 +323,6 @@ function FeatureEditor({ id, view, readOnly, goLink }: { id: string; view: strin
       </div>
 
       <StaleBanner stale={f.codeStale} />
-      <Dependencies ids={f.dependsOn ?? []} />
       <CodeRefs refs={f.codeRefs ?? []} />
       <CrossLinks links={f.crossLinks ?? []} onGo={goLink} />
       <OrgIntegrations featureId={f.id} />

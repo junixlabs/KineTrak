@@ -75,6 +75,8 @@ interface WorkspaceState {
   activeSnapshotId: string | null
   selected: Selection | null
   hoveredId: string | null
+  /** The feature whose impact answer is open in the panel; the canvas outlines what it touches. */
+  impactFor: string | null
   roleFilter: Role | null
   alertsOpen: boolean
   snapMenuOpen: boolean
@@ -105,6 +107,7 @@ interface WorkspaceState {
   select: (sel: Selection | null) => void
   clearSelection: () => void
   setHovered: (id: string | null) => void
+  showImpact: (id: string | null) => void
   setRoleFilter: (role: Role | null) => void
   toggleAlerts: (open?: boolean) => void
   toggleSnapMenu: (open?: boolean) => void
@@ -158,6 +161,8 @@ interface WorkspaceState {
   addFeature: (moduleId: string, releaseId: string) => void
   updateFeature: (id: string, patch: Partial<Feature>) => void
   deleteFeature: (id: string) => void
+  /** Declare (or remove) that a feature depends on another; the impact answer is computed from these. */
+  setDependency: (featureId: string, dependsOnId: string, op: 'add' | 'remove') => void
   addSwimNode: (lane: number, flowId: string) => void
   updateSwimNode: (id: string, patch: Partial<SwimNode>) => void
   updateSwimNodePos: (id: string, x: number, y: number) => void
@@ -199,6 +204,7 @@ export const useWorkspace = create<WorkspaceState>()(
         activeSnapshotId: null,
         selected: null,
         hoveredId: null,
+        impactFor: null,
         roleFilter: null,
         alertsOpen: false,
         snapMenuOpen: false,
@@ -224,10 +230,11 @@ export const useWorkspace = create<WorkspaceState>()(
         goGuide: () => set({ screen: 'guide', present: false, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
         openProject: (id) => set({ screen: 'workspace', activeProjectId: id, activeSnapshotId: null, selected: null, hoveredId: null }),
         setPresent: (v) => set({ present: v, alertsOpen: false, snapMenuOpen: false, selected: null }),
-        setView: (v) => set({ activeView: v, selected: null, hoveredId: null, alertsOpen: false, snapMenuOpen: false }),
-        select: (sel) => set({ selected: sel }),
-        clearSelection: () => set({ selected: null }),
+        setView: (v) => set({ activeView: v, selected: null, hoveredId: null, impactFor: null, alertsOpen: false, snapMenuOpen: false }),
+        select: (sel) => set((s) => ({ selected: sel, impactFor: sel && sel.id === s.impactFor ? s.impactFor : null })),
+        clearSelection: () => set({ selected: null, impactFor: null }),
         setHovered: (id) => set({ hoveredId: id }),
+        showImpact: (id) => set({ impactFor: id }),
         setRoleFilter: (role) => set({ roleFilter: role }),
         toggleAlerts: (open) => set((s) => ({ alertsOpen: open ?? !s.alertsOpen, snapMenuOpen: false })),
         toggleSnapMenu: (open) => set((s) => ({ snapMenuOpen: open ?? !s.snapMenuOpen, alertsOpen: false })),
@@ -406,6 +413,10 @@ export const useWorkspace = create<WorkspaceState>()(
         updateFeature: (id, patch) => {
           if (!editable()) return
           dispatch({ type: 'updateFeature', projectId: pid(), id, patch })
+        },
+        setDependency: (featureId, dependsOnId, op) => {
+          if (!editable()) return
+          dispatch({ type: 'setDependency', projectId: pid(), featureId, dependsOnId, op })
         },
         deleteFeature: (id) => {
           if (!editable()) return

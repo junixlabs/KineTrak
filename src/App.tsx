@@ -67,7 +67,7 @@ export default function App() {
         <div className="flex h-full flex-col overflow-hidden">
           <Header />
           <SnapshotBanner />
-          <main className="kt-canvas relative flex-1 overflow-hidden">
+          <main className="kt-canvas relative flex-1 overflow-hidden" data-uxcli="board-canvas">
             {activeView === 'mindmap' && <MindmapView />}
             {activeView === 'story' && <StoryMapView />}
             {activeView === 'swimlane' && <SwimlaneView />}
